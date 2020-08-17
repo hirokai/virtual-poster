@@ -1,0 +1,1215 @@
+openapi: 3.0.0
+info:
+  title: virtual-poster
+  version: "1.0"
+  contact:
+    name: Hiroyuki Kai
+    email: fullerenec84@gmail.com
+  description: Virtual poster API
+  license:
+    name: GPL or virtual-poster license
+servers:
+  - url: "http://localhost:3000/api"
+paths:
+  "/maps/{roomId}/people":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+        description: Room ID
+    get:
+      summary: Get a list of people
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Person"
+      operationId: get-maps-roomId-people
+      parameters: []
+  "/people/{userId}":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+        description: ""
+    get:
+      summary: Get information on a user
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonWithEmail"
+            application/xml:
+              schema:
+                type: object
+                properties: {}
+      operationId: get-people-userId
+      description: Get a person
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: email
+    patch:
+      summary: Edit information on a user
+      operationId: put-people-userId
+      responses:
+        "200":
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 8
+                x:
+                  type: integer
+                  minimum: 0
+                "y":
+                  type: integer
+                  minimum: 0
+                avatar:
+                  type: string
+                "":
+                  type: string
+      tags:
+        - people
+  /people:
+    get:
+      summary: List all users
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PersonWithEmail"
+      operationId: get-people
+      parameters:
+        - schema:
+            type: boolean
+          in: query
+          name: email
+          description: Include email
+          allowEmptyValue: true
+        - $ref: "#/components/parameters/debug_token"
+        - $ref: "#/components/parameters/debug_as"
+      description: List all users who are visible to the user
+    post:
+      summary: Create a new user
+      operationId: post-people
+      responses:
+        "200":
+          description: OK
+      parameters:
+        - $ref: "#/components/parameters/debug_token"
+        - $ref: "#/components/parameters/debug_as"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                  minLength: 1
+                avatar:
+                  type: string
+                rooms:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/RoomId"
+                on_conflict:
+                  type: string
+                  enum:
+                    - append
+                    - reject
+                    - replace
+              required:
+                - email
+                - name
+        description: ""
+  "/people_multi/{userIds}":
+    get:
+      summary: Get information on users
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PersonWithEmail"
+      operationId: "get-people_multi-:userIds"
+      description: "Get information on multiple users at one time  "
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: userIds
+        in: path
+        required: true
+        description: |
+          User IDs, concatenated with "::::"
+  /maps:
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+    get:
+      summary: Get a list of rooms
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    numCols:
+                      type: integer
+                      minimum: 0
+                    numRows:
+                      type: integer
+                      minimum: 0
+                    id:
+                      type: string
+                      minLength: 1
+                    name:
+                      type: string
+                      minLength: 1
+      operationId: get-maps
+      description: ""
+  "/maps/{roomId}":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    get:
+      summary: Get a map
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  numCols:
+                    type: integer
+                  numRows:
+                    type: integer
+                  cells:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/Cell"
+      operationId: get-maps-roomId
+  "/maps/{roomId}/enter":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Enter a room
+      operationId: post-maps-roomId-enter
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  status:
+                    type: string
+                  public_key:
+                    type: string
+                  socket_url:
+                    type: string
+                required:
+                  - ok
+      tags:
+        - map
+  "/maps/{roomId}/groups/{groupId}/join":
+    post:
+      summary: Join a chat
+      operationId: "post-maps-:room_id-groups-:group_id-join"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  joinedGroup:
+                    $ref: "#/components/schemas/ChatGroup"
+                required:
+                  - ok
+      description: "Join a chat group. You can only join one chat group at maximum.  "
+      tags:
+        - chat
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+          minLength: 1
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: groupId
+        in: path
+        required: true
+  "/maps/{roomId}/groups/{groupId}/leave":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: groupId
+        in: path
+        required: true
+    post:
+      summary: Leave a chat group
+      operationId: post-maps-roomId-groups-groupId-leave
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  leftGroup:
+                    $ref: "#/components/schemas/ChatGroup"
+                required:
+                  - ok
+      description: Leave a chat group.
+      tags:
+        - chat
+  "/maps/{roomId}/groups/{groupId}/people":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: groupId
+        in: path
+        required: true
+    post:
+      summary: Add a new person to a chat
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  joinedGroup:
+                    $ref: "#/components/schemas/ChatGroup"
+                required:
+                  - ok
+      operationId: get-maps-roomId-groups-groupId-people
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+              required:
+                - userId
+  "/maps/{roomId}/groups":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Make a new chat group
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  group:
+                    $ref: "#/components/schemas/ChatGroup"
+                required:
+                  - ok
+      operationId: post-maps-roomId-groups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromUser:
+                  $ref: "#/components/schemas/UserId"
+                toUsers:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserId"
+              required:
+                - fromUser
+                - toUsers
+    get:
+      summary: List members of a chat group
+      operationId: get-maps-roomId-groups
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    users:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/UserId"
+                    color:
+                      type: string
+      description: List members of a chat group.
+      tags:
+        - chat
+  /groups:
+    get:
+      summary: Get chat groups
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+      operationId: get-chat-groups
+      description: Get chat groups (Return type stub)
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+  "/maps/{roomId}/people/{userId}/groups":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    get:
+      summary: Get a group the user belongs to.
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGroup"
+      operationId: get-maps-roomId-people-userId-groups
+  "/maps/{roomId}/comments":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    get:
+      summary: Get all comments in the room
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatComment"
+      operationId: get-maps-roomId-comments
+      description: Get all comments (that are visible to a user) in the room.
+    post:
+      summary: Post a comment in a room
+      operationId: post-maps-roomId-comments
+      responses:
+        "200":
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  properties:
+                    comment:
+                      type: string
+                - $ref: "#/components/schemas/CommentEncrypted"
+  "/posters/{posterId}/comments/{commentId}":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: commentId
+        in: path
+        required: true
+    patch:
+      summary: Get poster comments
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  comment:
+                    $ref: "#/components/schemas/ChatCommentEncrypted"
+                required:
+                  - ok
+      operationId: patch-posters-posterId-comments-commentId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+      tags:
+        - poster
+      description: ""
+      parameters: []
+  "/comments/{commentId}":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: commentId
+        in: path
+        required: true
+    patch:
+      summary: Edit a comment
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  comment:
+                    $ref: "#/components/schemas/CommentEncrypted"
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: patch-comments-commentId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/CommentEncrypted"
+      description: Edit a comment
+    delete:
+      summary: Delete a comment
+      operationId: delete-comments-commentId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: Delete a comment
+      tags:
+        - chat
+  "/maps/{roomId}/people/{userId}/poster":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    get:
+      summary: Get a poster of a user in a room
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                  poster:
+                    type: string
+      operationId: get-maps-roomId-people-userId-poster
+      description: "Get a poster of the user in the room  "
+  "/people/{userId}/posters":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    get:
+      summary: Get all posters of the user
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  posters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Poster"
+      operationId: get-people-userId-posters
+  "/maps/{roomId}/people/{userId}/poster/file":
+    post:
+      summary: Upload a poster file
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: "post-maps-:roomId-people-:userId-poster-file"
+      description: ""
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties: {}
+        description: Image file (PNG or PDF).
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+  "/posters/{posterId}/file":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    get:
+      summary: Get a poster file
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: object
+                properties: {}
+      operationId: get-posters-posterId-file
+      description: ""
+    post:
+      summary: Upload a poster file
+      operationId: post-posters-posterId-file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  poster:
+                    $ref: "#/components/schemas/Poster"
+                required:
+                  - ok
+      description: ""
+    delete:
+      summary: Delete a poster file
+      operationId: delete-posters-posterId-file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  poster:
+                    $ref: "#/components/schemas/Poster"
+                  error:
+                    type: string
+                required:
+                  - ok
+  "/posters/{posterId}/comments":
+    post:
+      summary: Post a comment on a poster
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: "post-maps-:roomId-posters-:posterId-comments"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  $ref: "#/components/schemas/UserId"
+                comment:
+                  type: string
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    get:
+      summary: Get comments on a poster
+      operationId: get-posters-posterId-comments
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatComment"
+      tags:
+        - poster
+  /posters:
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+    get:
+      summary: Get all posters
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Poster"
+      operationId: get-posters
+      description: Only for admin
+  "/maps/{roomId}/posters":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    get:
+      summary: Get all posters in a room
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Poster"
+      operationId: get-maps-roomId-posters
+      description: ""
+  /id_token:
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+    post:
+      summary: Submit ID token
+      tags:
+        - auth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  user_id:
+                    $ref: "#/components/schemas/UserId"
+                  admin:
+                    type: boolean
+                  public_key:
+                    type: string
+                required:
+                  - ok
+      operationId: post-id_token
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: debug_as
+        - schema:
+            type: string
+          in: query
+          name: debug_token
+      description: "  "
+  /ping:
+    get:
+      summary: Ping
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+                pattern: pong
+                default: pong
+      operationId: get-ping
+      description: "Return pong. Used for health check, etc.  "
+      security: []
+components:
+  parameters:
+    debug_token:
+      in: query
+      name: debug_token
+      required: false
+      schema:
+        type: string
+      description: Debug token
+    debug_as:
+      in: query
+      name: debug_as
+      required: false
+      schema:
+        type: string
+      description: Debug as a user
+  schemas:
+    Person:
+      title: Person
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        last_updated:
+          type: integer
+      description: Person
+      x-examples: {}
+      x-tags:
+        - types
+    PersonWithEmail:
+      title: PersonWithEmail
+      type: object
+      description: Person with email
+      x-examples:
+        example-1: {}
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        last_updated:
+          type: integer
+        email:
+          type: string
+          format: email
+      required:
+        - id
+        - name
+        - last_updated
+      x-tags:
+        - types
+    Cell:
+      title: Cell
+      type: object
+      properties:
+        id:
+          type: string
+      x-tags:
+        - types
+      description: Map cell
+    ChatGroup:
+      title: ChatGroup
+      type: object
+      description: Chat group
+      properties:
+        id:
+          $ref: "#/components/schemas/ChatGroupId"
+        room:
+          $ref: "#/components/schemas/RoomId"
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserId"
+        color:
+          type: string
+        kind:
+          type: string
+          enum:
+            - poster
+            - people
+      x-tags:
+        - types
+    UserId:
+      type: string
+      title: UserId
+      minLength: 1
+      pattern: '[\w_-]+'
+      maxLength: 15
+      x-tags:
+        - types
+    PosterId:
+      type: string
+      title: PosterId
+      minLength: 1
+      pattern: '[\w_-]+'
+      maxLength: 15
+      x-tags:
+        - types
+    ChatGroupId:
+      type: string
+      title: ChatGroupID
+      x-tags:
+        - types
+    RoomId:
+      type: string
+      title: RoomId
+      minLength: 1
+      x-tags:
+        - types
+    ChatComment:
+      title: ChatComment
+      type: object
+      description: Chat comment object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: integer
+        last_updated:
+          type: integer
+        room:
+          $ref: "#/components/schemas/RoomId"
+        x:
+          type: integer
+          minimum: 0
+        "y":
+          type: integer
+          minimum: 0
+        encrypted:
+          type: array
+          items:
+            type: boolean
+        person:
+          $ref: "#/components/schemas/UserId"
+        text:
+          type: string
+        to:
+          type: array
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/UserId"
+              - $ref: "#/components/schemas/PosterId"
+        kind:
+          type: string
+          enum:
+            - poster
+            - person
+      x-tags:
+        - types
+    CommentEncrypted:
+      title: CommentEncrypted
+      type: object
+      properties:
+        to_user:
+          type: string
+        text:
+          type: string
+        encrypted:
+          type: boolean
+      required:
+        - to_user
+        - text
+        - encrypted
+      description: Encrypted comment object
+      x-tags:
+        - types
+    ChatCommentEncrypted:
+      title: ChatCommentEncrypted
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: integer
+        last_updated:
+          type: integer
+        room:
+          $ref: "#/components/schemas/RoomId"
+        x:
+          type: integer
+        "y":
+          type: integer
+        texts:
+          $ref: "#/components/schemas/CommentEncrypted"
+        person:
+          $ref: "#/components/schemas/UserId"
+        kind:
+          type: string
+          enum:
+            - poster
+            - person
+      x-tags:
+        - types
+    Poster:
+      title: Poster
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/PosterId"
+        last_updated:
+          type: string
+        title:
+          type: string
+        author:
+          $ref: "#/components/schemas/UserId"
+        room:
+          $ref: "#/components/schemas/RoomId"
+        location:
+          type: string
+        poster_number:
+          type: integer
+        x:
+          type: number
+        "y":
+          type: number
+      required:
+        - id
+        - last_updated
+        - author
+        - room
+        - location
+        - x
+        - "y"
+      x-tags:
+        - types
+  securitySchemes:
+    debugAs:
+      type: apiKey
+      in: query
+      name: debug_as
+    debugToken:
+      type: apiKey
+      in: query
+      name: debug_token
+tags:
+  - name: chat
+  - name: map
+  - name: people
+  - name: poster
+  - name: auth
+  - name: misc
+security:
+  - debugToken: []

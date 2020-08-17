@@ -1,0 +1,148 @@
+.cell {
+  /* border: 0.5px solid black; */
+  background-image: url("/img/map/kusa.png");
+  background-size: 100%;
+  position: absolute;
+  margin: 0px;
+  text-align: center;
+  font-size: 8px;
+  cursor: pointer;
+  padding: 0px;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.cell.mini {
+  /* border: 0.5px solid black; */
+  background-image: url("/img/map/kusa.png");
+  background-size: 100%;
+  position: absolute;
+  margin: 0px;
+  text-align: center;
+  font-size: 8px;
+  cursor: pointer;
+  padding: 0px;
+  overflow: hidden;
+}
+
+.cell.connected {
+  font-weight: bold;
+}
+
+.cell:not(.connected) {
+  color: #555;
+}
+
+.cell.self {
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0);
+}
+
+.cell img {
+  object-fit: contain;
+  object-position: 0px 0px;
+  height: 192px;
+  width: 192px;
+}
+
+.cell.mini img {
+  object-fit: contain;
+  object-position: 0px 0px;
+  height: 32px;
+  width: 32px;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+}
+
+.cell.up:not(.poster) img {
+  object-position: 0px -144px;
+}
+
+.cell.right:not(.poster) img {
+  object-position: 0px -96px;
+}
+
+.cell.left:not(.poster) img {
+  object-position: 0px -48px;
+}
+
+.cell.down img {
+  object-position: 0px 0px;
+}
+
+.cell.mini.up:not(.poster) img {
+  object-position: 0px -24px;
+}
+
+.cell.mini.right:not(.poster) img {
+  object-position: 0px -16px;
+}
+
+.cell.mini.left:not(.poster) img {
+  object-position: 0px -8px;
+}
+
+.cell.mini.down img {
+  object-position: 0px 0px;
+}
+
+.cell.mud {
+  background-image: url("/img/map/mud.png");
+  background-size: 100%;
+}
+
+.cell.water {
+  background-image: url("/img/map/water.png");
+  background-size: 100%;
+}
+
+.cell.active {
+  font-weight: bold;
+  background: #ccf;
+}
+
+.cell.poster:not(.self) {
+  /* background: #cfc; */
+  /* background: rgb(223, 184, 85); */
+  color: black;
+  font-weight: bold;
+}
+
+.cell.poster.self {
+  /* background: #cfc; */
+  background: red;
+  color: black;
+  font-weight: bold;
+}
+
+#cells.hidden {
+  opacity: 0;
+  transition: opacity 0.5s linear;
+}
+
+.person-name {
+  position: absolute;
+  bottom: 0px;
+  text-align: center;
+  left: 0;
+  right: 0;
+  margin: auto;
+  color: black;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.3);
+  word-break: break-all;
+}
+
+.poster-name {
+  font-size: 12px !important;
+  font-style: italic;
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: auto;
+}
+
+.selected {
+  font-weight: bold;
+}

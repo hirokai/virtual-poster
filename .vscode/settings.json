@@ -1,0 +1,15 @@
+{
+  "eslint.validate": ["vue"],
+
+  "vetur.format.defaultFormatter.js": "prettier-eslint",
+  "vetur.format.defaultFormatter.ts": "prettier-tslint",
+  "vetur.format.defaultFormatter.html": "prettier",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "eslint.lintTask.enable": true,
+  "git.ignoreLimitWarning": true,
+  "rust-analyzer.runnableEnv": {
+    "DATABASE_URL": "postgres://postgres@localhost/virtual_poster"
+  }
+}

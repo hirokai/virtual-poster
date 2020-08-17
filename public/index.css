@@ -1,0 +1,139 @@
+body {
+  font-family: Loto, "YuGothic", sans-serif;
+}
+
+#help {
+  font-size: 12px;
+}
+
+h2 {
+  font-size: 14px;
+  margin-bottom: 0px;
+}
+
+[v-cloak] {
+  display: none;
+}
+
+#chat-global {
+  position: absolute;
+  left: 550px;
+  top: 0px;
+  /* height: 850px; */
+}
+
+#chat-global-history {
+  height: 400px;
+  width: 250px;
+  font-size: 12px;
+}
+
+#chat-input-container {
+  background: white;
+  z-index: 100;
+}
+
+.chat-history {
+  overflow: scroll;
+  border: 1px solid black;
+}
+
+.chat-history > p {
+  margin: 0px;
+}
+
+#minimap {
+  position: absolute;
+  top: 443px;
+  left: 550px;
+  user-select: none;
+  transition: opacity 0.5s linear;
+}
+
+textarea {
+  white-space: pre-wrap;
+  font-size: 16px;
+  line-height: 20px;
+  width: 716px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  resize: none;
+  display: inline-block;
+  vertical-align: -12px;
+}
+
+button#submit {
+  width: 60px;
+  height: 26px;
+  vertical-align: 7px;
+}
+
+.user-select {
+  margin: 0px 10px;
+}
+
+div#poster-container {
+  position: absolute;
+  left: 823px;
+  top: 0px;
+  width: 500px;
+  height: 700px;
+}
+
+div#poster {
+  background: white;
+  filter: drop-shadow(4px 4px 3px rgba(0, 0, 0, 0.5));
+  width: 100%;
+  height: calc(100% - 5px);
+}
+
+div#poster > img {
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0px;
+}
+
+div#poster-comments {
+  border: 1px solid #888;
+  position: absolute;
+  left: 823px;
+  top: 735px;
+  width: 490px;
+  height: 200px;
+  overflow: scroll;
+  font-size: 12px;
+}
+
+.comment-name {
+  font-size: 15px;
+  color: #1d1c1d;
+  font-weight: 900;
+}
+
+.comment-time {
+  font-size: 10px;
+  color: #616061;
+}
+
+.comment-recipients {
+  font-size: 12px;
+  color: #1d1c1d;
+}
+
+.comment-content {
+  font-size: 15px;
+  color: #1d1c1d;
+}
+
+#cells {
+  position: relative;
+  height: 548px;
+  width: 300px;
+  user-select: none;
+  transition: opacity 0.5s linear;
+}
+
+#minimap-area {
+  position: absolute;
+  border: blue 1px solid;
+}

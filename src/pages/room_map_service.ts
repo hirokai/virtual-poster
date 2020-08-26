@@ -29,6 +29,7 @@ import {
   MySocketObject,
 } from "../../@types/types"
 
+const BATCH_MOVE_INTERVAL = 400
 import _ from "lodash-es"
 import { AxiosStatic } from "axios"
 import jsSHA from "jssha"
@@ -94,7 +95,7 @@ export const moveTo = (
   if (state.batchMoveTimer) {
     clearInterval(state.batchMoveTimer)
   }
-  console.log("moveTo", toCell)
+  // console.log("moveTo", toCell)
   if (["wall", "water", "poster"].includes(toCell.kind)) {
     console.log("Destination not open", toCell)
     return false
@@ -124,7 +125,7 @@ export const moveTo = (
       debug_as: props.debug_as,
     }
     state.move_emitted = Date.now()
-    state.socket?.emit("move", d)
+    state.socket?.emit("Move", d)
     return true
   } else {
     const person = personAt(state.people, to)
@@ -206,7 +207,7 @@ export const moveTo = (
           debug_as: props.debug_as,
         }
         state.move_emitted = Date.now()
-        state.socket?.emit("move", d)
+        state.socket?.emit("Move", d)
         if (idx == points.length - 1 && state.batchMoveTimer) {
           clearInterval(state.batchMoveTimer)
           state.batchMovePoints = []
@@ -229,7 +230,7 @@ export const moveTo = (
         }
         state.oneStepAccepted = false
       }
-    }, 400)
+    }, BATCH_MOVE_INTERVAL)
     return true
   }
 }
@@ -327,7 +328,7 @@ export const moveByArrow = (
           token: jwt_hash,
           typing: false,
         }
-        state.socket?.emit("chat_typing", d)
+        state.socket?.emit("ChatTyping", d)
       }
       state.selectedUsers.clear()
       moveTo(axios, props, state, me, { x: nx, y: ny }, jwt_hash)
@@ -350,7 +351,7 @@ export const moveByArrow = (
       token: jwt_hash,
       debug_as: props.debug_as,
     }
-    state.socket?.emit("direction", d)
+    state.socket?.emit("Direction", d)
   }
   return { ok: true, moved }
 }
@@ -377,8 +378,8 @@ const on_socket_move = (
   s: string,
   jwt_hash: string
 ) => {
-  // console.log("on_socket_move", s)
   const pos = decodeMoved(s, props.room_id)
+  // console.log("on_socket_move", s, pos)
   if (
     !pos ||
     !state.people ||
@@ -423,17 +424,14 @@ export const initMapService = async (
   jwt_hash: ComputedRef<string>
 ): Promise<boolean> => {
   console.log("initMapService", socket)
-  socket.on("moved", (s: string) => {
-    on_socket_move(axios, props, state, s, jwt_hash.value)
-  })
-  socket.on("moved_multi", (s: string) => {
-    const ss = s.split(";")
+  socket.on("Moved", data => {
+    const ss = data.split(";")
     for (const s of ss) {
       on_socket_move(axios, props, state, s, jwt_hash.value)
     }
   })
-  socket.on("move.error", (msg: MoveErrorSocketData) => {
-    console.log("move.error socket", msg)
+  socket.on("MoveError", (msg: MoveErrorSocketData) => {
+    console.log("MoveError socket", msg)
     if (msg.user_id && msg.pos != undefined) {
       moveOneStep(
         axios,

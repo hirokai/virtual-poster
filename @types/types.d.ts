@@ -1,6 +1,8 @@
 import { admin } from "firebase-admin/lib/auth"
 import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
+import { SocketIOEmitter } from "socket.io-emitter"
+
 export type Point = { x: number; y: number }
 
 export type Direction = "none" | "up" | "left" | "right" | "down"
@@ -69,13 +71,20 @@ type RoomAppProps = {
   idToken: string
 }
 
+type SocketMessageFromUser =
+  | "Move"
+  | "Subscribe"
+  | "Active"
+  | "ChatTyping"
+  | "Direction"
+
 declare class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]>
   ws: WebSocket
-  constructor (url: string)
-  on (message: string, handler: (data: any) => void): void
-  emit (message: string, data: any): void
-  connect (url: string): WebSocket
+  constructor(url: string)
+  on(message: string, handler: (data: any) => void): void
+  emit(message: SocketMessageFromUser, data: any): void
+  connect(url: string): WebSocket
 }
 
 type RoomAppState = {
@@ -87,7 +96,7 @@ type RoomAppState = {
   avatarImages: { [index: string]: string }
   enableMiniMap: boolean
   posters: { [index: string]: Poster }
-  posterComments: { [comment_id: string]: ChatComment }
+  posterComments: { [comment_id: string]: ChatCommentDecrypted }
   posterInputComment: string | undefined
   hallMap: Cell[][]
   cols: number
@@ -96,7 +105,7 @@ type RoomAppState = {
 
   center: { x: number; y: number }
 
-  comments: { [index: string]: ChatComment }
+  comments: { [index: string]: ChatCommentDecrypted }
   chatGroups: {
     [groupId: string]: ChatGroup
   }
@@ -186,29 +195,31 @@ export type ChatComment = {
   room: RoomId
   x: number
   y: number
-  encrypted: boolean[]
+  texts: CommentEncryptedEntry[]
   person: UserId
-  text: string
-  to: (UserId | PosterId)[]
   kind: "poster" | "person"
 }
 
-export type ChatCommentEncrypted = {
+type CommentEncryptedEntry = {
+  encrypted: boolean
+  to: UserId | PosterId
+  text: string
+}
+
+export type ChatCommentDecrypted = {
   id: string
   timestamp: number
   last_updated: number
   room: RoomId
   x: number
   y: number
-  texts: CommentEncrypted[]
+  text_decrypted: string
+  texts: {
+    encrypted: boolean
+    to: UserId | PosterId
+  }[]
   person: UserId
   kind: "poster" | "person"
-}
-
-type CommentEncrypted = {
-  to_user: UserId
-  text: string
-  encrypted: boolean
 }
 
 export type ChatGroup = {
@@ -374,3 +385,32 @@ type ActiveUsersSocketData = {
   user: UserId
   active: boolean
 }[]
+
+type EmitCommand =
+  | "Announce"
+  | "Person"
+  | "PosterReset"
+  | "AuthError"
+  | "Moved"
+  | "MoveError"
+  | "PersonUpdate"
+  | "Group"
+  | "GroupRemove"
+  | "Comment"
+  | "CommentRemove"
+  | "PosterComment"
+  | "PosterCommentRemove"
+  | "Poster"
+  | "MapReset"
+  | "ActiveUsers"
+  | "ChatTyping"
+
+interface Emitter {
+  emit(msg: EmitCommand, data?: any): void
+  to(channel: string): this
+}
+// | SocketIO.Socket
+// | SocketIO.Server
+// | SocketIO.Namespace
+// | SocketIOEmitter
+// | HTTPEmitter

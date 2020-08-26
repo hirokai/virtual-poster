@@ -1,10 +1,10 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import {
-  CommentEncrypted,
   PosterId,
+  CommentEncryptedEntry,
   ChatComment,
-  ChatCommentEncrypted,
+  ChatCommentDecrypted,
 } from "@/../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
@@ -29,19 +29,18 @@ async function routes(
   })
 
   fastify.post<any>("/maps/:roomId/comments", async req => {
-    const comment: string = req.body.comment
-    const comments_encrypted: CommentEncrypted[] | undefined =
+    const comments_encrypted: CommentEncryptedEntry[] | undefined =
       req.body.comments_encrypted
     const roomId: string = req.params.roomId
     const requester: string = req["requester"]
-    if (!comment && !comments_encrypted) {
+    if (!comments_encrypted) {
       throw { statusCode: 400, message: "Parameter(s) missing" }
     }
     const timestamp = Date.now()
     userLog({
       userId: requester,
       operation: "comment.new",
-      data: { text: comment || comments_encrypted },
+      data: { text: comments_encrypted },
     })
     const group = await model.chat.getGroupOfUser(roomId, requester)
     const pos = await model.people.getPos(requester, roomId)
@@ -53,63 +52,22 @@ async function routes(
       throw { statusCode: 400, message: "Room not found" }
     }
 
-    const chat_other_members: string[] = group?.users || []
-    if (comment) {
-      //NOT encrypted
-      if (chat_other_members.length > 0) {
-        const e: ChatComment = {
-          id: ChatModel.genCommentId(),
-          person: requester,
-          room: roomId,
-          x: pos.x,
-          y: pos.y,
-          timestamp,
-          last_updated: timestamp,
-          kind: "person",
-          text: comment,
-          encrypted: _.map(_.range(chat_other_members.length), () => false),
-          to: chat_other_members,
-        }
-        const e2: ChatCommentEncrypted = {
-          id: ChatModel.genCommentId(),
-          person: requester,
-          room: roomId,
-          x: pos.x,
-          y: pos.y,
-          timestamp,
-          last_updated: timestamp,
-          kind: "person",
-          texts: chat_other_members.map(m => {
-            return { to_user: m, text: comment, encrypted: false }
-          }),
-        }
-        const r = await model.chat.addComment(e)
-        if (r) {
-          emit.comment(e2)
-        }
-      }
-      return { ok: true }
-    } else if (comments_encrypted) {
-      //encrypted
-      const e: ChatCommentEncrypted = {
-        id: ChatModel.genCommentId(),
-        person: requester,
-        room: roomId,
-        x: pos.x,
-        y: pos.y,
-        texts: comments_encrypted,
-        timestamp,
-        last_updated: timestamp,
-        kind: "person",
-      }
-      const r = await model.chat.addCommentEncrypted(e)
-      if (r) {
-        emit.comment(e)
-      }
-      return { ok: true }
-    } else {
-      return { ok: false }
+    const e: ChatComment = {
+      id: ChatModel.genCommentId(),
+      person: requester,
+      room: roomId,
+      x: pos.x,
+      y: pos.y,
+      texts: comments_encrypted,
+      timestamp,
+      last_updated: timestamp,
+      kind: "person",
     }
+    const r = await model.chat.addCommentEncrypted(e)
+    if (r) {
+      emit.comment(e)
+    }
+    return { ok: true }
   })
 
   fastify.patch<{
@@ -137,7 +95,7 @@ async function routes(
       comment
     )
     if (comment_actual) {
-      const comment_not_encrypted: ChatComment = {
+      const comment_not_encrypted: ChatCommentDecrypted = {
         id: comment_actual.id,
         timestamp: comment_actual.timestamp,
         last_updated: comment_actual.last_updated,
@@ -146,9 +104,13 @@ async function routes(
         room: comment_actual.room,
         person: comment_actual.person,
         kind: comment_actual.kind,
-        encrypted: [false],
-        text: comment,
-        to: [poster_id],
+        texts: [
+          {
+            encrypted: false,
+            to: poster_id,
+          },
+        ],
+        text_decrypted: comment,
       }
       emit.posterComment(comment_not_encrypted)
     }
@@ -157,7 +119,7 @@ async function routes(
 
   fastify.patch<any>("/comments/:commentId", async req => {
     const comment_id: string = req.params.commentId
-    const comments: CommentEncrypted[] = req.body.comments
+    const comments: CommentEncryptedEntry[] = req.body.comments
     userLog({
       userId: req["requester"],
       operation: "comment.update",

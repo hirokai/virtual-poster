@@ -1,6 +1,5 @@
 import _ from "lodash"
 import {
-  ChatComment,
   UserId,
   ChatGroupId,
   ChatGroup,
@@ -8,9 +7,10 @@ import {
   PosterId,
   RoomId,
   ChatGroupRDB,
-  ChatCommentEncrypted,
-  CommentEncrypted,
+  ChatComment,
+  ChatCommentDecrypted,
   CommentId,
+  CommentEncryptedEntry,
 } from "@/../@types/types"
 import * as bunyan from "bunyan"
 import { db, pgp } from "../model"
@@ -223,49 +223,61 @@ export class ChatModel {
       `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment where cp.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
       [user_id, room_id]
     )
-    // const my_poster_comments = await db.query(
-    //   `select c.id as id,c.person,c.x,c.y,c.encrypted,string_agg(cp.poster,'::::') as to,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_poster as cp on c.id=cp.comment where person=$1 and room=$2 and kind='poster' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
-    //   [user_id, room_id]
-    // )
-    const ds: ChatComment[] = from_me
-      .concat(to_me)
-      // .concat(my_poster_comments)
-      .map(r => {
-        const for_users: string[] = (r["to"] || "").split("::::")
-        const comments_for_users: string[] = (r["to_c"] || "").split("::::")
-        const encrypted_for_users: boolean[] = r["to_e"]
-        const idx = _.indexOf(for_users, user_id)
-        r.to = for_users
-        r.encrypted = encrypted_for_users
-        r.text =
-          encrypted_for_users[idx] == null ? r["text"] : comments_for_users[idx]
-        delete r["to_c"]
-        delete r["to_e"]
-        delete r["mode"]
-        r["timestamp"] = parseInt(r["timestamp"])
-        r["last_updated"] = parseInt(r["last_updated"])
-        return r
-      })
+    const ds: ChatComment[] = from_me.concat(to_me).map(r => {
+      const for_users: string[] = (r["to"] || "").split("::::")
+      const comments_for_users: string[] = (r["to_c"] || "").split("::::")
+      const encrypted_for_users: boolean[] = r["to_e"]
+      const r2: ChatComment = {
+        id: r.id,
+        timestamp: parseInt(r["timestamp"]),
+        last_updated: parseInt(r["last_updated"]),
+        room: r.room,
+        person: r.person,
+        x: r.x,
+        y: r.y,
+        kind: r.kind,
+        texts: _.zipWith(
+          for_users,
+          comments_for_users,
+          encrypted_for_users,
+          (to, text, encrypted) => {
+            return { to, text, encrypted }
+          }
+        ),
+      }
+      return r2
+    })
     const ds2 = _.uniqBy(ds, "id")
     return ds2
   }
-  async getPosterComments(poster_id: PosterId): Promise<ChatComment[]> {
+  async getPosterComments(
+    poster_id: PosterId
+  ): Promise<ChatCommentDecrypted[]> {
     const rows = await db.query(
       `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c join comment_to_poster as cp on c.id=cp.comment where cp.poster=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
       poster_id
     )
-    const ds: ChatComment[] = rows.map(r => {
-      r.to = r["to_poster"].split("::::")
-      delete r["to_poster"]
-      r["timestamp"] = parseInt(r["timestamp"])
-      r["last_updated"] = parseInt(r["last_updated"])
-      return r
+    const ds: ChatCommentDecrypted[] = rows.map(r => {
+      const r2: ChatCommentDecrypted = {
+        id: r.id,
+        timestamp: parseInt(r["timestamp"]),
+        last_updated: parseInt(r["last_updated"]),
+        x: r.x,
+        y: r.y,
+        room: r.room,
+        person: r.person,
+        text_decrypted: r.text,
+        texts: r["to_poster"].split("::::").map(to => {
+          return { to, encrypted: false }
+        }),
+        kind: "poster",
+      }
+      return r2
     })
     return ds
   }
   async addComment(c: ChatComment): Promise<boolean> {
     log.debug(c)
-    c.text = c.text.replace(/::::/g, "：：：：")
     try {
       await db.query("BEGIN")
       await db.query(
@@ -287,7 +299,7 @@ export class ChatModel {
       )
       if (c.kind == "person") {
         const s = pgp.helpers.insert(
-          c.to.map(t => {
+          c.texts.map(t => {
             return {
               comment: c.id,
               person: t,
@@ -300,7 +312,7 @@ export class ChatModel {
         await db.query(s)
       } else if (c.kind == "poster") {
         const s = pgp.helpers.insert(
-          c.to.map(t => {
+          c.texts.map(t => {
             return { comment: c.id, poster: t }
           }),
           ["comment", "poster"],
@@ -327,7 +339,7 @@ export class ChatModel {
       return false
     }
   }
-  async addCommentEncrypted(c: ChatCommentEncrypted): Promise<boolean> {
+  async addCommentEncrypted(c: ChatComment): Promise<boolean> {
     log.debug(c)
     try {
       await db.query("BEGIN")
@@ -353,7 +365,7 @@ export class ChatModel {
           c.texts.map(t => {
             return {
               comment: c.id,
-              person: t.to_user,
+              person: t.to,
               comment_encrypted: t.text.replace(/::::/g, "：：：："),
               encrypted: t.encrypted,
             }
@@ -403,8 +415,8 @@ export class ChatModel {
   async updateComment(
     user_id: string,
     comment_id: string,
-    comments_encrypted: CommentEncrypted[]
-  ): Promise<{ ok: boolean; comment?: ChatCommentEncrypted; error?: string }> {
+    comments_encrypted: CommentEncryptedEntry[]
+  ): Promise<{ ok: boolean; comment?: ChatComment; error?: string }> {
     let last_updated: number
     const comment = await this.getComment(comment_id)
     log.debug("updateComment", comment, user_id)
@@ -413,7 +425,7 @@ export class ChatModel {
     }
     if (user_id == comment.person) {
       last_updated = Date.now()
-      const updated_comment: ChatCommentEncrypted = {
+      const updated_comment: ChatComment = {
         x: comment.x,
         y: comment.y,
         id: comment.id,
@@ -433,7 +445,7 @@ export class ChatModel {
         for (const c of comments_encrypted) {
           await db.query(
             `UPDATE comment_to_person SET comment_encrypted=$1 WHERE comment=$2 AND person=$3`,
-            [c.text, comment_id, c.to_user]
+            [c.text, comment_id, c.to]
           )
         }
         await db.query(`COMMIT`)
@@ -455,7 +467,7 @@ export class ChatModel {
     poster_id: PosterId,
     comment_id: string,
     text: string
-  ): Promise<{ ok: boolean; comment?: ChatCommentEncrypted; error?: string }> {
+  ): Promise<{ ok: boolean; comment?: ChatComment; error?: string }> {
     let last_updated: number
     const comment = await this.getComment(comment_id)
     // log.debug("updateComment", text, user_id)
@@ -470,7 +482,7 @@ export class ChatModel {
           [text, last_updated, comment_id]
         )
         const uc = await this.getComment(comment_id)
-        const res = uc
+        const res: ChatComment | undefined = uc
           ? {
               x: uc.x,
               y: uc.y,
@@ -480,7 +492,7 @@ export class ChatModel {
               kind: "poster" as "poster" | "person",
               room: uc.room,
               person: uc.person,
-              texts: [{ to_user: poster_id, text, encrypted: false }],
+              texts: [{ to: poster_id, text, encrypted: false }],
             }
           : undefined
         return { ok: !!uc, comment: res }
@@ -512,7 +524,7 @@ export class ChatModel {
       return { ok: false, error: "User does not own comment." }
     }
     const ok = await this.deleteComment(comment_id)
-    return { ok, kind: doc.kind, removed_to_users: doc.to }
+    return { ok, kind: doc.kind, removed_to_users: doc.texts.map(t => t.to) }
   }
   static genCommentId(): CommentId {
     for (;;) {

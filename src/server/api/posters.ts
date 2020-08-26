@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { Poster, ChatComment } from "@/../@types/types"
+import { Poster, ChatComment, ChatCommentDecrypted } from "@/../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
@@ -247,16 +247,26 @@ async function routes(
         room: roomId,
         x: pos.x,
         y: pos.y,
-        text: comment,
+        texts: [{ to: posterId, encrypted: false, text: comment }],
         timestamp: timestamp,
         last_updated: timestamp,
-        encrypted: [false],
-        to: [posterId],
         kind: "poster",
       }
       const r = await model.chat.addComment(e)
       if (r) {
-        emit.posterComment(e)
+        const e2: ChatCommentDecrypted = {
+          id: ChatModel.genCommentId(),
+          person: user_id,
+          room: roomId,
+          x: pos.x,
+          y: pos.y,
+          text_decrypted: comment,
+          texts: [{ to: posterId, encrypted: false }],
+          timestamp: timestamp,
+          last_updated: timestamp,
+          kind: "poster",
+        }
+        emit.posterComment(e2)
       }
       return { ok: true }
     }

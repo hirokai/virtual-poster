@@ -1,13 +1,13 @@
 import Vue from "vue"
-import { computed, ComputedRef, watch } from "@vue/composition-api"
+import { computed, ComputedRef } from "@vue/composition-api"
 import { isPosterId } from "../common/util"
 
 import {
   UserId,
   RoomId,
   CommentId,
+  ChatCommentDecrypted,
   ChatComment,
-  ChatCommentEncrypted,
   RoomAppState,
   RoomAppProps,
   PosterId,
@@ -16,6 +16,7 @@ import {
   ChatGroupId,
   Person,
   MySocketObject,
+  CommentEncryptedEntry,
 } from "../../@types/types"
 import _ from "lodash-es"
 import * as encryption from "./encryption"
@@ -33,11 +34,7 @@ export async function doSendOrUpdateComment(
   public_keys: { [user_id: string]: { public_key?: string } },
   editingOld?: CommentId
 ): Promise<{ ok: boolean; data?: any }> {
-  const comments_encrypted: {
-    to_user: UserId
-    text: string
-    encrypted: boolean
-  }[] = []
+  const comments_encrypted: CommentEncryptedEntry[] = []
   if (encrypting && !privateKey) {
     console.log("Private key import failed")
     return { ok: false }
@@ -51,14 +48,18 @@ export async function doSendOrUpdateComment(
         const comment = encrypting
           ? await encryption.encrypt_str(pub, privateKey, text)
           : text
-        const e = { to_user: u, text: comment, encrypted: true }
+        const e = {
+          to: u,
+          text: comment,
+          encrypted: true,
+        }
         comments_encrypted.push(e)
       } else {
-        const e = { to_user: u, text, encrypted: false }
+        const e = { to: u, text, encrypted: false }
         comments_encrypted.push(e)
       }
     } else {
-      const e = { to_user: u, text, encrypted: false }
+      const e = { to: u, text, encrypted: false }
       comments_encrypted.push(e)
     }
   }
@@ -68,6 +69,7 @@ export async function doSendOrUpdateComment(
       comments_encrypted,
       room_id: room_id,
     })
+    console.log(data)
     if (skywayRoom) {
       skywayRoom.send({
         comments_encrypted,
@@ -101,66 +103,38 @@ export const deleteComment = (axios: AxiosStatic) => (
 export const decryptIfNeeded = async (
   myUserId: string,
   public_keys: { [user_id: string]: { public_key?: string } },
-  comment_: ChatComment | ChatCommentEncrypted,
+  comment_: ChatComment,
   prv: CryptoKey | null
 ): Promise<{ text: string | null; encrypted?: boolean; ok: boolean }> => {
-  if (comment_["text"]) {
-    //ChatComment
-    const comment = comment_ as ChatComment
-    const to_me_idx = _.indexOf(comment.to, myUserId)
-    if (to_me_idx == -1) {
-      return { text: comment.text, ok: false }
-    }
-    // console.log("decryptIfNeeded", comment.encrypted)
-    if (!comment.encrypted[to_me_idx]) {
-      return { text: comment.text, encrypted: false, ok: true }
-    }
-    if (!prv) {
-      return { text: comment.text, encrypted: true, ok: false }
-    }
-    const pub_str = public_keys[comment.person].public_key
-    if (!pub_str) {
-      return { text: comment.text, encrypted: true, ok: false }
-    }
-    const pub = await encryption.importPublicKey(pub_str, true)
-    if (!pub) {
-      return { text: comment.text, encrypted: true, ok: false }
-    }
-    const dec_str = await encryption.decrypt_str(pub, prv, comment.text)
-    return { text: dec_str, encrypted: true, ok: !!dec_str }
-  } else {
-    //ChatCommentEncrypted
-    const comment = comment_ as ChatCommentEncrypted
-    const c_for_me = _.find(comment.texts, t => {
-      return isPosterId(t.to_user) || t.to_user == myUserId
-    })
-    if (!c_for_me) {
-      //Not a message for me
-      return { ok: false, text: null }
-    }
-    if (!c_for_me.encrypted) {
-      return { ok: true, encrypted: false, text: c_for_me.text }
-    }
-    if (!prv) {
-      return { text: null, encrypted: true, ok: false }
-    }
-    const pub_str = public_keys[comment.person].public_key
-    if (!pub_str) {
-      return { ok: false, encrypted: true, text: null }
-    }
-    const pub = await encryption.importPublicKey(pub_str, true)
-    if (!pub) {
-      return { text: c_for_me.text, encrypted: true, ok: false }
-    }
-    const dec_str = await encryption.decrypt_str(pub, prv, c_for_me.text)
-    return { text: dec_str, ok: true, encrypted: true }
+  const comment = comment_ as ChatComment
+  const to_me_idx = _.findIndex(comment.texts, t => t.to == myUserId)
+  if (to_me_idx == -1) {
+    return { text: null, ok: false }
   }
+  const text_for_me = comment.texts[to_me_idx]
+  // console.log("decryptIfNeeded", comment.encrypted)
+  if (!text_for_me.encrypted) {
+    return { text: text_for_me.text, encrypted: false, ok: true }
+  }
+  if (!prv) {
+    return { text: text_for_me.text, encrypted: true, ok: false }
+  }
+  const pub_str = public_keys[comment.person].public_key
+  if (!pub_str) {
+    return { text: text_for_me.text, encrypted: true, ok: false }
+  }
+  const pub = await encryption.importPublicKey(pub_str, true)
+  if (!pub) {
+    return { text: text_for_me.text, encrypted: true, ok: false }
+  }
+  const dec_str = await encryption.decrypt_str(pub, prv, text_for_me.text)
+  return { text: dec_str, encrypted: true, ok: !!dec_str }
 }
 
 export const newComment = (
   props: RoomAppProps,
   state: RoomAppState,
-  d: ChatCommentEncrypted,
+  d: ChatComment,
   activePoster?: PosterId
 ): void => {
   console.log("newComment", d)
@@ -171,16 +145,17 @@ export const newComment = (
   decryptIfNeeded(props.myUserId, state.people, d, state.privateKey)
     .then(r => {
       console.log("new (or updated) comment decrypt", r)
-      const d2: ChatComment = {
+      const d2: ChatCommentDecrypted = {
         ...d,
-        to: d.texts.map(a => a.to_user),
-        text: r.text || "（暗号化）",
-        encrypted: d.texts.map(a => a.encrypted),
+        texts: d.texts.map(a => {
+          return { to: a.to, encrypted: a.encrypted }
+        }),
+        text_decrypted: r.text || "（暗号化）",
       }
       if (
         d2.kind == "poster" &&
         activePoster &&
-        d2.to.indexOf(activePoster) != -1
+        d2.texts.map(t => t.to).indexOf(activePoster) != -1
       ) {
         Vue.set(state.posterComments, d.id, d)
       }
@@ -294,19 +269,19 @@ export const initChatService = async (
   state: RoomAppState,
   activePoster: ComputedRef<Poster | undefined>
 ): Promise<boolean> => {
-  socket.on("comment", (d: ChatCommentEncrypted) => {
+  socket.on("Comment", (d: ChatComment) => {
     const pid = activePoster.value?.id
     console.log("comment", d)
     if (d.room == props.room_id) {
       newComment(props, state, d, pid)
     }
   })
-  socket.on("comment.remove", (comment_id: string) => {
-    console.log("comment.remove", comment_id)
+  socket.on("CommentRemove", (comment_id: string) => {
+    console.log("CommentRemove", comment_id)
     Vue.delete(state.comments, comment_id)
   })
 
-  socket.on("group", d => {
+  socket.on("Group", d => {
     console.log("socket group", d)
     Vue.set(state.chatGroups, d.id, d)
     const group = myChatGroup(props, state).value
@@ -332,8 +307,8 @@ export const initChatService = async (
       }
     }
   })
-  socket.on("group.remove", id => {
-    console.log("group.remove", id)
+  socket.on("GroupRemove", id => {
+    console.log("GroupRemove", id)
     Vue.delete(state.chatGroups, id)
     const group = myChatGroup(props, state).value
     if (!group) {
@@ -350,19 +325,32 @@ export const initChatService = async (
   ])
   state.chatGroups = _.keyBy(groups, "id")
 
-  const decrypted: ChatComment[] = []
-  for (const comment of comments) {
-    if (state.privateKey) {
-      const r = await decryptIfNeeded(
-        props.myUserId,
-        state.people,
-        comment,
-        state.privateKey
-      )
-      comment.text = r.text || comment.text
-      // comment.encrypted = r.encrypted || false
+  const decrypted: ChatCommentDecrypted[] = []
+  for (const c of comments) {
+    const r = await decryptIfNeeded(
+      props.myUserId,
+      state.people,
+      c,
+      state.privateKey
+    )
+    const comment_decr: ChatCommentDecrypted = {
+      id: c.id,
+      timestamp: c.timestamp,
+      last_updated: c.last_updated,
+      text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
+      texts: _.map(
+        c.texts.map(t => {
+          return { to: t.to, encrypted: t.encrypted }
+        })
+      ),
+      room: c.room,
+      x: c.x,
+      y: c.y,
+      person: c.person,
+      kind: c.kind,
     }
-    decrypted.push(comment)
+    // comment.encrypted = r.encrypted || false
+    decrypted.push(comment_decr)
   }
   state.comments = _.keyBy(decrypted, "id")
   return true

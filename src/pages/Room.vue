@@ -112,7 +112,7 @@
       inputTextFromParent=""
       :myself="myself"
       :contentHidden="hidden"
-      :comments="localComments"
+      :comments="comments"
       :people="people"
       :editingOld="editingOld"
       :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
@@ -180,14 +180,16 @@ import {
   Person,
   Cell,
   Point,
-  ChatComment,
   ArrowKey,
   ChatGroup,
+  ChatCommentDecrypted,
+  ChatComment,
   UserId,
   Poster as PosterTyp,
   PosterId,
   TypingSocketSendData,
   MapEnterResponse,
+  SocketMessageFromUser,
 } from "../../@types/types"
 
 import Map from "./room/Map.vue"
@@ -265,7 +267,13 @@ axios.interceptors.response.use(response => {
     })
   }
   console.log(
-    "%c" + latency + "ms " + response.status + " ",
+    "%c" +
+      latency +
+      "ms " +
+      response.config.method +
+      " " +
+      response.status +
+      " ",
     "color: green",
     response.request.responseURL
   )
@@ -275,37 +283,45 @@ axios.interceptors.response.use(response => {
 class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]> = {}
   ws: WebSocket
-  constructor(url: string) {
+
+  constructor (url: string) {
     this.ws = this.connect(url)
     this.ws.onmessage = d => {
       const dat = JSON.parse(d.data)
-      const msg = dat.message
-      for (const listener of this.listeners[msg]) {
-        listener(d)
+      console.log("WebSocket received: ", dat)
+      const msg = dat.type
+      for (const listener of this.listeners[msg] || []) {
+        listener(dat)
       }
     }
+    this.ws.onopen = () => {
+      this.listeners["connected"][0](null)
+    }
   }
-  on(message: string, handler: (data: any) => void) {
+  on (message: string, handler: (data: any) => void) {
     if (!this.listeners[message]) {
       this.listeners[message] = []
     }
     this.listeners[message].push(handler)
   }
-  emit(message: "move" | "active", data: any) {
-    if (message == "move") {
+  emit (message: SocketMessageFromUser, data: any) {
+    if (message == "Move") {
       this.ws.send(JSON.stringify({ Move: data }))
-    } else if (message == "active") {
+    } else if (message == "Active") {
       this.ws.send(JSON.stringify({ Active: data }))
+    } else if (message == "Subscribe") {
+      this.ws.send(
+        JSON.stringify({
+          Subscribe: { channel: data.channel, token: data.token },
+        })
+      )
     }
   }
-  connect(url: string): WebSocket {
+  connect (url: string): WebSocket {
+    console.log("Connecting WS: ", url)
     var ws = new WebSocket(url)
     ws.onopen = () => {
-      console.log("Rust WebSocket server connected")
-    }
-
-    ws.onmessage = ev => {
-      console.log(JSON.parse(ev.data))
+      console.log("WebSocket server connected")
     }
 
     ws.onclose = ev => {
@@ -374,7 +390,7 @@ export default defineComponent({
       type: String,
     },
   },
-  setup(props) {
+  setup (props) {
     console.log(props)
     axios.defaults.headers.common = {
       Authorization: `Bearer ${props.idToken}`,
@@ -397,7 +413,7 @@ export default defineComponent({
 
       people: {} as { [index: string]: Person },
       posters: {} as { [index: string]: PosterTyp },
-      posterComments: {} as { [comment_id: string]: ChatComment },
+      posterComments: {} as { [comment_id: string]: ChatCommentDecrypted },
       posterInputComment: "" as string | undefined,
       hallMap: [] as Cell[][],
       cols: 0,
@@ -406,7 +422,7 @@ export default defineComponent({
 
       center: { x: 5, y: 5 },
 
-      comments: {} as { [index: string]: ChatComment },
+      comments: {} as { [index: string]: ChatCommentDecrypted },
       chatGroups: {} as {
         [groupId: string]: ChatGroup
       },
@@ -516,7 +532,7 @@ export default defineComponent({
       (poster: PosterTyp | undefined) => {
         if (poster) {
           axios
-            .get<ChatComment[]>("/posters/" + poster.id + "/comments")
+            .get<ChatCommentDecrypted[]>("/posters/" + poster.id + "/comments")
             .then(({ data }) => {
               state.posterComments = _.keyBy(data, "id")
             })
@@ -537,13 +553,25 @@ export default defineComponent({
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
       console.log("Setting up socket handlers")
+      socket.on("connected", () => {
+        console.log("Socket connected")
+        socket.emit("Active", {
+          room: props.room_id,
+          user: props.myUserId,
+          token: jwt_hash.value,
+        })
+        socket.emit("Subscribe", {
+          channel: props.room_id,
+          token: jwt_hash.value,
+        })
+      })
       socket.on("auth_error", () => {
         console.log("socket auth_error")
       })
 
       socket.on("greeting", () => {
         console.log("Greeting received.")
-        socket.emit("active", { room: props.room_id, user: props.myUserId })
+        socket.emit("Active", { room: props.room_id, user: props.myUserId })
       })
 
       socket.on("announce", d => {
@@ -601,7 +629,7 @@ export default defineComponent({
         await sendOrUpdateComment(
           text,
           state.enableEncryption,
-          state.comments[state.editingOld].to,
+          state.comments[state.editingOld].texts.map(t => t.to),
           true
         )
       } else {
@@ -716,15 +744,20 @@ export default defineComponent({
           alert("部屋に入れませんでした: " + res.data.status)
           location.href = "/"
         }
-        if (!res.data.socket_url) {
+        const socket_url = res.data.socket_url
+        if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"
+          return
         }
-        // state.socket = io(res.data.socket_url, {
-        //   path: "/socket.io",
-        //   transports: ["websocket"],
-        // })
-        state.socket = new MySocketObject("ws://localhost:5000/ws/")
+        console.log("Socket URL: " + socket_url)
+        // const is_socket_io = socket_url
+        //   ? socket_url.indexOf("socket.io") >= 0
+        //   : false
+        const is_socket_io = true
+        state.socket = is_socket_io
+          ? io(socket_url)
+          : new MySocketObject(socket_url)
         if (!state.socket) {
           console.error("Failed to make a socket.")
           return
@@ -814,7 +847,7 @@ export default defineComponent({
         debug_as: props.debug_as,
       }
       if (!state.people_typing[props.myUserId]) {
-        state.socket?.emit("chat_typing", d)
+        state.socket?.emit("ChatTyping", d)
         window.setTimeout(() => {
           const d2: TypingSocketSendData = {
             user: me.id,
@@ -823,7 +856,7 @@ export default defineComponent({
             token: jwt_hash.value,
             debug_as: props.debug_as,
           }
-          state.socket?.emit("chat_typing", d2)
+          state.socket?.emit("ChatTyping", d2)
         }, 8000)
       }
     }
@@ -872,7 +905,7 @@ export default defineComponent({
           token: jwt_hash.value,
           debug_as: props.debug_as,
         }
-        state.socket?.emit("chat_typing", d)
+        state.socket?.emit("ChatTyping", d)
       }
 
       const me = myself.value
@@ -940,12 +973,6 @@ export default defineComponent({
         moveTo(axios, props, state, me, p, jwt_hash.value)
       }
     }
-
-    const localComments = computed((): { [index: string]: ChatComment } => {
-      return _.pickBy(state.comments, c => {
-        return c.to.indexOf(props.myUserId) != -1 || c.person == props.myUserId
-      })
-    })
 
     const selected = computed((): Cell | undefined => {
       return state.selectedPos &&
@@ -1070,7 +1097,6 @@ export default defineComponent({
       cellsMag: cellsMag(state),
       hideMessage,
       dblClick,
-      localComments,
       toggleBot,
       setEditingOld,
       onFocusInput,

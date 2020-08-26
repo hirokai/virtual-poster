@@ -51,6 +51,7 @@ const Bob: {
 //   message: null,
 // }
 
+/*
 Bob.key.importKey(
   fs.readFileSync("./db/blindsign_public_key.pem", "utf-8"),
   "pkcs8-public"
@@ -59,6 +60,7 @@ Bob.key.importKey(
   fs.readFileSync("./db/blindsign_private_key.pem", "utf-8"),
   "pkcs8-private"
 )
+*/
 
 async function protected_api_routes(
   fastify: FastifyInstance<any, any, any, any>

@@ -77,9 +77,9 @@
           <span class="comment-recipients">
             &#x27a1;
 
-            <span class="recipient" v-for="(u, i) in c.to" :key="u">
-              {{ people[u] ? people[u].name : "" }}
-              <span v-if="c.encrypted[i]">&#x1F512; </span>
+            <span class="recipient" v-for="t in c.texts" :key="t.to">
+              {{ people[t.to] ? people[t.to].name : "" }}
+              <span v-if="t.encrypted">&#x1F512; </span>
             </span>
           </span>
           <span
@@ -98,7 +98,7 @@
         <div class="local-entry-content">
           <span
             class="comment-content"
-            v-html="(c.text || '').replace(/[\r\n]/g, '<br>')"
+            v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
           ></span>
         </div>
       </div>
@@ -107,7 +107,11 @@
 </template>
 
 <script lang="ts">
-import { Person, ChatComment, Poster as PosterTyp } from "../../../@types/types"
+import {
+  Person,
+  ChatCommentDecrypted,
+  Poster as PosterTyp,
+} from "../../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../../util"
 import _ from "lodash-es"
@@ -125,11 +129,6 @@ import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
 export default defineComponent({
-  // @Prop() myself!: Person
-  // @Prop() inputFocused!: boolean
-  // @Prop() people!: { [index: string]: Person }
-
-  // @Watch("inputText")
   props: {
     poster: {
       type: Object as PropType<PosterTyp>,
@@ -164,11 +163,11 @@ export default defineComponent({
       type: Object as PropType<Person>,
     },
     comments: {
-      type: Object as PropType<{ [index: string]: ChatComment }>,
+      type: Object as PropType<{ [index: string]: ChatCommentDecrypted }>,
       required: true,
     },
   },
-  setup(props, context) {
+  setup (props, context) {
     const state = reactive({
       inputText: "",
     })
@@ -214,7 +213,7 @@ export default defineComponent({
         })
       }
     )
-    const localCommentHistory = computed((): ChatComment[] => {
+    const localCommentHistory = computed((): ChatCommentDecrypted[] => {
       return _.orderBy(
         _.filter(Object.values(props.comments), c => {
           return c.kind == "person"
@@ -228,12 +227,12 @@ export default defineComponent({
     }
     const startUpdateComment = (cid: string) => {
       context.emit("setEditingOld", cid)
-      state.inputText = props.comments[cid].text
+      state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#local-chat-input"
       ) as HTMLTextAreaElement
       if (el) {
-        el.value = props.comments[cid].text
+        el.value = props.comments[cid].text_decrypted
         el.focus()
       }
     }

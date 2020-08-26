@@ -39,7 +39,7 @@ async function routes(
     if (ok && leftGroup) {
       emit.group(leftGroup)
     } else if (ok && removedGroup) {
-      emit.groupRemove(removedGroup, emit.io.to(room))
+      emit.groupRemove(removedGroup, emit.emitter.to(room))
     }
     return { ok, error, leftGroup }
   })

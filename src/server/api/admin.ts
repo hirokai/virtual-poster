@@ -234,7 +234,7 @@ async function routes(
         e => !isNaN(e.poster_number)
       )
       const poster_assigned = await map.importPosterAssignment(posters, true)
-      emit.custom("posters.reset")
+      emit.posterReset()
 
       return { ok: !!poster_assigned, poster_assigned }
     }

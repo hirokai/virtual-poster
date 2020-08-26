@@ -1,4 +1,4 @@
-// Data types and model and utility functions
+//  Data types and model and utility functions
 import SocketIO from "socket.io"
 import * as bunyan from "bunyan"
 import cluster from "cluster"
@@ -9,6 +9,7 @@ import {
   Announcement,
   Person,
   ChatComment,
+  ChatCommentDecrypted,
   CommentId,
   ChatGroupId,
   Poster,
@@ -19,10 +20,12 @@ import {
   TypingSocketData,
   TypingSocketSendData,
   DirectionSendSocket,
-  ChatCommentEncrypted,
   RoomId,
   UserId,
+  Emitter,
+  EmitCommand,
   ActiveUsersSocketData,
+  SocketMessageFromUser,
 } from "../../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -39,14 +42,11 @@ const bunyanLogger = bunyan.createLogger({
 })
 
 export class Emit {
-  io: SocketIO.Server | SocketIOEmitter
+  emitter: Emitter
   log: any
   socketQueue: { [msg: string]: { [room: string]: any[] } } = {}
-  constructor(
-    io: SocketIO.Server | SocketIOEmitter,
-    logger: any = bunyanLogger
-  ) {
-    this.io = io
+  constructor(emitter: Emitter, logger: any = bunyanLogger) {
+    this.emitter = emitter
     this.log = logger
     setInterval(() => {
       for (const msg of Object.keys(this.socketQueue)) {
@@ -72,17 +72,15 @@ export class Emit {
           //   room,
           //   this.socketQueue[msg][room].length
           // )
-          this.custom(
-            msg + "_multi",
-            this.socketQueue[msg][room].join(";"),
-            room
-          )
+          this.emitter
+            .to(room)
+            .emit("Moved", this.socketQueue[msg][room].join(";"))
           this.socketQueue[msg][room] = []
         }
       }
     } else if (msg == "person") {
       for (const room of rooms) {
-        this.custom(msg + "_multi", this.socketQueue[msg][room], room)
+        this.emitter.to(room).emit("Person", this.socketQueue[msg][room])
         this.socketQueue[msg][room] = []
       }
     }
@@ -102,7 +100,7 @@ export class Emit {
         this.socketQueue[msg][d.room] = []
       }
       this.socketQueue[msg][d.room].push(s)
-      this.io.to(d.user).emit("moved", s)
+      this.emitter.to(d.user).emit("Moved", s)
     } else if (msg == "person") {
       const rooms: RoomId[] = Object.keys(this.socketQueue[msg])
       for (const room of rooms) {
@@ -111,76 +109,48 @@ export class Emit {
     }
   }
 
-  moveError(
-    d: MoveErrorSocketData,
-    socket: SocketIO.Socket | SocketIO.Namespace | SocketIOEmitter
-  ): void {
-    socket.emit("move.error", d)
+  moveError(d: MoveErrorSocketData, socket: Emitter): void {
+    socket.emit("MoveError", d)
   }
-  people(
-    d: Person[],
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("people", d)
+  people(d: Person[], socket: Emitter = this.emitter): void {
+    socket.emit("Person", d)
   }
-  group(
-    d: GroupSocketData,
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("group", d)
+  group(d: GroupSocketData, socket: Emitter = this.emitter): void {
+    socket.emit("Group", d)
   }
-  groupRemove(
-    d: ChatGroupId,
-    socket:
-      | SocketIO.Socket
-      | SocketIO.Server
-      | SocketIO.Namespace
-      | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("group.remove", d)
+  groupRemove(d: ChatGroupId, socket: Emitter = this.emitter): void {
+    socket.emit("GroupRemove", d)
   }
-  comment(d: ChatCommentEncrypted): void {
+  comment(d: ChatComment): void {
     for (const t of d.texts) {
-      this.io.to(t.to_user).emit("comment", d)
+      this.emitter.to(t.to).emit("Comment", d)
     }
   }
-  posterComment(
-    d: ChatComment,
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("poster.comment", d)
+  announce(d: Announcement): void {
+    this.emitter.to(d.room).emit("Announce", d)
+  }
+  posterComment(d: ChatCommentDecrypted, socket: Emitter = this.emitter): void {
+    socket.emit("PosterComment", d)
   }
   async commentRemove(cid: CommentId, to_users: UserId[]): Promise<void> {
-    console.log("commentRemove", cid)
-
     for (const u of to_users) {
-      this.io.to(u).emit("comment.remove", cid)
+      this.emitter.to(u).emit("CommentRemove", cid)
     }
   }
-  posterCommentRemove(
-    d: CommentId,
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("poster.comment.remove", d)
+  posterCommentRemove(d: CommentId, socket: Emitter = this.emitter): void {
+    socket.emit("PosterCommentRemove", d)
   }
-  poster(
-    d: Poster,
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("poster", d)
+  poster(d: Poster, socket: Emitter = this.emitter): void {
+    socket.emit("Poster", d)
   }
-  mapReset(
-    socket: SocketIO.Socket | SocketIO.Server | SocketIOEmitter = this.io
-  ): void {
-    socket.emit("map.reset")
+  posterReset(): void {
+    this.emitter.emit("PosterReset")
   }
-  custom<T = any>(msg: string, data?: T, room?: string): void {
-    // log.debug("emit.custom", msg, data, room)
-    if (room) {
-      this.io.to(room).emit(msg, data)
-    } else {
-      this.io.emit(msg, data)
-    }
+  mapReset(socket: Emitter = this.emitter): void {
+    socket.emit("MapReset")
+  }
+  authError(user_id: UserId): void {
+    this.emitter.to(user_id).emit("AuthError")
   }
 }
 
@@ -207,7 +177,7 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
         },
         socket
       )
-      emit.custom("auth_error", null, d.user)
+      emit.authError(d.user)
       return
     }
     log.debug(
@@ -291,12 +261,24 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
   })
 }
 
+function addHandler(
+  socket: SocketIO.Socket,
+  msg: SocketMessageFromUser,
+  func: ((d: any) => Promise<void>) | ((d: any) => void)
+) {
+  socket.on(msg, d => {
+    ;(async () => {
+      await func(d)
+    })().catch(err => console.error(err))
+  })
+}
+
 export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
   io.on("connection", function(socket: SocketIO.Socket) {
     log.info("connection", socket.id)
     socket.emit("greeting")
-    socket.on("move", d => onMoveSocket(d, socket, log))
-    socket.on("direction", (d: DirectionSendSocket) => {
+    addHandler(socket, "Move", d => onMoveSocket(d, socket, log))
+    addHandler(socket, "Direction", (d: DirectionSendSocket) => {
       ;(async () => {
         const verified = await model.people.verifySocketToken(d)
         if (!verified) {
@@ -311,7 +293,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         await model.people.setDirection(d.user, d.direction)
       })().catch(err => log.error(err))
     })
-    socket.on("chat_typing", (d: TypingSocketSendData) => {
+    addHandler(socket, "ChatTyping", (d: TypingSocketSendData) => {
       ;(async () => {
         const verified = await model.people.verifySocketToken(d)
         if (!verified) {
@@ -327,7 +309,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         io.to(d.room).emit("chat_typing", r)
       })().catch(err => log.error(err))
     })
-    socket.on("active", ({ room, user }) => {
+    addHandler(socket, "Active", ({ room, user }) => {
       ;(async () => {
         log.debug("active", room, user)
         userLog({
@@ -378,25 +360,15 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           if (count == 0) {
             //All clients of the user are disconneted
             await model.redis.sockets.srem("room:" + room + ":__all__", user)
-            io.to(room).emit("active_users", [{ room, user, active: false }])
+            const msg: EmitCommand = "ActiveUsers"
+            io.to(room).emit(msg, [{ room, user, active: false }])
             const r: TypingSocketData = {
               room,
               user,
               typing: false,
             }
-            /*
-            const group = await model.chat.getGroupOfUser(room, user)
-            if (group) {
-              const cs = await model.people.isConnected(room, group.users)
-              if (_.every(cs, c => c == false)) {
-                //All users in the group disconnected
-                await model.chat.deleteGroup(group.id)
-                emit.groupRemove(group.id, emit.io.to(room))
-              }
-            }
-            const r2 = await model.chat.leaveChat(room, user)
-            */
-            io.to(room).emit("chat_typing", r)
+            const msg2: EmitCommand = "ChatTyping"
+            io.to(room).emit(msg2, r)
           }
         }
       })().catch(err => {

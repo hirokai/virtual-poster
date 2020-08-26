@@ -59,7 +59,7 @@ async function maps_api_routes(
     const r = await map.enterRoom(req["requester"])
     const r2: MapEnterResponse = {
       ...r,
-      socket_url: process.env.SOCKET_URL || "http://localhost:5000",
+      socket_url: process.env.SOCKET_URL || "ws://localhost:5000/socket.io",
     }
     if (r.ok) {
       const rows = await model.db.query(
@@ -78,7 +78,7 @@ async function maps_api_routes(
         marquee: rows[0].marquee,
         period: rows[0].period || 0,
       }
-      emit.custom("announce", d)
+      emit.announce(d)
     }
     return r2
   })

@@ -148,7 +148,8 @@ export const initPosterService = async (
   socket.on("poster.comment", (d: ChatComment) => {
     console.log("poster.comment", d)
     const pid = activePoster.value?.id
-    if (pid && d.to && d.to.indexOf(pid) != -1) {
+    const to_s = d.texts.map(t => t.to)
+    if (pid && to_s.indexOf(pid) != -1) {
       set(state.posterComments, d.id, d)
     }
   })

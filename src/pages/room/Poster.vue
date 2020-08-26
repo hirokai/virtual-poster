@@ -108,10 +108,10 @@
 <script lang="ts">
 import { CommonMixin } from "./util"
 import {
-  ChatComment,
   Poster as PosterTyp,
   Point,
   Person,
+  ChatCommentDecrypted,
 } from "../../../@types/types"
 import { inRange } from "../../common/util"
 import axios from "axios"
@@ -150,14 +150,14 @@ export default defineComponent({
       type: Object as PropType<Person>,
     },
     comments: {
-      type: Object as PropType<{ [index: string]: ChatComment }>,
+      type: Object as PropType<{ [index: string]: ChatCommentDecrypted }>,
       required: true,
     },
     inputFromParent: {
       type: String,
     },
   },
-  setup(props, context) {
+  setup (props, context) {
     const state = reactive({
       //FIXME: Stub
       numInputRows: 1,
@@ -180,7 +180,7 @@ export default defineComponent({
     })
     const startUpdateComment = (cid: string) => {
       context.emit("setEditingOld", cid)
-      state.inputText = props.comments[cid].text
+      state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#poster-chat-input"
       ) as HTMLTextAreaElement

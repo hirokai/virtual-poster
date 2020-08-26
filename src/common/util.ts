@@ -215,7 +215,11 @@ export function mkRouteGraph(
       x++
     ) {
       const a = staticMap[y][x]
-      if (a && a.open && !people_map.has("" + x + "." + y)) {
+      if (
+        a &&
+        ["mud", "grass", "poster_seat"].includes(a.kind) &&
+        !people_map.has("" + x + "." + y)
+      ) {
         vertices.push(f(a))
         const ds = [
           [-1, 0],
@@ -244,7 +248,11 @@ export function mkRouteGraph(
             // log.debug("Null cell", user_id, x, y, liveMap)
             return false
           }
-          return staticMap[y][x].open && !people_map.has("" + x + "." + y)
+          const c = staticMap[y][x]
+          return (
+            ["mud", "grass", "poster_seat"].includes(c.kind) &&
+            !people_map.has("" + x + "." + y)
+          )
         }).forEach(d => {
           const x = a.x + d[0]
           const y = a.y + d[1]

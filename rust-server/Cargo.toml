@@ -7,7 +7,7 @@ description = "Web server test"
 default-run = "rest"
 
 [[bin]]
-name = "websocket"
+name = "ws"
 path = "src/socket_main.rs"
 
 [[bin]]
@@ -38,11 +38,10 @@ bb8-postgres = "0.4.0"
 tokio-postgres = "*"
 postgres-types = {version = "*", features = ["derive"]}
 chrono = "0.4"
-sqlx = { version = "0.4.0-beta.1", default-features = false, features = [ "runtime-tokio", "macros","postgres" ] }
+# sqlx = { version = "0.4.0-beta.1", default-features = false, features = [ "runtime-tokio", "macros","postgres" ] }
 dotenv = "0.15.0"
 strum = "0.19"
 strum_macros = "0.19"
-messagepack-rs = "*"
 actix-cors="0.2"
 actix-files="0.2"
 sha2="*"
@@ -51,3 +50,4 @@ actix-web-actors = "2.0.0"
 futures-util="0.3.5"
 tokio="0.2.2"
 log="*"
+itertools="0.9"

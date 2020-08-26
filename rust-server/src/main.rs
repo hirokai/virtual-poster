@@ -5,6 +5,8 @@ extern crate dotenv;
 extern crate num_cpus;
 extern crate rand;
 extern crate redis_async;
+#[macro_use]
+extern crate log;
 use actix_files as fs;
 use actix_redis::RedisActor;
 use actix_service::Service;
@@ -31,11 +33,12 @@ mod posters;
 use actix_cors::Cors;
 use auth::*;
 use chat::*;
+use dotenv::dotenv;
 use groups::*;
 use maps::*;
 use people::*;
 use posters::*;
-use sqlx::postgres::PgPoolOptions;
+// use sqlx::postgres::PgPoolOptions;
 
 async fn ping() -> impl Responder {
     HttpResponse::Ok().body("pong")
@@ -64,6 +67,7 @@ async fn get_socket_url(_data: web::Data<MyData>) -> Result<HttpResponse, Error>
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
+    dotenv().ok();
     let app = AppClap::new("Web server")
         .version("0.1.0")
         .arg(
@@ -87,23 +91,23 @@ async fn main() -> std::io::Result<()> {
 
     let debug_token = env::var("DEBUG_TOKEN").unwrap_or(gen_ascii_chars(10));
 
-    let port = env::var("PORT").unwrap_or(dotenv::var("PORT").unwrap_or(String::from("3000")));
+    let port = env::var("PORT").unwrap_or(env::var("PORT").unwrap_or(String::from("3000")));
 
     let num_workers: usize = matches
         .value_of("workers")
         .map(|a| a.parse().unwrap_or(num_cpus))
         .unwrap_or(num_cpus);
 
-    let conn_str = dotenv::var("POSTGRES_CONNECTION_STRING").unwrap_or(String::from(
+    let conn_str = env::var("POSTGRES_CONNECTION_STRING").unwrap_or(String::from(
         "postgresql://postgres@localhost:5432/virtual_poster",
     ));
 
-    let poolx = PgPoolOptions::new()
-        .max_connections(num_workers as u32)
-        .min_connections(num_workers as u32)
-        .connect(&conn_str)
-        .await
-        .unwrap();
+    // let poolx = PgPoolOptions::new()
+    //     .max_connections(num_workers as u32)
+    //     .min_connections(num_workers as u32)
+    //     .connect(&conn_str)
+    //     .await
+    //     .unwrap();
     let pg_mgr =
         PostgresConnectionManager::new_from_stringlike(conn_str, tokio_postgres::NoTls).unwrap();
 
@@ -125,7 +129,7 @@ async fn main() -> std::io::Result<()> {
         let redis_addr = RedisActor::start("127.0.0.1:6379");
         let mydata = MyData {
             pg: pool.clone(),
-            pgx: poolx.clone(),
+            // pgx: poolx.clone(),
             redis: redis_addr,
             redis_sync: redis::Client::open("redis://127.0.0.1/0").unwrap(),
             debug_token: debug_token.clone(),
@@ -139,9 +143,9 @@ async fn main() -> std::io::Result<()> {
                     .max_age(3600)
                     .finish(),
             )
-            .route("/socket_url", web::get().to(get_socket_url))
             .service(
                 web::scope("/api")
+                    .route("/socket_url", web::get().to(get_socket_url))
                     .route("/ping", web::get().to(ping))
                     .route("/public_key", web::post().to(post_public_key))
                     .route("/people", web::get().to(get_all_people))
@@ -174,6 +178,7 @@ async fn main() -> std::io::Result<()> {
                         web::get().to(get_group_of_person),
                     )
                     .route("/maps/{roomId}/comments", web::get().to(get_comments))
+                    .route("/maps/{roomId}/comments", web::post().to(post_comment))
                     .route(
                         "/maps/{roomId}/people/{personId}/poster",
                         web::get().to(get_poster_of_person),

@@ -23,7 +23,6 @@
     "hooks": {}
   },
   "dependencies": {
-<<<<<<< HEAD
     "@types/js-yaml": "^3.12.5",
     "@types/jsonwebtoken": "^8.5.0",
     "@types/papaparse": "^5.0.3",
@@ -38,9 +37,6 @@
     "core-js": "^3.6.4",
     "cors": "^2.8.5",
     "drift-zoom": "^1.4.0",
-=======
-    "cors": "^2.8.5",
->>>>>>> c81a059baf96749d563cfcf8dedb786cf16b1ae0
     "express": "^4.17.1",
     "express-bearer-token": "^2.4.0",
     "express-prettify": "^0.1.1",

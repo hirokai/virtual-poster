@@ -4,10 +4,10 @@ use bb8_postgres::bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
 use postgres_types::{FromSql, ToSql};
 use serde::{Deserialize, Serialize};
-use sqlx;
+// use sqlx;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
-use strum_macros::Display;
+use strum_macros::{Display, EnumString};
 
 pub type UserId = String;
 pub type RoomId = String;
@@ -18,7 +18,7 @@ pub type PgPool = Pool<PostgresConnectionManager<tokio_postgres::NoTls>>;
 #[derive(Clone)]
 pub struct MyData {
     pub pg: PgPool,
-    pub pgx: sqlx::Pool<sqlx::Postgres>,
+    // pub pgx: sqlx::Pool<sqlx::Postgres>,
     pub redis: Addr<RedisActor>,
     pub redis_sync: redis::Client,
     pub debug_token: String,
@@ -59,7 +59,7 @@ pub enum user_role {
     admin,
 }
 
-#[derive(Serialize, Deserialize, Display, Debug, Clone, ToSql, FromSql)]
+#[derive(Serialize, Deserialize, Display, Debug, Clone, ToSql, FromSql, EnumString)]
 pub enum direction {
     up,
     down,
@@ -86,6 +86,19 @@ pub struct PersonInMap {
     pub avatar: Option<String>,
     pub email: String,
     pub role: Option<user_role>,
+    pub x: u32,
+    pub y: u32,
+    pub direction: direction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Point {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Position {
     pub x: u32,
     pub y: u32,
     pub direction: direction,
@@ -119,9 +132,7 @@ pub struct ChatGroup {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatComment {
     pub id: CommentId,
-    pub to: Vec<String>,
-    pub comments_for_users: Vec<String>,
-    pub encrypted: Vec<bool>,
+    pub texts: Vec<CommentEncryptedEntry>,
     pub timestamp: i64,
     pub last_updated: i64,
     pub room: RoomId,
@@ -133,7 +144,27 @@ pub struct ChatComment {
     pub text: Option<String>,
 }
 
-pub fn timestamp() -> Option<i64> {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CommentEncryptedEntry {
+    pub text: String,
+    pub to: UserId,
+    pub encrypted: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CommentEncrypted {
+    pub id: String,
+    pub person: String,
+    pub room: RoomId,
+    pub x: u32,
+    pub y: u32,
+    pub texts: Vec<CommentEncryptedEntry>,
+    pub timestamp: i64,
+    pub last_updated: i64,
+    pub kind: String,
+}
+
+pub fn get_timestamp() -> Option<i64> {
     let start = SystemTime::now();
     let since_the_epoch = start.duration_since(UNIX_EPOCH);
     since_the_epoch.ok().map(|s| s.as_millis() as i64)
@@ -149,23 +180,28 @@ pub struct Move {
 
 // Commanad from REST API server
 #[derive(Debug, Serialize, Deserialize)]
-pub enum SocketFromAPIServer {
+#[serde(tag = "type")]
+pub enum AppNotification {
+    PersonNew { person: Person },
+    PersonUpdate { person: Person },
+    PersonRemove { id: String },
     GroupNew { group: ChatGroup },
+    GroupUpdate { group: ChatGroup },
     GroupRemove { id: String },
-    Moved { room: RoomId, move_data: Move },
-    MovedMulti { room: RoomId, move_data: Vec<Move> },
+    PosterFileUpdate { id: String },
+    PosterCommentNew { comment: CommentEncrypted },
+    PosterCommentUpdate { comment: CommentEncrypted },
+    PosterCommentRemove { id: String },
+    CommentNew { comment: CommentEncrypted },
+    CommentUpdate { comment: CommentEncrypted },
+    CommentRemove { id: String },
+    Moved { room: RoomId, move_data: Vec<Move> },
+    UserActive { room: RoomId, user: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SocketFromAPIServerWithNamespaces {
-    pub namespaces: Vec<String>,
-    pub data: SocketFromAPIServer,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum SocketFromUser {
+pub enum MsgFromUser {
     Move {
-        user: String,
         room: String,
         x: u32,
         y: u32,
@@ -181,7 +217,9 @@ pub enum SocketFromUser {
         debug_as: Option<String>,
     },
     Subscribe {
-        namespace: String,
-        user: String,
+        channel: String,
+        token: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        debug_as: Option<String>,
     },
 }

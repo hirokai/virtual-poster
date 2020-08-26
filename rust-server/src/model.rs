@@ -1,4 +1,4 @@
-use super::defs::*;
+use crate::defs::*;
 use actix::prelude::*;
 use actix_redis::{Command, RedisActor};
 use redis_async::resp::RespValue;
@@ -103,7 +103,7 @@ async fn assign_user_position(
     if row.get::<_, i64>("c") == 0 {
         return (false, EnterStatus::NoAccess);
     }
-    let last_updated = timestamp();
+    let last_updated = get_timestamp();
     let direction = direction::down;
     let rows = conn
         .query(
@@ -164,7 +164,7 @@ pub async fn start_chat(
     if rows.len() > 0 {
         Err("Member(s) are already in chat".to_string())
     } else {
-        let last_updated = timestamp().unwrap();
+        let last_updated = get_timestamp().unwrap();
         let group_id = format!("{}", Uuid::new_v4());
         let color = "blue".to_string();
         conn.query("BEGIN", &[]).await.unwrap();
@@ -215,5 +215,40 @@ pub async fn start_chat(
             room: room.to_string(),
             users,
         })
+    }
+}
+
+pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Position> {
+    let conn = pg.get().await.unwrap();
+    let rows = conn
+        .query(
+            "SELECT
+                x,y,direction
+            FROM
+                person_position
+            WHERE person=$1 AND  room=$2",
+            &[&person, &room],
+        )
+        .await
+        .unwrap();
+    if rows.len() == 1 { 
+        let x: i32 = rows[0].get("x");
+        let y: i32 = rows[0].get("y");
+        let direction: direction = rows[0].get("direction");
+        Some(Position {
+            x: x as u32,
+            y: y as u32,
+            direction,
+        })
+    } else {
+        None
+    }
+}
+
+pub mod chat {
+    use crate::defs::*;
+
+    pub async fn addCommentEncrypted(e: &CommentEncrypted) -> bool {
+        true
     }
 }

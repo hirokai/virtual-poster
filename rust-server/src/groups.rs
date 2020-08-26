@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 pub async fn join_group(
-    _data: web::Data<MyData>,
+    _data: web::Data<MyData>, 
     _auth: Auth,
     _path: web::Path<(String,)>,
 ) -> HttpResponse {
@@ -51,7 +51,7 @@ pub async fn leave_group(
             .unwrap();
         emit(
             &vec![&path.roomId],
-            &SocketFromAPIServer::GroupRemove {
+            &AppNotification::GroupRemove {
                 id: path.groupId.clone(),
             },
         )
@@ -120,7 +120,7 @@ pub async fn post_group(
         Ok(r) => {
             emit(
                 &vec![&r.room],
-                &SocketFromAPIServer::GroupNew { group: r.clone() },
+                &AppNotification::GroupNew { group: r.clone() },
             )
             .await;
             HttpResponse::Ok().json(json!({"ok": true, "group": r}))

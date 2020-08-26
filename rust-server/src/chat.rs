@@ -1,9 +1,14 @@
 use super::auth::Auth;
 use super::defs::*;
+use crate::emit;
+use crate::model;
 use actix_web::{web, HttpResponse};
+use itertools::izip;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
 use tokio_postgres::row::Row;
+use uuid::Uuid;
 
 pub async fn patch_comments(
     _data: web::Data<MyData>,
@@ -70,33 +75,41 @@ pub async fn get_comments(
         .await
         .unwrap();
 
-    let mut ds: Vec<ChatComment> = Vec::with_capacity(from_me.len() + to_me.len());
+    let mut ds: Vec<CommentEncrypted> = Vec::with_capacity(from_me.len() + to_me.len());
     let mut ids = HashSet::new();
-    fn read_row(r: Row) -> ChatComment {
+    fn read_row(r: Row) -> CommentEncrypted {
         let id: String = r.get("id");
         let to: Vec<String> = r
             .get::<_, String>("to")
             .split("::::")
             .map(|s| s.to_string())
             .collect();
-        let comments_for_users: Vec<String> = r
-            .get::<_, String>("to_c")
-            .split("::::")
-            .map(|s| s.to_string())
+        let cs: Option<String> = r.get::<_, Option<String>>("to_c");
+        let comments_for_users: Vec<String> = match cs {
+            Some(cs) => cs.split("::::").map(|s| s.to_string()).collect(),
+            None => vec![],
+        };
+        let encrypted = r
+            .try_get::<_, Vec<bool>>("to_e")
+            .ok()
+            .unwrap_or([false].repeat(comments_for_users.len()));
+        let texts: Vec<CommentEncryptedEntry> = izip!(comments_for_users, to, encrypted)
+            .map(|(text, to, encrypted)| CommentEncryptedEntry {
+                text,
+                to,
+                encrypted,
+            })
             .collect();
-        ChatComment {
+        CommentEncrypted {
             id,
-            to,
-            comments_for_users,
-            encrypted: r.get("to_e"),
+            texts,
             kind: r.get("kind"),
             timestamp: r.get::<_, i64>("timestamp"),
             last_updated: r.get::<_, i64>("last_updated"),
             person: r.get("person"),
             room: r.get("room"),
-            text: None, //Stub
-            x: r.get::<_, i32>("x") as usize,
-            y: r.get::<_, i32>("y") as usize,
+            x: r.get::<_, i32>("x") as u32,
+            y: r.get::<_, i32>("y") as u32,
         }
     }
     for r in from_me {
@@ -131,4 +144,58 @@ pub async fn get_comments(
       });
       */
     HttpResponse::Ok().json(json!(ds))
+}
+#[derive(Deserialize)]
+pub struct PostCommentData {
+    comments_encrypted: Vec<CommentEncryptedEntry>,
+}
+
+pub async fn post_comment(
+    data: web::Data<MyData>,
+    body: web::Json<PostCommentData>,
+    auth: Auth,
+    room_id: web::Path<String>,
+) -> HttpResponse {
+    let room_id = room_id.to_string();
+    let timestamp = get_timestamp().unwrap();
+    match model::get_person_pos(&data.pg, &room_id, &auth.user).await {
+        None => HttpResponse::Ok().json(json!({"ok": false, "error": "Position not found"})),
+        Some(pos) => {
+            let e = CommentEncrypted {
+                id: Uuid::new_v4().to_hyphenated().to_string(),
+                person: auth.user,
+                room: room_id.clone(),
+                x: pos.x,
+                y: pos.y,
+                kind: "person".to_string(),
+                texts: body.comments_encrypted.clone(),
+                timestamp,
+                last_updated: timestamp,
+            };
+            let r = model::chat::addCommentEncrypted(&e).await;
+            if r {
+                let notification = AppNotification::CommentNew { comment: e.clone() };
+                emit::emit(&vec![&room_id], &notification).await;
+                HttpResponse::Ok().json(json!({"ok": true, "comment": e}))
+            } else {
+                HttpResponse::Ok().json(json!({"ok": false, "error": "DB error"}))
+            }
+        }
+    }
+    /*
+      userLog({
+        userId: requester,
+        operation: "comment.new",
+        data: { text: comment || comments_encrypted },
+      })
+      const group = await model.chat.getGroupOfUser(roomId, requester)
+      const pos = await model.people.getPos(requester, roomId)
+      if (!pos) {
+        throw { statusCode: 400, message: "User position not found" }
+      }
+      const map = model.maps[roomId]
+      if (!map) {
+        throw { statusCode: 400, message: "Room not found" }
+      }
+    */
 }

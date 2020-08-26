@@ -31,6 +31,10 @@ struct PostIdTokenResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    admin: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug_token: Option<String>,
 }
 /// Our claims struct, it needs to derive `Serialize` and/or `Deserialize`
 #[derive(Debug, Serialize, Deserialize)]
@@ -223,7 +227,7 @@ pub async fn post_id_token(
                 }
             };*/
             let conn = data.pg.get().await.unwrap();
-            let expire_at = timestamp().unwrap() + 1000 * 60 * 60;
+            let expire_at = get_timestamp().unwrap() + 1000 * 60 * 60;
             println!("{}", expire_at);
             conn.query("INSERT into token (person,token,expire_at) values ($1,$2,$3) ON CONFLICT ON CONSTRAINT token_pkey DO UPDATE SET token=$2,expire_at=$3;",&[&auth.user, &token, &expire_at]).await.unwrap();
             println!("post_id_token by {}", auth.email);
@@ -232,6 +236,16 @@ pub async fn post_id_token(
                 ok: true,
                 error: None,
                 user_id: Some(auth.user),
+                admin: if auth.user_type == UserType::Admin {
+                    Some(true)
+                } else {
+                    None
+                },
+                debug_token: if auth.user_type == UserType::Admin {
+                    Some(data.debug_token.clone())
+                } else {
+                    None
+                },
             })
         }
         _ => HttpResponse::BadRequest().body("Token and email should be specified"),

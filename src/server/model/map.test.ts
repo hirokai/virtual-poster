@@ -1,8 +1,8 @@
-import { initData, PeopleModel, dbWith, resetDb } from "."
+import { initData, dbWith, resetDb } from "."
 import * as model from "."
 import { mkMapData, mkWrongMapData } from "../test_util"
 import { UserId } from "@/../@types/types"
-import _, { create } from "lodash"
+import _ from "lodash"
 import {
   random_str,
   createUser,
@@ -10,13 +10,10 @@ import {
   rand_non_adjacent,
 } from "../test_util"
 
-let pm: PeopleModel
-
 beforeEach(async () => {
   const db = dbWith("postgres://postgres@localhost/virtual_poster_test")
   await db.query(resetDb)
   await initData("postgres://postgres@localhost/virtual_poster_test", false)
-  pm = model.people
 })
 
 describe("Add a map and person", () => {
@@ -52,9 +49,9 @@ describe("Add a map and person", () => {
       throw "Initialization failed"
     }
     for (let i = 0; i < cols * rows - 1; i++) {
-      const p = await createUser(mm.room_id, pm)
+      const p = await createUser(mm.room_id)
       const { ok: ok1, error: error2 } = await mm.addUser(p.id)
-      const members = await pm.getAllPeopleList(mm.room_id)
+      const members = await model.people.getAllPeopleList(mm.room_id)
       console.log(ok1, error2, members.length, i)
       expect(error2).toBeUndefined()
     }
@@ -63,7 +60,7 @@ describe("Add a map and person", () => {
     const i = cols * rows
     const name = "Test user " + i
     const email = "hoge" + i + "@gmail.com"
-    const { error } = await pm.create(
+    const { error } = await model.people.create(
       email,
       name,
       "user",
@@ -91,11 +88,10 @@ describe("Enter a room", () => {
     if (!mm) {
       throw "Initialization failed"
     }
-    pm = model.people
-    const p = await createUser(mm.room_id, pm)
+    const p = await createUser(mm.room_id)
     const { ok: ok1 } = await mm.enterRoom(p.id)
     expect(ok1).toBe(true)
-    const pos = await pm.getPos(p.id, mm.room_id)
+    const pos = await model.people.getPos(p.id, mm.room_id)
     expect(pos).toBeDefined()
   })
 })
@@ -109,16 +105,21 @@ describe("Move a person", () => {
       "Room " + random_str(5),
       map_data
     )
-    pm = model.people
-    const person = await createUser(mm!.room_id, pm)
+    const person = await createUser(mm!.room_id)
     const { ok: ok1 } = await mm!.enterRoom(person.id)
     expect(ok1).toBe(true)
 
     //FIXME: This should be unnecessary
-    await pm.setPos(person.id, mm!.room_id, { x: 5, y: 5 }, "up", true)
+    await model.people.setPos(
+      person.id,
+      mm!.room_id,
+      { x: 5, y: 5 },
+      "up",
+      true
+    )
 
     for (let i = 0; i < 100; i++) {
-      const posd = await pm.getPos(person.id, mm!.room_id)
+      const posd = await model.people.getPos(person.id, mm!.room_id)
       expect(posd).toBeTruthy()
       let pos = { x: posd!.x, y: posd!.y }
 
@@ -142,14 +143,19 @@ describe("Move a person", () => {
       "Room " + random_str(5),
       map_data
     )
-    pm = model.people
-    const person = await createUser(mm!.room_id, pm)
+    const person = await createUser(mm!.room_id)
     const { ok: ok1 } = await mm!.enterRoom(person.id)
     expect(ok1).toBe(true)
-    await pm.setPos(person.id, mm!.room_id, { x: 5, y: 5 }, "up", true)
+    await model.people.setPos(
+      person.id,
+      mm!.room_id,
+      { x: 5, y: 5 },
+      "up",
+      true
+    )
 
     for (let i = 0; i < 100; i++) {
-      const posd = await pm.getPos(person.id, mm!.room_id)
+      const posd = await model.people.getPos(person.id, mm!.room_id)
       expect(posd).toBeTruthy()
       const pos = { x: posd!.x, y: posd!.y }
 
@@ -168,7 +174,6 @@ describe("Move a person", () => {
 test("Cannot move during a chat", async () => {
   const rows = 10
   const cols = 10
-  const pm: PeopleModel = model.people
   const map_data = mkMapData(rows, cols)
   const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data)
   expect(mm).toBeDefined()
@@ -176,11 +181,11 @@ test("Cannot move during a chat", async () => {
     throw "MapModel failed to init"
   }
   const pos1 = { x: 3, y: 3 }
-  const p = await createUser(mm.room_id, pm)
+  const p = await createUser(mm.room_id)
   const pos2 = rand_adjacent(pos1, rows, cols)
-  await pm.setPos(p.id, mm.room_id, pos2, "down")
-  const p2 = await createUser(mm.room_id, pm)
-  await pm.setPos(p2.id, mm.room_id, pos1, "down")
+  await model.people.setPos(p.id, mm.room_id, pos2, "down")
+  const p2 = await createUser(mm.room_id)
+  await model.people.setPos(p2.id, mm.room_id, pos1, "down")
 
   const { error } = await model.chat.startChat(mm.room_id, p.id, [p2.id])
   expect(error).toBeUndefined()
@@ -205,7 +210,7 @@ describe("Posters", () => {
       throw "Undefined MapModel"
     }
     console.log(JSON.stringify((await mm.getStaticMap()).cells))
-    const p = await createUser(mm.room_id, pm)
+    const p = await createUser(mm.room_id)
     const { ok, poster, error } = await mm.assignPosterLocation(1, p.id, false)
     expect(error).toBeUndefined()
   })

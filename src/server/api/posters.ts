@@ -10,7 +10,6 @@ import { promisify } from "util"
 import fs from "fs"
 import { spawn } from "child_process"
 import shortid from "shortid"
-import { ChatModel } from "../model/chat"
 import path from "path"
 const writeFile = promisify(fs.writeFile)
 const readFile = promisify(fs.readFile)
@@ -36,13 +35,13 @@ async function routes(
 
   fastify.get<any>("/maps/:roomId/people/:userId/poster", async req => {
     const { userId, roomId } = req.params
-    const poster = await model.Posters.getOfUser(roomId, userId)
+    const poster = await model.posters.getOfUser(roomId, userId)
     return { ok: !!poster, poster: poster || undefined }
   })
 
   fastify.get<any>("/people/:userId/posters", async req => {
     const { userId } = req.params
-    const posters = await model.Posters.getAllOfUser(userId)
+    const posters = await model.posters.getAllOfUser(userId)
     return { ok: !!posters, posters: posters || undefined }
   })
 
@@ -53,7 +52,7 @@ async function routes(
     const data = file.buffer
     if (file.mimetype == "image/png") {
       await writeFile("db/posters/" + poster.id + ".png", data)
-      await model.Posters.set(poster)
+      await model.posters.set(poster)
       return { ok: true }
     } else {
       const filename = "db/posters/tmp-" + shortid.generate() + ".pdf"
@@ -70,7 +69,7 @@ async function routes(
         "db/posters/" + poster.id + ".png",
         filename,
       ])
-      await model.Posters.set(poster)
+      await model.posters.set(poster)
       const r = await new Promise<{ ok: boolean; error?: string }>(resolve => {
         // use child.stdout.setEncoding('utf8'); if you want text chunks
         child.stdout.on("data", (chunk: Buffer) => {
@@ -101,7 +100,7 @@ async function routes(
       if (!permitted) {
         throw { statusCode: 403 }
       } else {
-        const poster = await model.Posters.getOfUser(roomId, userId)
+        const poster = await model.posters.getOfUser(roomId, userId)
         if (!poster) {
           return { ok: false, error: "Poster not found" }
         } else {
@@ -147,7 +146,7 @@ async function routes(
     { preHandler: upload },
     async (req): Promise<{ ok: boolean; error?: string; poster?: Poster }> => {
       const poster_id = req.params.posterId
-      const poster = await model.Posters.get(poster_id)
+      const poster = await model.posters.get(poster_id)
 
       if (!poster) {
         return { ok: false, error: "Poster not found" }
@@ -160,7 +159,7 @@ async function routes(
       poster.last_updated = Date.now()
       const r = await updatePosterFile(poster, req["file"])
       if (r.ok) {
-        const new_poster = await model.Posters.get(poster_id)
+        const new_poster = await model.posters.get(poster_id)
         if (new_poster) {
           emit.poster(new_poster)
         }
@@ -175,7 +174,7 @@ async function routes(
     "/posters/:posterId/file",
     async (req): Promise<{ ok: boolean; error?: string; poster?: Poster }> => {
       const posterId: string = req.params.posterId
-      const poster = await model.Posters.get(posterId)
+      const poster = await model.posters.get(posterId)
       if (!poster) {
         return { ok: false, error: "Poster not found" }
       } else {
@@ -191,7 +190,7 @@ async function routes(
     "/maps/:room_id/people/:user_id/poster/file",
     async req => {
       const { user_id, room_id } = req.params
-      const poster = await model.Posters.getOfUser(room_id, user_id)
+      const poster = await model.posters.getOfUser(room_id, user_id)
       if (!poster) {
         return { ok: false, error: "Poster not found" }
       } else {
@@ -222,7 +221,7 @@ async function routes(
         operation: "comment.new",
         data: { text: comment },
       })
-      const poster = await model.Posters.get(posterId)
+      const poster = await model.posters.get(posterId)
       if (!poster) {
         throw { statusCode: 404, message: "Poster is not found" }
       }
@@ -242,7 +241,7 @@ async function routes(
 
       fastify.log.debug("Ajacent posters", posters)
       const e: ChatComment = {
-        id: ChatModel.genCommentId(),
+        id: model.chat.genCommentId(),
         person: user_id,
         room: roomId,
         x: pos.x,
@@ -255,7 +254,7 @@ async function routes(
       const r = await model.chat.addComment(e)
       if (r) {
         const e2: ChatCommentDecrypted = {
-          id: ChatModel.genCommentId(),
+          id: model.chat.genCommentId(),
           person: user_id,
           room: roomId,
           x: pos.x,
@@ -276,7 +275,7 @@ async function routes(
     if (req["requester_type"] != "admin") {
       throw { statusCode: 403 }
     }
-    return await model.Posters.getAll(null)
+    return await model.posters.getAll(null)
   })
 
   fastify.get<any>("/posters/:posterId/comments", async req => {
@@ -285,7 +284,7 @@ async function routes(
 
   fastify.get<any>("/maps/:roomId/posters", async req => {
     const room = req.params.roomId
-    return await model.Posters.getAll(room)
+    return await model.posters.getAll(room)
   })
 }
 

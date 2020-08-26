@@ -42,7 +42,7 @@ async function routes(
       email,
       name,
       "user",
-      avatar || model.PeopleModel.randomAvatar(),
+      avatar || model.people.randomAvatar(),
       rooms || [],
       on_conflict || "reject"
     )

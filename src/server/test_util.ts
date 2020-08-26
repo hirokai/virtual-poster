@@ -1,4 +1,4 @@
-import { PeopleModel } from "./model"
+import * as model from "./model"
 import { RoomId, PersonWithEmail, Point } from "@/../@types/types"
 import { inRange } from "../common/util"
 import _ from "lodash"
@@ -13,13 +13,10 @@ export const random_str = (N?: number): string => {
     .join("")
 }
 
-export const createUser = async (
-  room_id: RoomId,
-  pm: PeopleModel
-): Promise<PersonWithEmail> => {
+export const createUser = async (room_id: RoomId): Promise<PersonWithEmail> => {
   const name = "Test user " + random_str(5)
   const email = "hoge" + random_str(5) + "@gmail.com"
-  const { user_id } = await pm.create(
+  const { user_id } = await model.people.create(
     email,
     name,
     "user",
@@ -30,7 +27,7 @@ export const createUser = async (
   if (!user_id) {
     throw "No user was created"
   }
-  return await pm.getUnwrap(user_id)
+  return await model.people.getUnwrap(user_id)
 }
 
 export function mkMapData(rows: number, cols: number): string {

@@ -23,7 +23,7 @@ async function public_api_routes(
           email,
           "Admin",
           "admin",
-          model.PeopleModel.randomAvatar(),
+          model.people.randomAvatar(),
           ["default"]
         )
         if (r.user_id) {

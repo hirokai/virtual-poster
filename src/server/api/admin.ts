@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance, FastifyRequest } from "fastify"
-import { UserId, RoomId } from "@/../@types/types"
+import { UserId, RoomId, Person } from "@/../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
@@ -48,7 +48,7 @@ async function routes(
   })
 
   fastify.get("/admin/export/posters", async (req, res) => {
-    const posters = await model.Posters.getAll(null)
+    const posters = await model.posters.getAll(null)
     await res.type("application/json")
     return JSON.stringify(posters, null, 2)
   })
@@ -155,7 +155,7 @@ async function routes(
           })
           continue
         }
-        const avatar = model.PeopleModel.randomAvatar()
+        const avatar = model.people.randomAvatar()
         const { user_id, error } = await model.people.create(
           p.email,
           p.name,
@@ -184,7 +184,8 @@ async function routes(
             name: p.name,
             ok: true,
           })
-          emit.pushSocketQueue("person", _.omit(new_person, ["email"]))
+          const new_person_for_emit = _.omit(new_person, ["email"]) as Person
+          emit.pushSocketQueue("person", new_person_for_emit)
           for (const po of p.posters) {
             const room = model.maps[po.room]
             if (room) {

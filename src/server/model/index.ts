@@ -3,21 +3,16 @@ import Redis from "ioredis"
 import dotenv from "dotenv"
 dotenv.config()
 
-import {
-  Poster,
-  UserOperationLog,
-  UserId,
-  RoomId,
-  PosterId,
-} from "../../../@types/types"
-import { ChatModel } from "./chat"
+import { UserOperationLog, RoomId } from "../../../@types/types"
+import * as ChatModule from "./chat"
+export const chat = ChatModule
 import { MapModel } from "./map"
-import { PeopleModel } from "./people"
-export { ChatModel } from "./chat"
+import * as PeopleModule from "./people"
+export const people = PeopleModule
+import * as PosterModule from "./posters"
+export const posters = PosterModule
 export { MapModel } from "./map"
-export { PeopleModel } from "./people"
 import _ from "lodash"
-import shortid from "shortid"
 
 import cluster from "cluster"
 import { join as joinPath } from "path"
@@ -91,65 +86,6 @@ export function userLog(obj: UserOperationLog): void {
 }
 
 export let maps: { [room_id: string]: MapModel }
-export let people: PeopleModel
-export let chat: ChatModel
-
-export class Posters {
-  static async get(poster_id: string): Promise<Poster | null> {
-    log.debug(poster_id)
-    const rows = await db.query(
-      `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id where p.id=$1;`,
-      [poster_id]
-    )
-    const d = rows[0]
-    return d as Poster
-  }
-  static async set(poster: Poster): Promise<boolean> {
-    await db.query(
-      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4 where id=$5;`,
-      [
-        poster.location,
-        poster.title,
-        poster.author,
-        poster.last_updated,
-        poster.id,
-      ]
-    )
-    return true
-  }
-  static async delete(poster_id: string): Promise<boolean> {
-    await db.query(`DELETE from poster where id=$1;`, [poster_id])
-    return true
-  }
-  static async getOfUser(
-    room_id: RoomId,
-    user_id: UserId
-  ): Promise<Poster | null> {
-    const posters = await Posters.getAll(room_id)
-    return _.find(posters, p => p.author == user_id) || null
-  }
-  static async getAllOfUser(user_id: UserId): Promise<Poster[] | null> {
-    const posters = await Posters.getAll(null)
-    return _.filter(posters, p => p.author == user_id) || null
-  }
-  static async getAll(room_id: RoomId | null): Promise<Poster[]> {
-    const rows = await (room_id
-      ? db.query(
-          `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id where location in (SELECT id from map_cell where room=$1);`,
-          [room_id]
-        )
-      : db.query(
-          `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
-        ))
-    return rows.map(d => {
-      // d["room"] = room_id
-      return d
-    })
-  }
-  static genPosterId(): PosterId {
-    return "P" + shortid.generate()
-  }
-}
 
 export async function initData(
   pg_connection_string: string,
@@ -200,11 +136,9 @@ export async function initData(
     maps[r["id"]] = new MapModel(r["id"], r["name"])
     rooms.push(r["id"])
   }
-  people = new PeopleModel()
   await people.init()
-  chat = new ChatModel()
   for (const map of Object.values(maps)) {
-    await map.writeRedisCache(people)
+    await map.writeRedisCache()
   }
   return rooms
 }

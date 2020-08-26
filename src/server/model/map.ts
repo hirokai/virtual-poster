@@ -9,15 +9,14 @@ import {
   MapCellId,
   TryToMoveResult,
   MapCellRDB,
-  PosDir,
 } from "@/../@types/types"
 import shortid from "shortid"
 import { redis, log, db, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
 import _ from "lodash"
-import { PeopleModel } from "./people"
 import { mkKey, calcDirection } from "../../common/util"
 import cluster from "cluster"
+import * as Posters from "./posters"
 
 function adjacentCells(
   cells: Cell[][],
@@ -91,9 +90,9 @@ export class MapModel {
       return { ok: false, error: "DB error" }
     }
   }
-  async writeRedisCache(pm: PeopleModel): Promise<void> {
+  async writeRedisCache(): Promise<void> {
     await this.initStaticMap()
-    await this.initLiveObjects(pm)
+    await this.initLiveObjects()
   }
   async initStaticMap(): Promise<void> {
     const cells = await this.getAllStaticMapCellsFromRDB()
@@ -110,8 +109,8 @@ export class MapModel {
     await redis.staticMap.set(this.room_id + ":num_cols", numCols)
     await redis.staticMap.set(this.room_id + ":num_rows", numRows)
   }
-  async initLiveObjects(pm: PeopleModel): Promise<void> {
-    const people = await pm.getAllPeopleList(this.room_id)
+  async initLiveObjects(): Promise<void> {
+    const people = await model.people.getAllPeopleList(this.room_id)
 
     for (const p of people) {
       await redis.accounts.set(
@@ -198,7 +197,7 @@ export class MapModel {
       }
     }
     //Reload Redis cache
-    await this.writeRedisCache(model.people)
+    await this.writeRedisCache()
     return map
   }
   async importPosterAssignment(
@@ -450,7 +449,7 @@ export class MapModel {
     title?: string
   ): Promise<{ ok: boolean; poster?: Poster; error?: string }> {
     log.debug("assignPosterLocation()", poster_number, author, title, overwrite)
-    const poster_id = model.Posters.genPosterId()
+    const poster_id = Posters.genPosterId()
     const last_updated = Date.now()
     const cells: MapCellRDB[] = await db.many(
       `SELECT * FROM map_cell WHERE room=$1 AND poster_number=$2;`,

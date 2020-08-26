@@ -10,7 +10,6 @@ import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
 import { emit } from "../socket"
-import { ChatModel } from "../model/chat"
 
 async function routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -53,7 +52,7 @@ async function routes(
     }
 
     const e: ChatComment = {
-      id: ChatModel.genCommentId(),
+      id: model.chat.genCommentId(),
       person: requester,
       room: roomId,
       x: pos.x,

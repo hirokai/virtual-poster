@@ -1,5 +1,5 @@
 {
-  "watch": ["src/server", "src/common", "@types"],
+  "watch": ["server", "common", "@types"],
   "ignore": ["*.test.ts"],
   "ext": "ts,yaml",
   "exec": "ts-node"

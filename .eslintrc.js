@@ -15,6 +15,7 @@ module.exports = {
     parser: "@typescript-eslint/parser",
     ecmaVersion: 2020,
     project: ["./tsconfig.json"],
+    extraFileExtensions: [".vue"],
   },
   // https://qiita.com/ishiyama0530/items/c013475c563322965e2a
   rules: {
@@ -36,4 +37,4 @@ module.exports = {
       },
     },
   ],
-}
+};

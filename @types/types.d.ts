@@ -269,6 +269,7 @@ export type MapEnterResponse = {
   status?: string
   public_key?: string
   socket_url?: string
+  socket_protocol?: "Socket.IO" | "WebSocket"
 }
 
 export type MapRoomResponse = {

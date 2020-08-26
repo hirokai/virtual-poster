@@ -125,6 +125,7 @@ export const moveTo = (
       debug_as: props.debug_as,
     }
     state.move_emitted = Date.now()
+    console.log("Socket", state.socket)
     state.socket?.emit("Move", d)
     return true
   } else {

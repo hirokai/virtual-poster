@@ -279,6 +279,11 @@ paths:
                     type: string
                   socket_url:
                     type: string
+                  socket_protocol:
+                    type: string
+                    enum:
+                      - Socket.IO
+                      - WebSocket
                 required:
                   - ok
       tags:
@@ -938,6 +943,8 @@ paths:
                     type: boolean
                   public_key:
                     type: string
+                  debug_token:
+                    type: string
                 required:
                   - ok
       operationId: post-id_token
@@ -1123,14 +1130,14 @@ components:
       title: CommentEncrypted
       type: object
       properties:
-        to_user:
+        to:
           type: string
         text:
           type: string
         encrypted:
           type: boolean
       required:
-        - to_user
+        - to
         - text
         - encrypted
       description: Encrypted comment object

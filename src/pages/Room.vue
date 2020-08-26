@@ -553,7 +553,7 @@ export default defineComponent({
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
       console.log("Setting up socket handlers")
-      socket.on("connected", () => {
+      socket.on("connection", () => {
         console.log("Socket connected")
         socket.emit("Active", {
           room: props.room_id,
@@ -744,20 +744,21 @@ export default defineComponent({
           alert("部屋に入れませんでした: " + res.data.status)
           location.href = "/"
         }
-        const socket_url = res.data.socket_url
+        let socket_url = "http://localhost:5000/"
+        // let socket_url = res.data.socket_url
         if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"
           return
         }
         console.log("Socket URL: " + socket_url)
-        // const is_socket_io = socket_url
-        //   ? socket_url.indexOf("socket.io") >= 0
-        //   : false
-        const is_socket_io = true
-        state.socket = is_socket_io
-          ? io(socket_url)
-          : new MySocketObject(socket_url)
+        if (res.data.socket_protocol == "Socket.IO") {
+          state.socket = io(socket_url, { transports: ["websocket"] })
+        } else if (res.data.socket_protocol == "WebSocket") {
+          state.socket = new MySocketObject(socket_url)
+        } else {
+          console.error("Socket protocol not supported")
+        }
         if (!state.socket) {
           console.error("Failed to make a socket.")
           return

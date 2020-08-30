@@ -114,7 +114,7 @@ import {
 } from "../@types/types"
 
 import { decodeMoved } from "../common/util"
-import { AxiosStatic } from "axios"
+import { AxiosInstance } from "axios"
 
 import Vue from "vue"
 import {
@@ -172,7 +172,7 @@ export default defineComponent({
       announceMarquee: boolean
       announceMarqueePeriod: number
       debug_token: string
-      axios: AxiosStatic
+      axios: AxiosInstance
       socketHistory: {
         msg: string
         data: any

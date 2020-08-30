@@ -9,6 +9,7 @@ import {
 } from "../common/util"
 import { startChat, myChatGroup } from "./room_chat_service"
 import { addLatencyLog } from "./room_log_service"
+import { SocketIO } from "socket.io-client"
 
 import {
   UserId,
@@ -27,11 +28,11 @@ import {
   MapRoomResponse,
   MoveErrorSocketData,
   MySocketObject,
-} from "@/@types/types"
+} from "../@types/types"
 
 const BATCH_MOVE_INTERVAL = 400
 import _ from "lodash-es"
-import { AxiosStatic } from "axios"
+import { AxiosStatic, AxiosInstance } from "axios"
 import jsSHA from "jssha"
 
 export const jwt_hash = (props: RoomAppProps): ComputedRef<string> =>
@@ -63,7 +64,7 @@ export const posterAt = (
 }
 
 export let moveOneStep = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   user_id: string,
@@ -78,7 +79,7 @@ export let moveOneStep = (
 }
 
 export const moveTo = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   myself: Person,
@@ -237,7 +238,7 @@ export const moveTo = (
 }
 
 moveOneStep = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   user_id: string,
@@ -285,7 +286,7 @@ moveOneStep = (
 }
 
 export const moveByArrow = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   me: Person,
@@ -373,7 +374,7 @@ export const cellsMag = (state: RoomAppState): ComputedRef<Cell[][]> =>
   })
 
 const on_socket_move = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   s: string,
@@ -418,7 +419,7 @@ const on_socket_move = (
 }
 
 export const initMapService = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,

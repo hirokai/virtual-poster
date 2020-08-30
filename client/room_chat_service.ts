@@ -17,14 +17,15 @@ import {
   Person,
   MySocketObject,
   CommentEncryptedEntry,
-} from "@/@types/types"
+} from "../@types/types"
 import _ from "lodash-es"
 import * as encryption from "./encryption"
-import { AxiosStatic } from "axios"
+import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
+import { SocketIO } from "socket.io-client"
 
 export async function doSendOrUpdateComment(
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   skywayRoom: MeshRoom | SfuRoom | null,
   room_id: RoomId,
   text: string,
@@ -86,7 +87,7 @@ export async function doSendOrUpdateComment(
   }
 }
 
-export const deleteComment = (axios: AxiosStatic) => (
+export const deleteComment = (axios: AxiosStatic | AxiosInstance) => (
   comment_id: string
 ): void => {
   console.log(comment_id)
@@ -193,7 +194,7 @@ export const chatGroupOfUser = (
 export const startChat = async (
   props: RoomAppProps,
   state: RoomAppState,
-  axios: AxiosStatic
+  axios: AxiosStatic | AxiosInstance
 ): Promise<ChatGroup | undefined> => {
   const to_users: UserId[] = Array.from(state.selectedUsers)
   if (to_users.length == 0) {
@@ -240,7 +241,7 @@ export const myChatGroup = (
   })
 
 export const inviteToChat = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   p: Person
@@ -263,7 +264,7 @@ export const inviteToChat = async (
 }
 
 export const initChatService = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,
@@ -357,7 +358,7 @@ export const initChatService = async (
 }
 
 export const setupEncryption = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   pub_str_from_server: string | null

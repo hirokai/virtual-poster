@@ -1,8 +1,9 @@
 import _ from "lodash"
 import shortid from "shortid"
-
 import { Poster, RoomId, UserId, PosterId } from "@/@types/types"
 import { log, db } from "./index"
+
+const USE_S3_CDN = process.env.USE_S3_CDN == "YES"
 
 export async function get(poster_id: string): Promise<Poster | null> {
   log.debug(poster_id)
@@ -55,8 +56,12 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
     : db.query(
         `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
       ))
+  const domain = USE_S3_CDN
+    ? (process.env.CDN_DOMAIN as string)
+    : "https://" + (process.env.S3_BUCKET as string) + ".s3.amazonaws.com/"
   return rows.map(d => {
     // d["room"] = room_id
+    d["file_url"] = domain + "files/" + d["id"] + ".png"
     return d
   })
 }

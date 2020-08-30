@@ -114,7 +114,7 @@ import {
   ChatCommentDecrypted,
 } from "../../@types/types"
 import { inRange } from "../../common/util"
-import axios from "axios"
+import axiosDefault from "axios"
 import { sortBy } from "lodash-es"
 
 import Vue from "vue"
@@ -129,6 +129,8 @@ import {
 } from "@vue/composition-api"
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
+
+const axios = axiosDefault.create()
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
@@ -204,9 +206,9 @@ export default defineComponent({
       () => {
         state.posterStatus = "checking"
         if (props.poster) {
-          axios({
+          axiosDefault({
             method: "GET",
-            url: "/posters/" + props.poster.id + "/file",
+            url: props.poster.file_url,
             responseType: "arraybuffer",
           })
             .then(res => {
@@ -293,8 +295,6 @@ export default defineComponent({
 </script>
 
 <style lang="css">
-@import url("drift.css");
-
 #poster.inactive {
   background: #ccc;
 }

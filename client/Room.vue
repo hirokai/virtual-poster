@@ -183,7 +183,6 @@ import {
   ArrowKey,
   ChatGroup,
   ChatCommentDecrypted,
-  ChatComment,
   UserId,
   Poster as PosterTyp,
   PosterId,
@@ -199,7 +198,7 @@ import CellInfo from "./room/CellInfo.vue"
 import ChatLocal from "./room/ChatLocal.vue"
 import { inRange, getClosestAdjacentPoints, isAdjacent } from "../common/util"
 
-import axios from "axios"
+import axiosDefault from "axios"
 import io from "socket.io-client"
 import _ from "lodash-es"
 import * as firebase from "firebase/app"
@@ -245,6 +244,8 @@ import { addLatencyLog } from "./room_log_service"
 const PRODUCTION = process.env.NODE_ENV == "production"
 const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
 const API_ROOT = BASE_URL + "api"
+
+const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
 
 axios.interceptors.request.use(request => {
@@ -360,7 +361,7 @@ export default defineComponent({
 
   /*
   @Prop() public idToken!: string
-  @Prop() public axios!: AxiosStatic
+  @Prop() public axios!: AxiosStatic | AxiosInstance
 */
   props: {
     room_id: {

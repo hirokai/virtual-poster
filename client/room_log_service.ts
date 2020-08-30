@@ -1,5 +1,5 @@
 import _ from "lodash-es"
-import { AxiosStatic } from "axios"
+import { AxiosStatic, AxiosInstance } from "axios"
 
 let latency_log: {
   url: string
@@ -9,14 +9,14 @@ let latency_log: {
 }[] = []
 
 export async function submitLatencyReport(
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance | AxiosInstance,
   logs: { url: string; method?: string; latency: number; timestamp: number }[]
 ): Promise<void> {
   await axios.post("/latency_report", logs)
 }
 
 export function addLatencyLog(
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance | AxiosInstance,
   d: {
     url: string
     method?: string

@@ -2,13 +2,14 @@ import Vue from "vue"
 import Room from "./Room.vue"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-import axios from "axios"
-import { UserId, RoomId } from "@/@types/types"
+import axiosDefault from "axios"
+import { UserId, RoomId } from "../@types/types"
 
 Vue.config.productionTip = true
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
 
 const firebaseConfig = {

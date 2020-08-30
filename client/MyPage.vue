@@ -198,7 +198,7 @@ import {
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
-import axios from "axios"
+import axiosDefault from "axios"
 import { Person, PersonUpdate, Poster, PosterId, UserId } from "../@types/types"
 import { keyBy, difference, range } from "lodash-es"
 import io from "socket.io-client"
@@ -214,6 +214,7 @@ const BigInteger = jsbn.BigInteger
 const PRODUCTION = process.env.NODE_ENV == "production"
 const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
 const API_ROOT = BASE_URL + "api"
+const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
 
 const url = new URL(location.href)
@@ -696,9 +697,9 @@ export default defineComponent({
           if (state.lastLoaded > poster.last_updated) {
             continue
           }
-          const url = "/posters/" + poster.id + "/file"
+          const url = poster.file_url
           console.log
-          axios({
+          axiosDefault({
             method: "GET",
             responseType: "arraybuffer",
             url,

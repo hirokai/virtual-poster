@@ -8,16 +8,17 @@ import {
   ActiveUsersSocketData,
   TypingSocketData,
   MySocketObject,
-} from "@/@types/types"
+} from "../@types/types"
 import _ from "lodash-es"
-import { AxiosStatic, AxiosResponse } from "axios"
+import { AxiosStatic, AxiosInstance, AxiosResponse } from "axios"
 import { moveOneStep, jwt_hash } from "./room_map_service"
+import { SocketIO } from "socket.io-client"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
 
 const setPerson = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   d: PersonUpdate
@@ -54,7 +55,7 @@ const setPerson = (
 }
 
 export const initPeopleService = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState

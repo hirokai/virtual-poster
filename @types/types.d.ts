@@ -248,6 +248,7 @@ export type Poster = {
   author: UserId
   room: RoomId
   location: MapCellId
+  file_url: string
   poster_number?: number
   x: number
   y: number

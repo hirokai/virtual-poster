@@ -11,10 +11,60 @@ import fs from "fs"
 import { spawn } from "child_process"
 import shortid from "shortid"
 import path from "path"
+import AWS from "aws-sdk"
+
 const writeFile = promisify(fs.writeFile)
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
 const existsAsync = promisify(fs.exists)
+
+const UPLOAD_TO_S3 = process.env.UPLOAD_TO_S3 == "YES"
+
+AWS.config.update({ region: process.env.AWS_REGION as string })
+const s3 = new AWS.S3({ apiVersion: "2006-03-01", signatureVersion: "v4" })
+
+var cloudfront = new AWS.CloudFront({
+  apiVersion: "2017-03-25",
+})
+
+async function uploadFileToS3(file_path: string): Promise<string> {
+  const key = "files/" + path.basename(file_path)
+  const invalidate_items = ["/" + key]
+
+  var params = {
+    DistributionId: "E38Y8MK1L65IXG",
+    InvalidationBatch: {
+      CallerReference: String(new Date().getTime()),
+      Paths: {
+        Quantity: invalidate_items.length,
+        Items: invalidate_items,
+      },
+    },
+  }
+
+  const data1 = await cloudfront.createInvalidation(params).promise()
+  console.log(data1)
+
+  // call S3 to retrieve upload file to specified bucket
+
+  // Configure the file stream and obtain the upload parameters
+  const fileStream = fs.createReadStream(file_path)
+  fileStream.on("error", function(err) {
+    console.log("File Error", err)
+  })
+
+  const uploadParams = {
+    Bucket: process.env.S3_BUCKET as string,
+    Key: key,
+    Body: fileStream,
+    ACL: "public-read",
+  }
+
+  // call S3 to retrieve upload file to specified bucket
+  const data = await s3.upload(uploadParams).promise()
+  console.log("Uploaded:", data)
+  return data.Location
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -51,14 +101,20 @@ async function routes(
   ): Promise<{ ok: boolean; error?: string }> {
     const data = file.buffer
     if (file.mimetype == "image/png") {
-      await writeFile("db/posters/" + poster.id + ".png", data)
+      const out_path = "db/posters/" + poster.id + ".png"
+      await writeFile(out_path, data)
       await model.posters.set(poster)
+      if (UPLOAD_TO_S3) {
+        const s3_url = await uploadFileToS3(out_path)
+        await deleteFile(out_path)
+      }
       return { ok: true }
     } else {
       const filename = "db/posters/tmp-" + shortid.generate() + ".pdf"
       await writeFile(filename, data)
       fastify.log.debug("writeFile: ", filename, data.length)
 
+      const out_path = "db/posters/" + poster.id + ".png"
       // gs -sDEVICE=png16m -r300 -dGraphicsAlphaBits=4 -o test-out.png tmp-4RBgnRNyN.pdf
       const child = spawn("gs", [
         "-sDEVICE=png16m",
@@ -66,7 +122,7 @@ async function routes(
         "-r300",
         "-dGraphicsAlphaBits=4",
         "-o",
-        "db/posters/" + poster.id + ".png",
+        out_path,
         filename,
       ])
       await model.posters.set(poster)
@@ -80,12 +136,20 @@ async function routes(
             //
           })
           if (code == 0) {
+            if (UPLOAD_TO_S3) {
+              uploadFileToS3(out_path).then(() => {
+                deleteFile(out_path).then(() => {
+                  console.log("Uploaded PDF to S3 and deleted a local file.")
+                })
+              })
+            }
             resolve({ ok: true })
           } else {
             resolve({ ok: false, error: "PDF conversion error" })
           }
         })
       })
+      const s3_url = await uploadFileToS3(out_path)
       return r
     }
   }

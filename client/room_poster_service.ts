@@ -7,9 +7,10 @@ import {
   Poster,
   ChatComment,
   MySocketObject,
-} from "@/@types/types"
+} from "../@types/types"
 import _ from "lodash-es"
-import { AxiosStatic } from "axios"
+import { AxiosStatic, AxiosInstance } from "axios"
+import { SocketIO } from "socket.io-client"
 
 export const adjacentPosters = (
   props: RoomAppProps,
@@ -40,7 +41,7 @@ const clearInputPoster = (state: RoomAppState) => {
 }
 
 export const updatePosterComment = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   poster_id: string,
@@ -64,7 +65,7 @@ export const updatePosterComment = (
 }
 
 export const sendPosterComment = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   text: string
@@ -89,7 +90,7 @@ export const sendPosterComment = (
 }
 
 export const doSubmitPosterComment = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   text: string
@@ -115,7 +116,7 @@ export const doSubmitPosterComment = (
 }
 
 export const doUploadPoster = (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   file: File,
   poster_id: string
 ): void => {
@@ -135,7 +136,7 @@ export const doUploadPoster = (
 }
 
 export const initPosterService = async (
-  axios: AxiosStatic,
+  axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,

@@ -1,4 +1,4 @@
-import { AxiosStatic } from "axios"
+import { AxiosInstance, AxiosStatic } from "axios"
 
 type EncryptedData = {
   iv: string
@@ -303,7 +303,7 @@ export async function importPrivateKeyJwk(
 }
 
 export async function generateAndSendKeys(
-  axios: AxiosStatic,
+  axios: AxiosInstance | AxiosStatic,
   user_id: string,
   force = false
 ): Promise<{ ok: boolean; pub_str?: string; prv_str?: string }> {

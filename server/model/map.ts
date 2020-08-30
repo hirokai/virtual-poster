@@ -18,6 +18,8 @@ import { mkKey, calcDirection } from "../../common/util"
 import cluster from "cluster"
 import * as Posters from "./posters"
 
+const USE_S3_CDN = process.env.USE_S3_CDN == "YES"
+
 function adjacentCells(
   cells: Cell[][],
   x: number,
@@ -474,6 +476,9 @@ export class MapModel {
     if (res.length == 0 || res[0].id != poster_id) {
       return { ok: false, error: "DB error" }
     }
+    const domain = USE_S3_CDN
+      ? (process.env.CDN_DOMAIN as string)
+      : "https://" + (process.env.S3_BUCKET as string) + ".s3.amazonaws.com/"
     return {
       ok: true,
       poster: {
@@ -485,6 +490,7 @@ export class MapModel {
         location: res[0].location,
         x: cells[0].x,
         y: cells[0].y,
+        file_url: domain + "files/" + poster_id + ".png",
       },
     }
   }

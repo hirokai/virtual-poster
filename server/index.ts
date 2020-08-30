@@ -162,12 +162,7 @@ workerInitData()
           await server.register(public_api_routes, { prefix: "/api" })
 
           await server.register(fastify_static, {
-            root: path.join(
-              __dirname,
-              "..",
-              "..",
-              PRODUCTION ? "dist" : "public"
-            ),
+            root: path.join(__dirname, "..", PRODUCTION ? "dist" : "public"),
             extensions: ["html"],
             maxAge: 1000 * 60 * 60 * 24,
           })

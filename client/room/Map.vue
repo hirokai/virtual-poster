@@ -14,8 +14,8 @@
         :left="(cell.x - center.x + 5) * 48"
         :top="(cell.y - center.y + 5) * 48"
         @select="select"
-        @dblClick="dblClick"
-        @uploadPoster="uploadPoster"
+        @dbl-click="dblClick"
+        @upload-poster="uploadPoster"
       />
     </g>
     <g id="person-cells">
@@ -41,7 +41,7 @@
         "
         :avatarImages="avatarImages"
         @select="select"
-        @dblClick="dblClick"
+        @dbl-click="dblClick"
       />
     </g>
     <g

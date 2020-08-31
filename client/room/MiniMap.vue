@@ -29,7 +29,7 @@
           :chat="false"
           :chat_color="'pink'"
           @select="select"
-          @dblClick="dblClick"
+          @dbl-click="dblClick"
         />
       </g>
       <g>

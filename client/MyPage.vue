@@ -130,7 +130,13 @@
           >
             秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
           </button>
-          <div class="keys" v-if="showPrivKey">{{ privateKeyString }}</div>
+          <pre class="keys" style="word-break: normal;" v-if="showPrivKey"
+            >{{ privateKeyMnemonic }}
+          </pre>
+
+          <!-- <div class="keys" v-if="showPrivKey">
+            {{ privateKeyString }}
+          </div> -->
 
           <div>
             <input
@@ -200,7 +206,7 @@ Vue.use(VueCompositionApi)
 
 import axiosDefault from "axios"
 import { Person, PersonUpdate, Poster, PosterId, UserId } from "../@types/types"
-import { keyBy, difference, range } from "lodash-es"
+import { keyBy, difference, range, chunk } from "lodash-es"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
@@ -211,9 +217,7 @@ import jsbn from "jsbn"
 
 const BigInteger = jsbn.BigInteger
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
-const API_ROOT = BASE_URL + "api"
+const API_ROOT = "/api"
 const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
 
@@ -272,6 +276,7 @@ export default defineComponent({
 
       privateKeyString: null as string | null,
       privateKey: null as CryptoKey | null,
+      privateKeyMnemonic: null as string | null,
       publicKeyString: null as string | null,
       publicKey: null as CryptoKey | null,
 
@@ -385,7 +390,11 @@ export default defineComponent({
           console.error("Private key import failed")
           return false
         }
-        state.privateKey = prv
+        state.privateKey = prv.key
+        console.log(chunk(prv.mnemonic.split(" "), 6))
+        state.privateKeyMnemonic = chunk(prv.mnemonic.split(" "), 6)
+          .map(c => c.join(" "))
+          .join("\n")
       } else if (prv_str_local.pkcs8) {
         //Converting existing private key to JWK format.
         const prv = await encryption.importPrivateKeyPKCS(
@@ -583,11 +592,8 @@ export default defineComponent({
           return config
         }
       })
-      axios({
-        baseURL: BASE_URL,
-        method: "GET",
-        url: "/img/avatars_base64.json",
-      })
+      axiosDefault
+        .get("/img/avatars_base64.json")
         .then(({ data }) => {
           state.avatarImages = data
         })

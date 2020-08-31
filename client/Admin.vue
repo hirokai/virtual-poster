@@ -136,8 +136,7 @@ import ManagePosters from "./admin/ManagePosters.vue"
 
 import { keyBy, flatten, difference } from "lodash-es"
 import io from "socket.io-client"
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 const url = new URL(location.href)

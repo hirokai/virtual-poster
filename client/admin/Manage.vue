@@ -198,8 +198,7 @@
 <script lang="ts">
 import { AxiosStatic } from "axios"
 import { Person } from "@/@types/types"
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 
 import Vue from "vue"
 import {
@@ -222,7 +221,7 @@ export default defineComponent({
       type: String,
     },
   },
-  setup(props) {
+  setup (props) {
     const state = reactive<{
       API_ROOT: string
       files: { [index: string]: File }

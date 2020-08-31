@@ -265,6 +265,16 @@ export type Contact = { id: UserId | PosterId | ChatGroupId; kind: string }
 
 export type ArrowKey = "ArrowRight" | "ArrowUp" | "ArrowLeft" | "ArrowDown"
 
+type PostIdTokenResponse = {
+  ok: boolean
+  error?: string
+  user_id?: UserId
+  admin?: boolean
+  public_key?: string
+  debug_token?: string
+  registered?: "registered" | "can_register" | "should_verify"
+}
+
 export type MapEnterResponse = {
   ok: boolean
   status?: string

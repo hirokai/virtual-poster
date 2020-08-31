@@ -120,14 +120,14 @@
       :poster="botActive ? null : activePoster"
       :people_typing="people_typing"
       :enableEncryption="enableEncryption"
-      @leaveChat="leaveChat"
-      @submitComment="submitComment"
-      @updateComment="sendOrUpdateComment"
-      @deleteComment="deleteComment"
-      @setEditingOld="setEditingOld"
+      @leave-chat="leaveChat"
+      @submit-comment="submitComment"
+      @update-comment="sendOrUpdateComment"
+      @delete-comment="deleteComment"
+      @set-editing-old="setEditingOld"
       @onInputTextChange="onInputTextChange"
-      @onFocusInput="onFocusInput"
-      @setEncryption="setEncryption"
+      @on-focus-input="onFocusInput"
+      @set-encryption="setEncryption"
     />
     <Poster
       v-if="!botActive"
@@ -139,10 +139,10 @@
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
       :inputFromParent="posterInputComment"
-      @submitPosterComment="submitPosterComment"
-      @updatePosterComment="updatePosterComment"
-      @deleteComment="deleteComment"
-      @setEditingOld="setEditingOld"
+      @submit-poster-comment="submitPosterComment"
+      @update-poster-comment="updatePosterComment"
+      @delete-comment="deleteComment"
+      @set-editing-old="setEditingOld"
       v-show="activePoster"
     />
     <button
@@ -198,7 +198,7 @@ import CellInfo from "./room/CellInfo.vue"
 import ChatLocal from "./room/ChatLocal.vue"
 import { inRange, getClosestAdjacentPoints, isAdjacent } from "../common/util"
 
-import axiosDefault from "axios"
+import axiosDefault, { AxiosInstance } from "axios"
 import io from "socket.io-client"
 import _ from "lodash-es"
 import * as firebase from "firebase/app"
@@ -240,46 +240,6 @@ import {
 } from "./room_poster_service"
 
 import { addLatencyLog } from "./room_log_service"
-
-const PRODUCTION = process.env.NODE_ENV == "production"
-const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
-const API_ROOT = BASE_URL + "api"
-
-const axios = axiosDefault.create()
-axios.defaults.baseURL = API_ROOT
-
-axios.interceptors.request.use(request => {
-  request["ts"] = performance.now()
-  return request
-})
-
-let REPORT_LATENCY = false
-
-axios.interceptors.response.use(response => {
-  const latency = Math.round(Number(performance.now() - response.config["ts"]))
-  const url = response.request.responseURL
-  console.log()
-  if (url.indexOf("/latency_report") == -1 && REPORT_LATENCY) {
-    addLatencyLog(axios, {
-      url,
-      method: response.config.method,
-      latency,
-      timestamp: Date.now(),
-    })
-  }
-  console.log(
-    "%c" +
-      latency +
-      "ms " +
-      response.config.method +
-      " " +
-      response.status +
-      " ",
-    "color: green",
-    response.request.responseURL
-  )
-  return response
-})
 
 class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]> = {}
@@ -390,8 +350,48 @@ export default defineComponent({
     debug_token: {
       type: String,
     },
+    axios: {
+      type: Function as PropType<AxiosInstance>,
+      required: true,
+    },
   },
   setup(props) {
+    const axios = props.axios
+    axios.interceptors.request.use(request => {
+      request["ts"] = performance.now()
+      return request
+    })
+
+    let REPORT_LATENCY = false
+
+    axios.interceptors.response.use(response => {
+      const latency = Math.round(
+        Number(performance.now() - response.config["ts"])
+      )
+      const url = response.request.responseURL
+      console.log()
+      if (url.indexOf("/latency_report") == -1 && REPORT_LATENCY) {
+        addLatencyLog(axios, {
+          url,
+          method: response.config.method,
+          latency,
+          timestamp: Date.now(),
+        })
+      }
+      console.log(
+        "%c" +
+          latency +
+          "ms " +
+          response.config.method +
+          " " +
+          response.status +
+          " ",
+        "color: green",
+        response.request.responseURL
+      )
+      return response
+    })
+
     console.log(props)
     axios.defaults.headers.common = {
       Authorization: `Bearer ${props.idToken}`,
@@ -745,8 +745,8 @@ export default defineComponent({
           alert("部屋に入れませんでした: " + res.data.status)
           location.href = "/"
         }
-        let socket_url = "http://localhost:5000/"
-        // let socket_url = res.data.socket_url
+        // let socket_url = "http://localhost:5000/"
+        let socket_url = res.data.socket_url
         if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"

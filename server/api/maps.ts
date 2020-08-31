@@ -59,7 +59,7 @@ async function maps_api_routes(
     const r = await map.enterRoom(req["requester"])
     const r2: MapEnterResponse = {
       ...r,
-      socket_url: process.env.SOCKET_URL || "http://localhost:5000/socket.io",
+      socket_url: process.env.SOCKET_URL || "http://localhost:5000/",
       socket_protocol: "Socket.IO",
     }
     if (r.ok) {

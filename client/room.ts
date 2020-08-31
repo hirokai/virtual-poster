@@ -7,10 +7,10 @@ import { UserId, RoomId } from "../@types/types"
 
 Vue.config.productionTip = true
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
-const axios = axiosDefault.create()
-axios.defaults.baseURL = API_ROOT
+const API_ROOT = "/api"
+const axios = axiosDefault.create({
+  baseURL: API_ROOT,
+})
 
 const firebaseConfig = {
   apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",

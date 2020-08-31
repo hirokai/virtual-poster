@@ -3,11 +3,11 @@ import PosterList from "./PosterList.vue"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import axios from "axios"
+import { PostIdTokenResponse } from "@/@types/types"
 
 Vue.config.productionTip = true
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 const firebaseConfig = {
@@ -43,7 +43,9 @@ firebase.auth().onAuthStateChanged(user => {
         axios.defaults.headers.common = {
           Authorization: `Bearer ${idToken}`,
         }
-        const { data } = await axios.post("/id_token", {
+        const { data: data1 } = await axios.get("/socket_url")
+        const socketURL = data1.socket_url
+        const { data } = await axios.post<PostIdTokenResponse>("/id_token", {
           token: idToken,
           debug_from: "poster_list",
         })
@@ -54,6 +56,7 @@ firebase.auth().onAuthStateChanged(user => {
           const propsData = {
             myUserId: data.user_id,
             idToken,
+            socketURL,
           }
           new Vue<typeof PosterList>({
             render: h => h(PosterList, { props: propsData }),

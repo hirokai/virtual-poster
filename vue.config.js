@@ -1,3 +1,5 @@
+const webpack = require("webpack")
+
 module.exports = {
   pages: {
     login: {
@@ -56,11 +58,21 @@ module.exports = {
       return args
     })
   },
+  configureWebpack: {
+    plugins: [
+      new webpack.IgnorePlugin(/^\.\/wordlists\/(?!english)/, /bip39\/src$/),
+    ],
+  },
   devServer: {
     proxy: {
       "^/api": {
         target: "http://localhost:3000",
         ws: true,
+        secure: false,
+      },
+      "^/img": {
+        target: "http://localhost:3000",
+        ws: false,
         secure: false,
       },
     },

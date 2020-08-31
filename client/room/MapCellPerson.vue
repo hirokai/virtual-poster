@@ -19,7 +19,7 @@
       width: 48 + 'px',
       height: 48 + 'px',
     }"
-    @dblclick="$emit('dblClick', { x: person.x, y: person.y })"
+    @dblclick="$emit('dblclick', { x: person.x, y: person.y })"
     @click="$emit('select', { x: person.x, y: person.y, event: $event })"
   >
     <image

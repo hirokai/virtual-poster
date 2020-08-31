@@ -605,4 +605,8 @@ export class MapModel {
       }
     }
   }
+  static async getAllowedRoomsFromCode(code: string): Promise<RoomId[]> {
+    // Stub
+    return code.split(":")
+  }
 }

@@ -25,10 +25,9 @@ import { RoomId } from "@/@types/types"
 import io from "socket.io-emitter"
 import cluster from "cluster"
 import _ from "lodash"
-import fastify_express from "fastify-express"
-import cors from "cors"
 import multer from "fastify-multer"
 import swaggerValidation from "openapi-validator-middleware"
+import fastifyCookie from "fastify-cookie"
 
 // Setting by env vars.
 const RUN_CLUSTER: number | false = process.env.RUN_CLUSTER
@@ -45,6 +44,8 @@ const POSTGRES_CONNECTION_STRING = process.env.NODE_TEST
   ? "postgres://postgres@localhost/virtual_poster_test"
   : process.env.POSTGRES_CONNECTION_STRING ||
     "postgres://postgres@localhost/virtual_poster"
+
+const DEBUG_TOKEN = process.env.DEBUG_TOKEN
 
 console.log("Settings:")
 console.log({
@@ -124,10 +125,7 @@ workerInitData()
       registerSocket(io_)
       ;(async () => {
         try {
-          await server.register(fastify_express)
-          if (!PRODUCTION) {
-            server.use(cors())
-          }
+          await server.register(fastifyCookie, { secret: DEBUG_TOKEN })
 
           swaggerValidation.init(`${__dirname}/virtual-poster.v1.yaml`, {
             framework: "fastify",

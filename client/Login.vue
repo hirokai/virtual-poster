@@ -1,10 +1,10 @@
 <template>
   <div id="app" v-cloak>
     <h1>バーチャルポスターセッション</h1>
-    <div>
+    <div v-if="nextAction == undefined">
       <div id="firebaseui-auth-container"></div>
     </div>
-    <div v-if="waitingVerification">
+    <div v-else-if="nextAction == 'verify'">
       <h2>
         {{ user.email }}に送られたメールの確認用リンクをクリックしてください。
       </h2>
@@ -13,11 +13,25 @@
       </div>
       <div>{{ verifyStatus }}</div>
     </div>
+    <div v-else-if="nextAction == 'register'">
+      <h2>
+        ユーザー情報を入力してください。
+      </h2>
+      <div>
+        <dir>Email: {{ user.email }}</dir>
+        <label for="">名前</label>
+        <input type="text" id="register-name" v-model="register_name" />
+        <label for="">アクセスコード</label>
+        <input type="text" id="access-code" v-model="access_code" />
+        <button @click="submitRegistration">登録</button>
+      </div>
+      <div>{{ verifyStatus }}</div>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import {} from "../@types/types"
+import { PostIdTokenResponse } from "../@types/types"
 
 import { onMounted, toRefs } from "@vue/composition-api"
 import axios from "axios"
@@ -28,24 +42,20 @@ import * as firebaseui from "firebaseui"
 import Vue from "vue"
 import { defineComponent, reactive } from "@vue/composition-api"
 import VueCompositionApi from "@vue/composition-api"
+
 Vue.use(VueCompositionApi)
 
-const ROOT_URL = process.env.VUE_APP_ROOT_URL || "http://localhost:8080"
-
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 export default defineComponent({
   setup() {
-    const state = reactive<{
-      user: any | null
-      waitingVerification: boolean
-      verifyStatus: string
-    }>({
-      user: null,
-      waitingVerification: false,
+    const state = reactive({
+      user: null as any | null,
       verifyStatus: "",
+      nextAction: undefined as "register" | "verify" | undefined,
+      register_name: "",
+      access_code: "",
     })
 
     const checkVerification = () => {
@@ -77,10 +87,32 @@ export default defineComponent({
               return false
             } else {
               console.log("Email verified:", state.user.emailVerified)
-              if (!state.user.emailVerified) {
-                state.waitingVerification = true
+              if (state.user.emailVerified) {
+                authResult.user.getIdToken(true).then(idToken => {
+                  axios.defaults.headers.common = {
+                    Authorization: `Bearer ${idToken}`,
+                  }
+                  axios
+                    .post<PostIdTokenResponse>("/id_token", {
+                      token: idToken,
+                    })
+                    .then(data => {
+                      console.log("/id_token result", data)
+                      if (data.data.registered == "can_register") {
+                        state.nextAction = "register"
+                      } else if (data.data.registered == "registered") {
+                        state.nextAction = undefined
+                        location.href = "/"
+                      }
+                    })
+                    .catch(err => {
+                      console.error(err)
+                    })
+                })
+              } else {
+                state.nextAction = "verify"
                 const actionCodeSettings = {
-                  url: ROOT_URL + "/",
+                  url: "/",
                 }
                 state.user
                   .sendEmailVerification(actionCodeSettings)
@@ -118,9 +150,28 @@ export default defineComponent({
     })
 
     console.log("state", state)
+    const submitRegistration = ev => {
+      console.log(state.register_name)
+      axios
+        .post("/register", {
+          email: state.user.email,
+          name: state.register_name,
+          access_code: state.access_code,
+        })
+        .then(({ data }) => {
+          console.log("/register result", data)
+          if (data.ok) {
+            location.href = "/"
+          }
+        })
+        .catch(err => {
+          console.error(err)
+        })
+    }
     return {
       ...toRefs(state),
       checkVerification,
+      submitRegistration,
     }
   },
 })

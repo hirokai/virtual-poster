@@ -15,8 +15,8 @@
         :rows="numInputRows"
         @compositionstart="composing = true"
         @compositionend="composing = false"
-        @focus="$emit('onFocusInput', true)"
-        @blur="$emit('onFocusInput', false)"
+        @focus="$emit('on-focus-input', true)"
+        @blur="$emit('on-focus-input', false)"
         placeholder="Shift+Enterで送信"
         :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
       ></textarea>
@@ -25,18 +25,18 @@
           src="/img/lock-152879_1280.png"
           height="30px"
           alt="暗号化"
-          @click="$emit('setEncryption', !enableEncryption)"
+          @click="$emit('set-encryption', !enableEncryption)"
       /></span>
       <button
         id="submit"
-        @click="$emit('submitComment', inputText)"
+        @click="$emit('submit-comment', inputText)"
         :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
       >
         {{ editingOld ? "保存" : "送信" }}
       </button>
       <button
         id="leave-chat"
-        @click="$emit('leaveChat')"
+        @click="$emit('leave-chat')"
         :disabled="!chatGroup || chatGroup.length == 0"
       >
         会話から離脱
@@ -85,7 +85,7 @@
           <span
             v-if="myself && c.person == myself.id"
             class="comment-delete"
-            @click="$emit('deleteComment', c.id)"
+            @click="$emit('delete-comment', c.id)"
             >削除</span
           >
           <span
@@ -167,7 +167,7 @@ export default defineComponent({
       required: true,
     },
   },
-  setup(props, context) {
+  setup (props, context) {
     const state = reactive({
       inputText: "",
     })
@@ -226,7 +226,7 @@ export default defineComponent({
       state.inputText = ""
     }
     const startUpdateComment = (cid: string) => {
-      context.emit("setEditingOld", cid)
+      context.emit("set-editing-old", cid)
       state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#local-chat-input"

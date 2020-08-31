@@ -24,6 +24,16 @@
         <a href="/admin">管理画面</a>
       </div>
     </div>
+    <div v-else-if="required_action == 'register'">
+      <p>メールアドレス確認済みです。</p>
+      <a href="/register"> 登録へ進む</a>
+    </div>
+    <div v-else-if="required_action == 'verify'">
+      Emailアドレス（{{
+        user.email
+      }}）に確認のメールを送信しました。メールに記載されたリンクをクリックしてユーザー登録を完了してください。
+      <br />
+    </div>
     <div v-else>
       このEmailアドレス（{{ user.email }}）はユーザー登録されていません。
       <br />
@@ -44,14 +54,13 @@ import {
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
-import { Room, UserId } from "../@types/types"
+import { Room, UserId, PostIdTokenResponse } from "../@types/types"
 
 import axios from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 const url = new URL(location.href)
@@ -64,20 +73,14 @@ const debug_token: string | undefined =
 const logged_in = !!JSON.parse(url.searchParams.get("logged_in") || "false")
 export default defineComponent({
   setup() {
-    const state = reactive<{
-      myUserId: string | null
-      user: firebase.User | null
-      loggedIn: "Yes" | "No" | "Unknown"
-      admin: boolean
-      registered: boolean
-      rooms: Room[]
-    }>({
-      myUserId: null,
-      user: null,
-      loggedIn: logged_in ? "Yes" : "Unknown",
+    const state = reactive({
+      myUserId: null as string | null,
+      user: null as firebase.User | null,
+      loggedIn: (logged_in ? "Yes" : "Unknown") as "Yes" | "No" | "Unknown",
       admin: false,
       registered: true,
-      rooms: [],
+      rooms: [] as Room[],
+      required_action: undefined as undefined | "register" | "verify",
     })
     onMounted(() => {
       const firebaseConfig = {
@@ -147,15 +150,36 @@ export default defineComponent({
               axios.defaults.headers.common = {
                 Authorization: `Bearer ${idToken}`,
               }
-              const { data } = await axios.post("/id_token", {
-                token: idToken,
-              })
+              const { data } = await axios.post<PostIdTokenResponse>(
+                "/id_token",
+                {
+                  token: idToken,
+                }
+              )
               console.log("/id_token result", data)
-              state.myUserId = data.user_id
-              if (data.ok) {
-                state.admin = data.admin
+              state.myUserId = data.user_id || null
+              if (data.registered == "registered") {
+                state.admin = data.admin || false
                 const r = await axios.get("/maps")
                 state.rooms = r.data
+              } else if (data.registered == "can_register") {
+                state.required_action = "register"
+                state.registered = false
+              } else if (data.registered == "should_verify") {
+                state.required_action = "verify"
+                state.registered = false
+                const actionCodeSettings = {
+                  url: "/register",
+                }
+                state.user
+                  .sendEmailVerification(actionCodeSettings)
+                  .then(() => {
+                    console.log("Verification email sent")
+                  })
+                  .catch(function(error) {
+                    console.error(error)
+                  })
+                console.log("Waiting for email verification")
               } else {
                 state.registered = false
                 console.log("User auth failed")

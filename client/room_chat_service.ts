@@ -416,7 +416,7 @@ export const setupEncryption = async (
   }
   if (prv_str_local.jwk) {
     state.privateKeyString = prv_str_local.jwk
-    const pub = await encryption.importPublicKey(state.publicKeyString)
+    const pub = await encryption.importPublicKey(state.publicKeyString, true)
     if (!pub) {
       console.error("Public key import failed")
       return false
@@ -427,7 +427,7 @@ export const setupEncryption = async (
       console.error("Private key import failed")
       return false
     }
-    state.privateKey = prv
+    state.privateKey = prv.key
     return true
   } else if (prv_str_local.pkcs8) {
     //Converting existing private key to JWK format.

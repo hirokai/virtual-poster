@@ -16,7 +16,7 @@
       width: 48 + 'px',
       height: 48 + 'px',
     }"
-    @dblclick="$emit('dblClick', { x: cell.x, y: cell.y })"
+    @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y, event: $event })"
   >
     <image
@@ -190,7 +190,7 @@ export default defineComponent({
       } else if (file.type != "image/png" && file.type != "application/pdf") {
         console.error("File type invalid")
       } else {
-        context.emit("uploadPoster", file, poster_id)
+        context.emit("upload-poster", file, poster_id)
       }
     }
     return {

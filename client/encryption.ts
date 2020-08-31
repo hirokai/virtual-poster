@@ -1,5 +1,5 @@
 import { AxiosInstance, AxiosStatic } from "axios"
-
+import * as bip39 from "bip39"
 type EncryptedData = {
   iv: string
   data: string
@@ -29,8 +29,15 @@ export async function exportPrivateKeyPKCS(key: CryptoKey): Promise<string> {
   return encodingFunc(new Uint8Array(v))
 }
 
+function decodeBase64URL(s: string): Uint8Array {
+  return Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), c =>
+    c.charCodeAt(0)
+  )
+}
+
 export async function exportPrivateKeyJwk(key: CryptoKey): Promise<string> {
   const v = await crypto.subtle.exportKey("jwk", key)
+  console.log(decodeBase64URL(v.x!))
   return JSON.stringify(v)
 }
 
@@ -102,12 +109,14 @@ export async function importPublicKey(
       "spki",
       data,
       { name: "ECDH", namedCurve: "P-256" },
-      exportable,
+      true,
       // https://gist.github.com/pedrouid/b4056fd1f754918ddae86b32cf7d803e#ecdh---importkey
       // Usages must be empty for public keys
       []
     )
-    // console.log("importPublicKey imported", key)
+    console.log("Public key: ", key)
+    const obj = await crypto.subtle.exportKey("jwk", key)
+    console.log("importPublicKey imported", key, obj)
 
     return key
   } catch (err) {
@@ -271,13 +280,39 @@ export async function decrypt_str(
   return decrypted ? fromUint8Array(decrypted) : null
 }
 
+export function getMnemonic(secret_d: string) {
+  const buffer = Buffer.from(decodeBase64URL(secret_d))
+  const hex = buffer.toString("hex")
+  const mnemonic = bip39.entropyToMnemonic(hex)
+  return mnemonic
+}
+
 export async function importPrivateKeyJwk(
   data: JsonWebKey,
   publicKey: CryptoKey,
   exportable = false
-): Promise<CryptoKey | null> {
+): Promise<{ key: CryptoKey; mnemonic: string } | null> {
   try {
-    console.log("importPrivateKeyJwk() importing", data)
+    console.log(
+      "importPrivateKeyJwk() importing",
+      data,
+      decodeBase64URL(data.d!).length,
+      decodeBase64URL(data.x!).length,
+      decodeBase64URL(data.y!).length
+    )
+
+    const fromHexString = hexString =>
+      new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)))
+
+    // const buffer = Buffer.from(decodeBase64URL(data.d!))
+    // const hex = buffer.toString("hex")
+    // const mnemonic = bip39.entropyToMnemonic(hex)
+    // const hex2 = bip39.mnemonicToEntropy(mnemonic)
+    // const buffer2 = fromHexString(hex2)
+    // console.log(buffer, hex, mnemonic, hex2, buffer2)
+
+    const mnemonic = getMnemonic(data.d!)
+
     const key = await crypto.subtle.importKey(
       "jwk",
       data,
@@ -292,7 +327,7 @@ export async function importPrivateKeyJwk(
     const enc = await encrypt_str(publicKey, key, s)
     const s2 = await decrypt_str(publicKey, key, enc)
     if (s == s2) {
-      return key
+      return { key, mnemonic }
     } else {
       return null
     }

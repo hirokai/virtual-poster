@@ -945,8 +945,15 @@ paths:
                     type: string
                   debug_token:
                     type: string
+                  registered:
+                    type: string
+                    enum:
+                      - registered
+                      - can_register
+                      - should_verify
                 required:
                   - ok
+                  - registered
       operationId: post-id_token
       parameters:
         - schema:

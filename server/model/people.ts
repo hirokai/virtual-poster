@@ -99,7 +99,6 @@ export async function create(
   if ((email == "" || name == "") && merge_strategy == "reject") {
     return { ok: false, error: "Name and/or email is missing" }
   }
-  const uid = genUserId()
   const count = (
     await db.query(`SELECT count(*) from person where name=$1;`, [name])
   )[0].count
@@ -107,9 +106,14 @@ export async function create(
     log.warn("User name already exists")
     return { ok: false, error: "User name " + name + " already exists" }
   }
+  const uid = genUserId()
   try {
     await db.query(`BEGIN`)
     if (merge_strategy == "reject") {
+      const r = await db.query(`SELECT 1 FROM person WHERE email=$1;`, [email])
+      if (r.length > 0) {
+        return { ok: false, error: "Email already exists" }
+      }
       await db.query(
         `INSERT INTO person (id,email,name,last_updated,avatar,role) values ($1,$2,$3,$4,$5,$6);`,
         [uid, email, name, Date.now(), avatar, typ]

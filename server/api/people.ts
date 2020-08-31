@@ -110,6 +110,26 @@ async function routes(
       }
     }
   })
+
+  fastify.post<any>("/register", async req => {
+    const email = req.body.email as string
+    const name = req.body.name as string
+    const access_code = req.body.access_code as string | undefined
+    console.log(name, access_code)
+    const rooms = access_code
+      ? await model.MapModel.getAllowedRoomsFromCode(access_code)
+      : []
+    const avatar = model.people.randomAvatar()
+    const r = await model.people.create(
+      email,
+      name,
+      "user",
+      avatar,
+      rooms,
+      "reject"
+    )
+    return r
+  })
 }
 
 export default routes

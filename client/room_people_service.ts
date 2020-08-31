@@ -10,7 +10,7 @@ import {
   MySocketObject,
 } from "../@types/types"
 import _ from "lodash-es"
-import { AxiosStatic, AxiosInstance, AxiosResponse } from "axios"
+import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
 import { moveOneStep, jwt_hash } from "./room_map_service"
 import { SocketIO } from "socket.io-client"
 
@@ -92,8 +92,7 @@ export const initPeopleService = async (
     AxiosResponse<{ [index: string]: string }>
   ] = await Promise.all([
     axios.get<Person[]>("/maps/" + props.room_id + "/people"),
-    axios({
-      baseURL: BASE_URL,
+    axiosDefault({
       method: "GET",
       url: "/img/avatars_base64.json",
     }),

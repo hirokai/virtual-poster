@@ -1,8 +1,10 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { UserId } from "@/@types/types"
+import { UserId, PostIdTokenResponse } from "@/@types/types"
 import { verifyIdToken } from "../auth"
+
+const USER_REGISTRATION = process.env.USER_REGISTRATION == "YES"
 
 async function public_api_routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -39,16 +41,7 @@ async function public_api_routes(
 
   fastify.post<any>(
     "/id_token",
-    async (
-      req
-    ): Promise<{
-      ok: boolean
-      error?: string
-      user_id?: UserId
-      admin?: boolean
-      public_key?: string
-      debug_token?: string
-    }> => {
+    async (req, reply): Promise<PostIdTokenResponse> => {
       fastify.log.info("/id_token")
       const token: string = req.body.token || ""
       // log.debug("/id_token invoked")
@@ -101,28 +94,43 @@ async function public_api_routes(
           )
           const public_key: string | undefined =
             rows.length == 1 ? rows[0].public_key : undefined
-          if (typ == "admin") {
+          return reply.setCookie("session_id", "hoge_session").send({
+            ok: true,
+            user_id,
+            admin: typ == "admin",
+            public_key,
+            debug_token: typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
+            registered: "registered",
+          })
+        } else {
+          if (decodedToken.email_verified) {
             return {
-              ok: true,
-              user_id,
-              admin: true,
-              public_key,
-              debug_token: process.env.DEBUG_TOKEN,
+              ok: false,
+              error: "User email was not found on DB, but email is verified",
+              registered: USER_REGISTRATION ? "can_register" : undefined,
             }
           } else {
-            return { ok: true, user_id, admin: false }
+            return {
+              ok: false,
+              error: "User email was not found",
+              registered: USER_REGISTRATION ? "should_verify" : undefined,
+            }
           }
-        } else {
-          return { ok: false, error: "User email was not found" }
         }
       } else {
         return {
           ok: false,
-          error: "No email was found in the decoded token",
+          error:
+            "No email was found in the decoded token. This is likely to be a bug.",
         }
       }
     }
   )
+  fastify.get("/socket_url", async () => {
+    return {
+      socket_url: process.env.SOCKET_URL || "http://localhost:5000/socket.io",
+    }
+  })
 }
 
 export default public_api_routes

@@ -64,13 +64,13 @@
           :rows="numInputRows"
           @compositionstart="composing = true"
           @compositionend="composing = false"
-          @focus="$emit('onFocusInput', true)"
-          @blur="$emit('onFocusInput', false)"
+          @focus="$emit('on-focus-input', true)"
+          @blur="$emit('on-focus-input', false)"
           placeholder="Shift+Enterで送信"
         ></textarea>
         <button
           id="submit-poster-comment"
-          @click="$emit('submitPosterComment', inputText)"
+          @click="$emit('submit-poster-comment', inputText)"
         >
           {{ editingOld ? "保存" : "送信" }}
         </button>
@@ -86,7 +86,7 @@
           <span
             v-if="myself && c.person == myself.id"
             class="comment-delete"
-            @click="$emit('deleteComment', c.id)"
+            @click="$emit('delete-comment', c.id)"
             >削除</span
           >
           <span
@@ -130,11 +130,10 @@ import {
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
-const axios = axiosDefault.create()
-
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
-axios.defaults.baseURL = API_ROOT
+const API_ROOT = "/api"
+const axios = axiosDefault.create({
+  baseURL: API_ROOT,
+})
 
 export default defineComponent({
   props: {

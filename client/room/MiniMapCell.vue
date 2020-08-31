@@ -12,7 +12,7 @@
       width: 9 + 'px',
       height: 9 + 'px',
     }"
-    @dblclick="$emit('dblClick', { x: cell.x, y: cell.y })"
+    @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y }, $event)"
   >
     <image xlink:href="/img/map/kusa.png" width="9px" height="9px" />

@@ -148,11 +148,15 @@ export async function protectedRoute(
         req["requester_type"] = typ
       }
     } else {
-      await reply.status(403).send({
-        success: false,
-        message: "Email is not registered",
-        email: decodedToken.email,
-      })
+      if (req.url.includes("/api/register")) {
+        req["requester_email"] = decodedToken.email
+      } else {
+        await reply.status(403).send({
+          success: false,
+          message: "Email is not registered",
+          email: decodedToken.email,
+        })
+      }
     }
   }
 }

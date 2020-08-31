@@ -71,8 +71,7 @@
 import { RoomId, Room } from "@/@types/types"
 import { AxiosStatic } from "axios"
 import { keyBy } from "lodash-es"
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 
 import Vue from "vue"
 import {
@@ -96,7 +95,7 @@ export default defineComponent({
       type: String,
     },
   },
-  setup(props) {
+  setup (props) {
     console.log(props)
     const state = reactive<{
       rooms: { [room_id: string]: Room }

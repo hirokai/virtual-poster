@@ -89,7 +89,7 @@ import "firebase/auth"
 import jsSHA from "jssha"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 const SOCKET_URL = PRODUCTION

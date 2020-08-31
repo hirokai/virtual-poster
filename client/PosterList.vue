@@ -56,7 +56,7 @@ import _ from "lodash-es"
 import io from "socket.io-client"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = PRODUCTION ? "/api" : "http://localhost:3000/api"
+const API_ROOT = "/api"
 const SOCKET_URL = PRODUCTION
   ? "https://posters.coi-conference.org" + ":5000"
   : "http://localhost:5000"
@@ -79,12 +79,16 @@ export default defineComponent({
       type: String,
       required: true,
     },
+    socketURL: {
+      type: String,
+      required: true,
+    },
   },
   setup(props) {
     const state = reactive({
       rooms: {} as { [index: string]: Room },
       room_id: room_id as RoomId,
-      socket: io(SOCKET_URL, { path: "/socket.io" }) as SocketIO.Socket,
+      socket: io(props.socketURL, { path: "/socket.io" }) as SocketIO.Socket,
       people: {} as { [index: string]: Person },
       posters: {} as { [index: string]: PosterTyp },
       inputText: "",

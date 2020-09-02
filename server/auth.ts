@@ -87,8 +87,32 @@ export async function protectedRoute(
   req: FastifyRequest<any, any>,
   reply: FastifyReply
 ): Promise<void> {
-  // your logic
-  // req.log.info(req.headers)
+  const cookie_session_id = req.cookies["virtual_poster_session_id"]
+  const user_id = await model.redis.sessions.get(
+    "cookie:uid:" + cookie_session_id
+  )
+  console.log("protectedRoute():", req.url, cookie_session_id, user_id)
+  if (req.url.indexOf("/api/register") == 0) {
+    const user_email = await model.redis.sessions.get(
+      "cookie:email:" + cookie_session_id
+    )
+    req["requester_email"] = user_email
+    console.log("/api/register protect", { user_email, cookie_session_id })
+    if (!user_email) {
+      await reply.status(403).send("No temporary registration")
+    }
+    return
+  } else if (user_id) {
+    req["requester"] = user_id
+    const typ = await model.people.getUserType(user_id)
+    if (typ) {
+      req["requester_type"] = typ
+    } else {
+      await reply.status(403).send("No user found. This is likely a bug.")
+    }
+    return
+  }
+
   const token: string | undefined = req.headers["authorization"]
     ? req.headers["authorization"].split(" ")[1]
     : req.query["access_token"]
@@ -109,8 +133,8 @@ export async function protectedRoute(
   ) {
     const user_id = req.query.debug_as as string
     req["requester"] = user_id
-    const typ = model.people.getUserType(user_id)
-    req.log.debug(typ)
+    const typ = await model.people.getUserType(user_id)
+    req.log.debug({ type: typ })
     if (typ) {
       req["requester_type"] = typ
     } else {
@@ -119,6 +143,7 @@ export async function protectedRoute(
     return
   }
   if (!token) {
+    req.log.warn({ cookie_session_id, user_id, token })
     await reply.status(403).send("No token provided.")
     return
   }
@@ -148,15 +173,11 @@ export async function protectedRoute(
         req["requester_type"] = typ
       }
     } else {
-      if (req.url.includes("/api/register")) {
-        req["requester_email"] = decodedToken.email
-      } else {
-        await reply.status(403).send({
-          success: false,
-          message: "Email is not registered",
-          email: decodedToken.email,
-        })
-      }
+      await reply.status(403).send({
+        success: false,
+        message: "Email is not registered",
+        email: decodedToken.email,
+      })
     }
   }
 }

@@ -93,15 +93,26 @@ async function protected_api_routes(
     }
   )
 
+  fastify.get<any>("/public_key", async req => {
+    const rows = await model.db.query(
+      `SELECT public_key FROM public_key WHERE person=$1`,
+      [req["requester"]]
+    )
+    const public_key: string | undefined =
+      rows.length == 1 ? rows[0].public_key : undefined
+    return { ok: !!public_key, public_key }
+  })
+
   fastify.post<any>("/public_key", async req => {
+    const public_key = req.body.key as string
     const r = req.body.force
       ? await model.db.query(
           `INSERT INTO public_key (public_key,person) values ($1,$2) ON CONFLICT ON CONSTRAINT public_key_pkey DO UPDATE SET public_key=$1;`,
-          [req.body.key, req["requester"]]
+          [public_key, req["requester"]]
         )
       : await model.db
           .query(`INSERT INTO public_key (public_key,person) values ($1,$2);`, [
-            req.body.key,
+            public_key,
             req["requester"],
           ])
           .catch(() => null)
@@ -109,7 +120,9 @@ async function protected_api_routes(
     if (ok && req["requester"]) {
       const p = await model.people.get(req["requester"])
       if (p) {
-        emit.people([p])
+        emit.peopleUpdate([
+          { public_key, id: req["requester"], last_updated: Date.now() },
+        ])
       }
     }
     return { ok, error: r != null ? "Exists" : undefined }

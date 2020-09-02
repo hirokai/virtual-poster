@@ -262,29 +262,29 @@ export class MapModel {
     ok: boolean
     status: "New" | "ComeBack" | "NoAccess" | "Deleted" | "NoSpace"
   }> {
-    for (let count = 0; count < 100; count++) {
-      const r = await db.query(
-        `SELECT count(*) from person_room_access where room=$1 and person=$2;`,
-        [this.room_id, user_id]
-      )
-      if (r[0].count == 0) {
-        return { ok: false, status: "NoAccess" }
-      }
-      const pos: Point | null = await this.getRandomOpenPos()
-      if (!pos) {
-        log.error("No open space")
-        return { ok: false, status: "NoSpace" }
-      }
-      const r2 = await model.people.setPos(
-        user_id,
-        this.room_id,
-        pos,
-        "down",
-        true
-      )
-      if (r2) {
-        return { ok: true, status: "New" }
-      }
+    console.log("assignUserPosition()", user_id)
+    const r = await db.query(
+      `SELECT count(*) from person_room_access where room=$1 and person=$2;`,
+      [this.room_id, user_id]
+    )
+    if (r[0].count == 0) {
+      return { ok: false, status: "NoAccess" }
+    }
+    const pos: Point | null = await this.getRandomOpenPos(user_id)
+    if (!pos) {
+      log.error("No open space")
+      return { ok: false, status: "NoSpace" }
+    }
+    console.log("Found open pos for user:", pos)
+    const r2 = await model.people.setPos(
+      user_id,
+      this.room_id,
+      pos,
+      "down",
+      true
+    )
+    if (r2) {
+      return { ok: true, status: "New" }
     }
     return { ok: false, status: "NoSpace" }
   }
@@ -319,29 +319,29 @@ export class MapModel {
       typing ? "1" : "0"
     )
   }
-  async getRandomOpenPos(): Promise<Point | null> {
-    const cells = await this.getAllStaticMapCellsFromRDB()
-    const ps = await model.people.getAllPeopleList(this.room_id)
-    const people_places = _.fromPairs(
-      ps.map(p => {
-        return ["" + p.x + "." + p.y, true]
-      })
+  async getRandomOpenPos(user_id: UserId): Promise<Point | null> {
+    const last_updated = Date.now()
+    const direction = "up"
+    const rows = await db.query(
+      `INSERT INTO person_position
+            (room,person,last_updated,x,y,direction)
+        SELECT
+            $1,$2,$3,x,y,$4 FROM map_cell 
+        WHERE
+            room=$1
+            AND (x,y) NOT IN
+                (SELECT x,y FROM person_position WHERE room=$1)
+            AND kind NOT IN ('water','wall','poster','poster_seat')
+        ORDER BY RANDOM()
+        LIMIT 1
+            RETURNING x,y;
+    `,
+      [this.room_id, user_id, last_updated, direction]
     )
-    const open_cells = _.shuffle(
-      _.filter(cells, c => {
-        return (
-          c.open &&
-          c.kind != "poster_seat" &&
-          !people_places["" + c.x + "." + c.y]
-        )
-      })
-    )
-    // console.log("open_cells: ", open_cells.length, people_places)
-    if (open_cells.length == 0) {
+    if (rows.length == 0) {
       return null
     } else {
-      const c = open_cells[0]
-      return { x: c.x, y: c.y }
+      return { x: rows[0].x, y: rows[0].y }
     }
   }
   async tryToMove(

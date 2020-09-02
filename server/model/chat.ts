@@ -209,10 +209,12 @@ export async function deleteGroup(group_id: ChatGroupId): Promise<boolean> {
     return false
   }
 }
+
 export async function getAllComments(
   room_id: RoomId,
   user_id: UserId | null
 ): Promise<ChatComment[]> {
+  console.log("getAllComments()", room_id, user_id)
   const from_me = await db.query(
     `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment where c.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [user_id, room_id]
@@ -248,6 +250,7 @@ export async function getAllComments(
   const ds2 = _.uniqBy(ds, "id")
   return ds2
 }
+
 export async function getPosterComments(
   poster_id: PosterId
 ): Promise<ChatCommentDecrypted[]> {
@@ -391,27 +394,47 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
     return false
   }
 }
+
 export async function getComment(
   comment_id: string
 ): Promise<ChatComment | null> {
-  const rows1 = await db.query(
-    `select c.id as id,c.person,c.x,c.y,string_agg(cp.person,'::::') as to_user,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c join comment_to_person as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+  const from_me = await db.query(
+    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [comment_id]
   )
-  const rows2 = await db.query(
-    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_user,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c join comment_to_poster as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+  const to_me = await db.query(
+    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [comment_id]
   )
-  const ds: ChatComment[] = rows1.concat(rows2).map(r => {
-    r.to = r["to_user"].split("::::")
-    delete r["to_user"]
-    r["timestamp"] = parseInt(r["timestamp"])
-    r["last_updated"] = parseInt(r["last_updated"])
-    return r
+
+  const ds: ChatComment[] = from_me.concat(to_me).map(r => {
+    const for_users: string[] = (r["to"] || "").split("::::")
+    const comments_for_users: string[] = (r["to_c"] || "").split("::::")
+    const encrypted_for_users: boolean[] = r["to_e"]
+    const r2: ChatComment = {
+      id: r.id,
+      timestamp: parseInt(r["timestamp"]),
+      last_updated: parseInt(r["last_updated"]),
+      room: r.room,
+      person: r.person,
+      x: r.x,
+      y: r.y,
+      kind: r.kind,
+      texts: _.zipWith(
+        for_users,
+        comments_for_users,
+        encrypted_for_users,
+        (to, text, encrypted) => {
+          return { to, text, encrypted }
+        }
+      ),
+    }
+    return r2
   })
   const ds2 = _.uniqBy(ds, "id")
   return ds2[0]
 }
+
 export async function updateComment(
   user_id: string,
   comment_id: string,
@@ -507,6 +530,7 @@ export async function updatePosterComment(
     }
   }
 }
+
 export async function removeComment(
   user_id: string,
   comment_id: string
@@ -526,6 +550,7 @@ export async function removeComment(
   const ok = await deleteComment(comment_id)
   return { ok, kind: doc.kind, removed_to_users: doc.texts.map(t => t.to) }
 }
+
 export function genCommentId(): CommentId {
   for (;;) {
     const s = "C" + shortid.generate()
@@ -534,6 +559,7 @@ export function genCommentId(): CommentId {
     }
   }
 }
+
 export function genGroupId(): ChatGroupId {
   for (;;) {
     const s = "G" + shortid.generate()
@@ -542,6 +568,7 @@ export function genGroupId(): ChatGroupId {
     }
   }
 }
+
 export async function getGroupIdOfUser(
   room_id: RoomId,
   user_id: UserId

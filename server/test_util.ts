@@ -16,7 +16,7 @@ export const random_str = (N?: number): string => {
 export const createUser = async (room_id: RoomId): Promise<PersonWithEmail> => {
   const name = "Test user " + random_str(5)
   const email = "hoge" + random_str(5) + "@gmail.com"
-  const { user_id } = await model.people.create(
+  const { user } = await model.people.create(
     email,
     name,
     "user",
@@ -24,10 +24,10 @@ export const createUser = async (room_id: RoomId): Promise<PersonWithEmail> => {
     [room_id],
     "reject"
   )
-  if (!user_id) {
+  if (!user) {
     throw "No user was created"
   }
-  return await model.people.getUnwrap(user_id)
+  return await model.people.getUnwrap(user.id)
 }
 
 export function mkMapData(rows: number, cols: number): string {

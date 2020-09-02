@@ -79,6 +79,7 @@ export const redis = {
   accounts: new Redis({ db: 0 }),
   staticMap: new Redis({ db: 1 }),
   sockets: new Redis({ db: 2 }),
+  sessions: new Redis({ db: 3 }),
 }
 
 export function userLog(obj: UserOperationLog): void {
@@ -94,7 +95,6 @@ export async function initData(
   log.info("initData() with", pg_connection_string)
   db = dbWith(pg_connection_string)
   await redis.accounts.flushdb()
-  // await redis.people.flushdb()
   await redis.staticMap.flushdb()
   await redis.sockets.flushdb()
   const rows = await db.query("select * from room;")

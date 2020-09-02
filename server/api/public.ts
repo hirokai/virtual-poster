@@ -28,8 +28,8 @@ async function public_api_routes(
           model.people.randomAvatar(),
           ["default"]
         )
-        if (r.user_id) {
-          return "Admin account was made: " + email + "\n"
+        if (r.user) {
+          return "Admin account was made: " + r.user.id + "\n"
         } else {
           return r.error + "\n"
         }
@@ -47,7 +47,7 @@ async function public_api_routes(
       // log.debug("/id_token invoked")
       if (token == "") {
         //For debug_as
-        return { ok: false }
+        return { ok: false, updated: false }
       }
       if (
         process.env.DEBUG_TOKEN &&
@@ -59,11 +59,16 @@ async function public_api_routes(
         if (typ != null) {
           return {
             ok: true,
+            updated: false,
             user_id: req.query.debug_as,
             admin: typ == "admin",
           }
         } else {
-          return { ok: false, error: "User ID (for debug_as) not found" }
+          return {
+            ok: false,
+            updated: false,
+            error: "User ID (for debug_as) not found",
+          }
         }
       }
       fastify.log.info(token)
@@ -78,6 +83,7 @@ async function public_api_routes(
         )
         return {
           ok: false,
+          updated: false,
           error: "Invalid token" + (error ? ": " + error : ""),
         }
       }
@@ -86,40 +92,92 @@ async function public_api_routes(
       if (email) {
         const user_id = await model.people.getUserIdFromEmail(email)
         if (user_id) {
-          const typ = await model.people.getUserType(user_id)
-          await model.people.saveJWT(email, token, decodedToken)
-          const rows = await model.db.query(
-            `SELECT public_key FROM public_key WHERE person=$1`,
-            [user_id]
-          )
-          const public_key: string | undefined =
-            rows.length == 1 ? rows[0].public_key : undefined
-          return reply.setCookie("session_id", "hoge_session").send({
-            ok: true,
-            user_id,
-            admin: typ == "admin",
-            public_key,
-            debug_token: typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
-            registered: "registered",
-          })
-        } else {
-          if (decodedToken.email_verified) {
-            return {
+          const user = await model.people.get(user_id)
+          if (!user) {
+            return reply.clearCookie("virtual_poster_session_id").send({
               ok: false,
-              error: "User email was not found on DB, but email is verified",
-              registered: USER_REGISTRATION ? "can_register" : undefined,
-            }
+            })
           } else {
-            return {
-              ok: false,
-              error: "User email was not found",
-              registered: USER_REGISTRATION ? "should_verify" : undefined,
+            const r = await verifyIdToken(token)
+            const typ = await model.people.getUserType(user_id)
+
+            const rows = await model.db.query(
+              `SELECT public_key FROM public_key WHERE person=$1`,
+              [user_id]
+            )
+            const public_key: string | undefined =
+              rows.length == 1 ? rows[0].public_key : undefined
+            if (req.body.force || !r.ok) {
+              await model.people.saveJWT(email, token, decodedToken)
+              const sid = await model.people.createSessionId(
+                "user",
+                email,
+                user_id
+              )
+              return reply
+                .setCookie("virtual_poster_session_id", sid, {
+                  expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+                })
+                .send({
+                  ok: true,
+                  user_id,
+                  updated: true,
+                  name: user.name,
+                  admin: typ == "admin",
+                  public_key,
+                  token_actual: token,
+                  debug_token:
+                    typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
+                  registered: "registered",
+                })
+            } else {
+              const curent_token = await model.people.getJWT(user_id)
+              return reply.send({
+                ok: true,
+                user_id,
+                updated: false,
+                token_actual: curent_token || undefined,
+                name: user.name,
+                admin: typ == "admin",
+                public_key,
+                debug_token:
+                  typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
+                registered: "registered",
+              })
             }
+          }
+        } else {
+          const sid = await model.people.createSessionId(
+            "pre_registration",
+            email
+          )
+          if (decodedToken.email_verified) {
+            return reply
+              .setCookie("virtual_poster_session_id", sid, {
+                expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+              })
+              .send({
+                ok: false,
+                error: "User email was not found on DB, but email is verified",
+                registered: USER_REGISTRATION ? "can_register" : undefined,
+              })
+          } else {
+            return reply
+              .setCookie("virtual_poster_session_id", sid, {
+                expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+              })
+              .send({
+                ok: false,
+                error: "User email was not found",
+                registered: USER_REGISTRATION ? "should_verify" : undefined,
+              })
           }
         }
       } else {
         return {
           ok: false,
+          updated: false,
+
           error:
             "No email was found in the decoded token. This is likely to be a bug.",
         }

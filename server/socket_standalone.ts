@@ -107,9 +107,19 @@ function run() {
   }
 
   const io = SocketIO(server, {
-    transports: ["websocket"],
     path: "/socket.io",
     origins: "*:*",
+  })
+
+  // middleware
+  io.use((socket, next) => {
+    const cookie = socket.handshake.headers.cookie
+    socket.handshake.headers.cookie = cookie + "; hoge=1"
+
+    log.debug(cookie)
+    return next()
+    // }
+    // return next(new Error("authentication error"))
   })
 
   const adapter: RedisAdapter = redis()

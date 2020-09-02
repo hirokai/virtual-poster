@@ -23,7 +23,7 @@ const UPLOAD_TO_S3 = process.env.UPLOAD_TO_S3 == "YES"
 AWS.config.update({ region: process.env.AWS_REGION as string })
 const s3 = new AWS.S3({ apiVersion: "2006-03-01", signatureVersion: "v4" })
 
-var cloudfront = new AWS.CloudFront({
+const cloudfront = new AWS.CloudFront({
   apiVersion: "2017-03-25",
 })
 
@@ -31,7 +31,7 @@ async function uploadFileToS3(file_path: string): Promise<string> {
   const key = "files/" + path.basename(file_path)
   const invalidate_items = ["/" + key]
 
-  var params = {
+  const params = {
     DistributionId: "E38Y8MK1L65IXG",
     InvalidationBatch: {
       CallerReference: String(new Date().getTime()),
@@ -335,9 +335,9 @@ async function routes(
     }
   )
 
-  fastify.get("/posters", async req => {
+  fastify.get("/posters", async (req, reply) => {
     if (req["requester_type"] != "admin") {
-      throw { statusCode: 403 }
+      return await reply.code(403).send("Not admin")
     }
     return await model.posters.getAll(null)
   })

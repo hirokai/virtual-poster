@@ -42,6 +42,7 @@ export type PersonUpdate = {
   avatar?: string
   connected?: boolean
   stats?: PersonStat
+  public_key?: string
 }
 
 export type PersonRDB = {
@@ -68,10 +69,11 @@ type RoomAppProps = {
   room_id: RoomId
   debug_as?: string
   debug_token?: string
-  idToken: string
+  jwt_hash_initial?: string
 }
 
 type SocketMessageFromUser =
+  | "Auth"
   | "Move"
   | "Subscribe"
   | "Active"
@@ -89,7 +91,7 @@ declare class MySocketObject {
 
 type RoomAppState = {
   socket: SocketIO.Socket | MySocketObject | null
-  peer: Peer
+  peer: Peer | null
   skywayRoom: MeshRoom | SfuRoom | null
   people: { [index: string]: Person }
   enableEncryption: boolean
@@ -145,6 +147,8 @@ type RoomAppState = {
   liveMapChangedAfterMove: boolean
 
   people_typing: { [index: string]: boolean }
+
+  encryption_possible_in_chat: boolean
 
   privateKeyString: string | null
   privateKey: CryptoKey | null
@@ -267,12 +271,21 @@ export type ArrowKey = "ArrowRight" | "ArrowUp" | "ArrowLeft" | "ArrowDown"
 
 type PostIdTokenResponse = {
   ok: boolean
+  updated: boolean
+  token_actual?: string
   error?: string
   user_id?: UserId
+  name?: string
   admin?: boolean
   public_key?: string
   debug_token?: string
   registered?: "registered" | "can_register" | "should_verify"
+}
+
+type RegisterResponse = {
+  ok: boolean
+  user?: PersonWithEmail
+  error?: string
 }
 
 export type MapEnterResponse = {
@@ -351,7 +364,7 @@ type MoveSocketData = {
   y: number
   room: RoomId
   user: UserId
-  token: string
+  token?: string
   debug_as?: UserId
 }
 
@@ -361,6 +374,11 @@ type DirectionSendSocket = {
   direction: Direction
   token: string
   debug_as?: UserId
+}
+
+type AuthSocket = {
+  jwt_hash: string
+  user: UserId
 }
 
 type GroupSocketData = {
@@ -382,7 +400,7 @@ type TypingSocketSendData = {
   room: RoomId
   user: UserId
   typing: boolean
-  token: string
+  token?: string
   debug_as?: UserId
 }
 
@@ -401,17 +419,19 @@ type ActiveUsersSocketData = {
 type EmitCommand =
   | "Announce"
   | "Person"
-  | "PosterReset"
+  | "PersonNew"
+  | "PersonUpdate"
+  | "PersonRemove"
   | "AuthError"
   | "Moved"
   | "MoveError"
-  | "PersonUpdate"
   | "Group"
   | "GroupRemove"
   | "Comment"
   | "CommentRemove"
   | "PosterComment"
   | "PosterCommentRemove"
+  | "PosterReset"
   | "Poster"
   | "MapReset"
   | "ActiveUsers"

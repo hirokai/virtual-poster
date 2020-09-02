@@ -4,6 +4,20 @@ import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { RoomId } from "@/@types/types"
 import { emit } from "../socket"
+import * as admin from "firebase-admin"
+import fs from "fs"
+
+const serviceAccount = JSON.parse(
+  fs.readFileSync(
+    "./coi-conf-firebase-adminsdk-fc4p6-74c47d8a6b.secret.json",
+    "utf-8"
+  )
+)
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://coi-conf.firebaseio.com",
+})
 
 async function routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -111,8 +125,13 @@ async function routes(
     }
   })
 
-  fastify.post<any>("/register", async req => {
+  fastify.post<any>("/register", async (req, res) => {
+    const requester_email = req["requester_email"]
     const email = req.body.email as string
+    if (requester_email != email) {
+      console.warn("Incorrect email", email, requester_email)
+      return { ok: false, error: "Incorrect email address" }
+    }
     const name = req.body.name as string
     const access_code = req.body.access_code as string | undefined
     console.log(name, access_code)
@@ -128,7 +147,52 @@ async function routes(
       rooms,
       "reject"
     )
-    return r
+    if (r.ok && r.user) {
+      const sid = await model.people.createSessionId(
+        "user",
+        requester_email,
+        r.user.id
+      )
+      return await res
+        .setCookie("virtual_poster_session_id", sid, {
+          expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+        })
+        .send(r)
+    } else {
+      return r
+    }
+  })
+
+  fastify.post<any>("/logout", async (req, res) => {
+    return await res.clearCookie("virtual_poster_session_id").send({ ok: true })
+  })
+
+  fastify.delete<any>("/people/:userId", async req => {
+    const userId = req.params.userId
+    if (req["requester_type"] == "admin" || req["requester"] == userId) {
+      const u = await model.people.get(userId, true)
+      if (!u) {
+        throw {
+          statusCode: 404,
+        }
+      }
+      const r = await model.people.removePerson(userId)
+      try {
+        const firebase_user = await admin.auth().getUserByEmail(u.email!)
+        console.log("Deleting firebase user", firebase_user.uid)
+        await admin.auth().deleteUser(firebase_user.uid)
+        console.log("Successfully deleted user")
+        emit.peopleRemove(userId)
+      } catch (error) {
+        console.log("Error deleting user:", error)
+      }
+      return r
+    } else {
+      throw {
+        statusCode: 403,
+        error: "Not admin, but " + req["requester_type"],
+      }
+    }
   })
 }
 

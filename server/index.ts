@@ -45,8 +45,6 @@ const POSTGRES_CONNECTION_STRING = process.env.NODE_TEST
   : process.env.POSTGRES_CONNECTION_STRING ||
     "postgres://postgres@localhost/virtual_poster"
 
-const DEBUG_TOKEN = process.env.DEBUG_TOKEN
-
 console.log("Settings:")
 console.log({
   PRODUCTION,
@@ -125,7 +123,9 @@ workerInitData()
       registerSocket(io_)
       ;(async () => {
         try {
-          await server.register(fastifyCookie, { secret: DEBUG_TOKEN })
+          await server.register(fastifyCookie, {
+            secret: process.env.DEBUG_TOKEN || "",
+          })
 
           swaggerValidation.init(`${__dirname}/virtual-poster.v1.yaml`, {
             framework: "fastify",

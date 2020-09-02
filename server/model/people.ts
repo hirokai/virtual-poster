@@ -3,6 +3,7 @@ import shortid from "shortid"
 import jsSHA from "jssha"
 import * as admin from "firebase-admin"
 import pg from "pg-promise"
+import crypto from "crypto"
 
 import {
   Person,
@@ -95,16 +96,23 @@ export async function create(
   avatar: string,
   allowed_rooms: RoomId[],
   merge_strategy: "reject" | "replace" | "append" = "append"
-): Promise<{ ok: boolean; user_id?: UserId; error?: string }> {
+): Promise<{ ok: boolean; user?: PersonWithEmail; error?: string }> {
   if ((email == "" || name == "") && merge_strategy == "reject") {
     return { ok: false, error: "Name and/or email is missing" }
   }
-  const count = (
+  const count_email = (
+    await db.query(`SELECT count(*) from person where email=$1;`, [email])
+  )[0].count
+  if (count_email > 0 && merge_strategy == "reject") {
+    log.warn("Email name already exists")
+    return { ok: false, error: "Email already exists: " + email }
+  }
+  const count_name = (
     await db.query(`SELECT count(*) from person where name=$1;`, [name])
   )[0].count
-  if (count > 0 && merge_strategy == "reject") {
+  if (count_name > 0 && merge_strategy == "reject") {
     log.warn("User name already exists")
-    return { ok: false, error: "User name " + name + " already exists" }
+    return { ok: false, error: "User name already exists: " + name }
   }
   const uid = genUserId()
   try {
@@ -152,7 +160,7 @@ export async function create(
         `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING;`,
         [room, uid_actual, typ]
       )
-      const pos = await maps[room].getRandomOpenPos()
+      const pos = await maps[room].getRandomOpenPos(uid_actual)
       if (pos) {
         const _person = await db.query(
           `INSERT INTO person_position (person,room,last_updated,x,y,direction) values ($1,$2,$3,$4,$5,$6) ON CONFLICT ON CONSTRAINT person_position_pkey DO NOTHING RETURNING person;`,
@@ -164,8 +172,9 @@ export async function create(
         return { ok: false, error: "No open space or map uninitialized" }
       }
     }
+    const user = await getUnwrap(uid_actual)
     await db.query(`COMMIT`)
-    return { ok: true, user_id: uid_actual }
+    return { ok: true, user }
   } catch (err) {
     await db.query("ROLLBACK")
     log.error(err)
@@ -250,8 +259,11 @@ export async function get(
         [user_id]
       )
   const p: PersonWithEmail | null = rows[0]
-  if (p && with_email) {
-    p.email = (await redis.accounts.get("uid:" + user_id)) || undefined
+  if (p) {
+    p.public_key = rows[0].public_key || undefined
+    if (with_email) {
+      p.email = (await redis.accounts.get("uid:" + user_id)) || undefined
+    }
   }
   return p
 }
@@ -477,6 +489,14 @@ export async function saveJWT(
     return false
   }
 }
+
+export async function getJWT(user_id: UserId): Promise<string | null> {
+  const rows = await db.query(`SELECT token FROM token WHERE person=$1`, [
+    user_id,
+  ])
+  return rows.length > 0 ? (rows[0].token as string) : null
+}
+
 export async function getUserIdFromJWTHash(
   hash: string
 ): Promise<UserId | null> {
@@ -491,16 +511,26 @@ export async function getUserType(
   )
   return count == 2 ? "admin" : count == 1 ? "user" : null
 }
-export async function verifySocketToken({
-  user,
-  token,
-  debug_as,
-}: {
-  user: UserId
-  token: string
-  debug_as?: UserId
-}): Promise<boolean> {
+
+export async function authSocket(
+  {
+    user,
+    token,
+    debug_as,
+  }: {
+    user: UserId
+    token?: string
+    debug_as?: UserId
+  },
+  socket_id?: string
+): Promise<boolean> {
   log.debug({ user, token, debug_as })
+  if (socket_id) {
+    const r = redis.sockets.get("auth:" + socket_id)
+    if (r) {
+      return true
+    }
+  }
   if (debug_as) {
     if (debug_as == user && token == process.env.DEBUG_TOKEN) {
       return true
@@ -508,17 +538,22 @@ export async function verifySocketToken({
       const is_admin = (await getUserType(debug_as)) == "admin"
       return is_admin
     }
-  }
-  const sender_id = await getUserIdFromJWTHash(token)
-  if (!sender_id) {
-    return false
-  } else if (sender_id && sender_id == user) {
-    return true
+  } else if (token) {
+    const sender_id = await getUserIdFromJWTHash(token)
+    if (!sender_id) {
+      log.debug("Sender not found")
+      return false
+    } else if (sender_id && sender_id == user) {
+      return true
+    } else {
+      const is_admin = (await getUserType(sender_id)) == "admin"
+      return is_admin
+    }
   } else {
-    const is_admin = (await getUserType(sender_id)) == "admin"
-    return is_admin
+    return false
   }
 }
+
 export async function isConnected(
   room_id: RoomId,
   user_ids: UserId[]
@@ -581,4 +616,91 @@ function randomDirection(): Direction {
   return ["up", "down", "right", "left"][
     Math.floor(Math.random() * 4)
   ] as Direction
+}
+
+export async function createSessionId(
+  type: "user" | "pre_registration",
+  email: string,
+  user_id?: UserId
+): Promise<string> {
+  const bs = crypto.randomBytes(32)
+  const sid =
+    "S_" +
+    bs
+      .toString("base64")
+      .replace("+", "-")
+      .replace("/", "_")
+      .replace(/=+$/, "")
+  console.log("Setting session ID", user_id, sid)
+  const expires_in = type == "pre_registration" ? 60 * 60 : 60 * 60 * 6
+  await redis.sessions.setex("cookie:value:" + user_id, expires_in, sid)
+  await redis.sessions.setex("cookie:email:" + sid, expires_in, email)
+  await redis.sessions.setex("cookie:type:" + sid, expires_in, type)
+  if (type == "user") {
+    await redis.sessions.setex("cookie:uid:" + sid, expires_in, user_id!)
+  }
+  return sid
+}
+
+/*
+export async function createPreRegistrationSessionId(
+  email: string
+): Promise<string> {
+  const bs = crypto.randomBytes(32)
+  const sid =
+    "P_" +
+    bs
+      .toString("base64")
+      .replace("+", "-")
+      .replace("/", "_")
+      .replace(/=+$/, "")
+  console.log("Setting pre-registration session ID", email, sid)
+  await redis.sessions.setex("cookie:email:" + sid, 60 * 60 * 6, email)
+  await redis.sessions.setex(
+    "cookie:type:" + sid,
+    60 * 60 * 6,
+    "pre_registration"
+  )
+  return sid
+}
+*/
+
+export async function removePerson(
+  user_id: UserId
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const row = (
+      await db.query(`SELECT email FROM person WHERE id=$1`, [user_id])
+    )[0]
+    if (!row) {
+      return { ok: false, error: "User not found" }
+    }
+    const email = row.email
+    await db.query(`BEGIN`)
+    await db.query(`DELETE FROM person_stats WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person_room_access WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person_position WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person_in_chat_group WHERE person=$1`, [
+      user_id,
+    ])
+    await db.query(`DELETE FROM comment_to_person WHERE person=$1`, [user_id])
+    await db.query(
+      `DELETE FROM comment_to_person WHERE comment IN (SELECT id FROM comment WHERE person=$1)`,
+      [user_id]
+    )
+    await db.query(`DELETE FROM comment WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM poster WHERE author=$1`, [user_id])
+    await db.query(`DELETE FROM stat_encountered WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM token WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM vote WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM public_key WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person WHERE id=$1`, [user_id])
+    await db.query(`COMMIT`)
+    await redis.accounts.del("email:" + email)
+    return { ok: true }
+  } catch (e) {
+    console.error(e)
+    await db.query(`ROLLBACK`)
+    return { ok: false, error: "DB error" }
+  }
 }

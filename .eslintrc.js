@@ -28,6 +28,7 @@ module.exports = {
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": ["warn", { varsIgnorePattern: "^_" }],
     "@typescript-eslint/no-non-null-assertion": "off",
+    "prettier/prettier": ["error", { singleQuote: false, semi: false }],
   },
   overrides: [
     {

@@ -156,7 +156,7 @@ async function routes(
           continue
         }
         const avatar = model.people.randomAvatar()
-        const { user_id, error } = await model.people.create(
+        const { user, error } = await model.people.create(
           p.email,
           p.name,
           "user",
@@ -164,7 +164,7 @@ async function routes(
           p.rooms,
           merge_strategy
         )
-        if (error || !user_id) {
+        if (error || !user) {
           people_result.push({ email: p.email, name: p.name, ok: false, error })
         } else {
           // if (merge_strategy == "replace") {
@@ -177,9 +177,9 @@ async function routes(
           //     }
           //   }
           // }
-          const new_person = await model.people.get(user_id)
+          const new_person = await model.people.get(user.id)
           people_result.push({
-            user_id,
+            user_id: user.id,
             email: p.email,
             name: p.name,
             ok: true,
@@ -191,7 +191,7 @@ async function routes(
             if (room) {
               await room.assignPosterLocation(
                 po.loc,
-                user_id,
+                user.id,
                 ["replace", "append"].indexOf(merge_strategy) != -1,
                 po.title
               )

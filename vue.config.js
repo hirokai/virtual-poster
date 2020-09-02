@@ -9,6 +9,13 @@ module.exports = {
       title: "Login Page",
       chunks: ["chunk-vendors", "chunk-common", "login"],
     },
+    register: {
+      entry: "client/register/register.ts",
+      template: "public/register.html",
+      filename: "register.html",
+      title: "ユーザー登録",
+      chunks: ["chunk-vendors", "chunk-common", "register"],
+    },
     index: {
       entry: "client/index.ts",
       template: "public/index.html",

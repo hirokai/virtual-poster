@@ -14,12 +14,14 @@ import {
   ChatGroupId,
   Poster,
   PersonPos,
+  PersonUpdate,
   GroupSocketData,
   MoveErrorSocketData,
   MoveSocketData,
   TypingSocketData,
   TypingSocketSendData,
   DirectionSendSocket,
+  AuthSocket,
   RoomId,
   UserId,
   Emitter,
@@ -115,6 +117,12 @@ export class Emit {
   people(d: Person[], socket: Emitter = this.emitter): void {
     socket.emit("Person", d)
   }
+  peopleUpdate(ds: PersonUpdate[], socket: Emitter = this.emitter): void {
+    socket.emit("PersonUpdate", ds)
+  }
+  peopleRemove(uids: UserId[], socket: Emitter = this.emitter): void {
+    socket.emit("PersonRemove", uids)
+  }
   group(d: GroupSocketData, socket: Emitter = this.emitter): void {
     socket.emit("Group", d)
   }
@@ -168,7 +176,7 @@ export function registerSocket(
 function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
   ;(async () => {
     log.debug("move", d)
-    const verified = await model.people.verifySocketToken(d) // Normal users can only move themselves (or admin can move anything)
+    const verified = await model.people.authSocket(d, socket.id) // Normal users can only move themselves (or admin can move anything)
     if (!verified) {
       emit.moveError(
         {
@@ -194,7 +202,7 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
       log.warn("User position not found: ", d.room, d.user)
       return
     }
-    if (!d || !d.user || !d.token || !d.room) {
+    if (!d || !d.user || !d.room) {
       log.warn("socket move: Missing parameter(s).", d)
       emit.moveError(
         {
@@ -277,10 +285,24 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
   io.on("connection", function(socket: SocketIO.Socket) {
     log.info("Connected:", socket.id)
     socket.emit("greeting")
+    addHandler(socket, "Auth", (d: AuthSocket) => {
+      ;(async () => {
+        const verified = await model.people.authSocket({
+          user: d.user,
+          token: d.jwt_hash,
+        })
+        if (verified) {
+          await model.redis.sockets.setex("auth:" + socket.id, 60 * 60 * 3, "1")
+        } else {
+          log.warn("Auth failed")
+          socket.emit("auth_error")
+        }
+      })().catch(err => log.error(err))
+    })
     addHandler(socket, "Move", d => onMoveSocket(d, socket, log))
     addHandler(socket, "Direction", (d: DirectionSendSocket) => {
       ;(async () => {
-        const verified = await model.people.verifySocketToken(d)
+        const verified = await model.people.authSocket(d, socket.id)
         if (!verified) {
           socket.emit("auth_error")
           return
@@ -295,7 +317,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
     })
     addHandler(socket, "ChatTyping", (d: TypingSocketSendData) => {
       ;(async () => {
-        const verified = await model.people.verifySocketToken(d)
+        const verified = await model.people.authSocket(d, socket.id)
         if (!verified) {
           socket.emit("auth_error")
           return
@@ -309,8 +331,19 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         io.to(d.room).emit("chat_typing", r)
       })().catch(err => log.error(err))
     })
-    addHandler(socket, "Active", ({ room, user }) => {
+    addHandler(socket, "Active", ({ room, user, token }) => {
       ;(async () => {
+        const verified = await model.people.authSocket(
+          { user, token },
+          socket.id
+        )
+
+        if (verified) {
+          await model.redis.sockets.set("auth:" + socket.id, "1")
+        } else {
+          socket.emit("auth_error")
+        }
+
         log.debug("active", room, user)
         userLog({
           userId: user,

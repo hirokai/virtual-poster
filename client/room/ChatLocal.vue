@@ -20,7 +20,12 @@
         placeholder="Shift+Enterで送信"
         :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
       ></textarea>
-      <span id="show-encrypt" :class="{ disabled: !enableEncryption }"
+      <span
+        id="show-encrypt"
+        :class="{
+          disabled: !enableEncryption,
+          impossible: !encryptionPossibleInChat,
+        }"
         ><img
           src="/img/lock-152879_1280.png"
           height="30px"
@@ -159,6 +164,10 @@ export default defineComponent({
       type: Boolean,
       required: true,
     },
+    encryptionPossibleInChat: {
+      type: Boolean,
+      required: true,
+    },
     myself: {
       type: Object as PropType<Person>,
     },
@@ -167,7 +176,7 @@ export default defineComponent({
       required: true,
     },
   },
-  setup (props, context) {
+  setup(props, context) {
     const state = reactive({
       inputText: "",
     })
@@ -236,6 +245,10 @@ export default defineComponent({
         el.focus()
       }
     }
+
+    context.parent?.$on("clear-chat-input", ev => {
+      state.inputText = ""
+    })
 
     return {
       ...toRefs(state),
@@ -364,6 +377,12 @@ button#leave-chat {
 
 #show-encrypt.disabled img {
   opacity: 0.3;
+}
+
+#show-encrypt.impossible img {
+  opacity: 0.4;
+  filter: invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg)
+    brightness(95%) contrast(112%);
 }
 
 .recipient {

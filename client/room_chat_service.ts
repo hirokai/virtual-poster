@@ -1,6 +1,5 @@
 import Vue from "vue"
 import { computed, ComputedRef } from "@vue/composition-api"
-import { isPosterId } from "../common/util"
 
 import {
   UserId,
@@ -18,7 +17,7 @@ import {
   MySocketObject,
   CommentEncryptedEntry,
 } from "../@types/types"
-import _ from "lodash-es"
+import { every, find, findIndex, keyBy, compact, uniq } from "lodash-es"
 import * as encryption from "./encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
@@ -106,30 +105,63 @@ export const decryptIfNeeded = async (
   public_keys: { [user_id: string]: { public_key?: string } },
   comment_: ChatComment,
   prv: CryptoKey | null
-): Promise<{ text: string | null; encrypted?: boolean; ok: boolean }> => {
+): Promise<{
+  text: string | null
+  encrypted?: boolean
+  ok: boolean
+  error?: string
+}> => {
   const comment = comment_ as ChatComment
-  const to_me_idx = _.findIndex(comment.texts, t => t.to == myUserId)
+  const to_me_idx = findIndex(comment.texts, t => t.to == myUserId)
   if (to_me_idx == -1) {
-    return { text: null, ok: false }
+    return { text: null, ok: false, error: "Does not have a message to me" }
   }
   const text_for_me = comment.texts[to_me_idx]
-  // console.log("decryptIfNeeded", comment.encrypted)
+  console.log("decryptIfNeeded", {
+    public_keys: JSON.parse(JSON.stringify(public_keys)),
+  })
   if (!text_for_me.encrypted) {
     return { text: text_for_me.text, encrypted: false, ok: true }
   }
   if (!prv) {
-    return { text: text_for_me.text, encrypted: true, ok: false }
+    return {
+      text: text_for_me.text,
+      encrypted: true,
+      ok: false,
+      error: "My private key not found",
+    }
   }
-  const pub_str = public_keys[comment.person].public_key
+  const pub_str = public_keys[comment.person]?.public_key
   if (!pub_str) {
-    return { text: text_for_me.text, encrypted: true, ok: false }
+    console.warn(
+      "Sender's public key not found",
+      comment.person,
+      public_keys[comment.person],
+      pub_str
+    )
+    return {
+      text: text_for_me.text,
+      encrypted: true,
+      ok: false,
+      error: "Sender's public key not found (sender: " + comment.person + ")",
+    }
   }
   const pub = await encryption.importPublicKey(pub_str, true)
   if (!pub) {
-    return { text: text_for_me.text, encrypted: true, ok: false }
+    return {
+      text: text_for_me.text,
+      encrypted: true,
+      ok: false,
+      error: "Public key import failed",
+    }
   }
   const dec_str = await encryption.decrypt_str(pub, prv, text_for_me.text)
-  return { text: dec_str, encrypted: true, ok: !!dec_str }
+  return {
+    text: dec_str,
+    encrypted: true,
+    ok: !!dec_str,
+    error: dec_str ? undefined : "Decryption failed",
+  }
 }
 
 export const newComment = (
@@ -195,13 +227,13 @@ export const startChat = async (
   props: RoomAppProps,
   state: RoomAppState,
   axios: AxiosStatic | AxiosInstance
-): Promise<ChatGroup | undefined> => {
+): Promise<{ group: ChatGroup; encryption_possible: boolean } | undefined> => {
   const to_users: UserId[] = Array.from(state.selectedUsers)
   if (to_users.length == 0) {
     return undefined
   }
-  const to_groups: ChatGroupId[] = _.uniq(
-    _.compact(to_users.map(u => chatGroupOfUser(state).value[u]))
+  const to_groups: ChatGroupId[] = uniq(
+    compact(to_users.map(u => chatGroupOfUser(state).value[u]))
   )
   if (to_groups.length > 1) {
     // Multiple groups
@@ -216,8 +248,11 @@ export const startChat = async (
       "/maps/" + props.room_id + "/groups/" + to_groups[0] + "/join"
     )
     const group: ChatGroup = data.joinedGroup
+    const encryption_possible = every(
+      group.users.map(uid => !!state.people[uid]?.public_key)
+    )
     console.log("join result", data)
-    return group
+    return { group, encryption_possible }
   } else {
     const { data } = await axios.post("/maps/" + props.room_id + "/groups", {
       fromUser: props.myUserId,
@@ -225,7 +260,10 @@ export const startChat = async (
     })
     console.log(data)
     const group: ChatGroup = data.group
-    return group
+    const encryption_possible = every(
+      group.users.map(uid => !!state.people[uid]?.public_key)
+    )
+    return { group, encryption_possible }
   }
 }
 
@@ -234,7 +272,7 @@ export const myChatGroup = (
   state: RoomAppState
 ): ComputedRef<ChatGroupId | null> =>
   computed((): ChatGroupId | null => {
-    const g = _.find(Object.values(state.chatGroups), g => {
+    const g = find(Object.values(state.chatGroups), g => {
       return g.users.indexOf(props.myUserId) != -1
     })
     return g?.id || null
@@ -268,8 +306,43 @@ export const initChatService = async (
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,
-  activePoster: ComputedRef<Poster | undefined>
+  activePoster: ComputedRef<Poster | undefined>,
+  public_key_from_server: string | undefined
 ): Promise<boolean> => {
+  try {
+    const r = await encryption.setupEncryption(
+      axios,
+      props.myUserId,
+      public_key_from_server
+    )
+    if (r.prv && r.pub) {
+      state.privateKeyString = r.prv
+      state.publicKeyString = r.pub
+      state.publicKey = await encryption.importPublicKey(r.pub, true)
+      if (state.publicKey) {
+        const r2 = await encryption.importPrivateKeyJwk(
+          JSON.parse(r.prv),
+          state.publicKey,
+          true
+        )
+        if (r2) {
+          state.privateKey = r2.key
+        }
+      }
+    }
+    if (!r.ok) {
+      // alert(
+      //   "秘密鍵が設定されていません。暗号化メッセージが正しく読めません。マイページでインポートしてください。"
+      // )
+      // location.href = "/mypage?room=" + props.room_id + "#encrypt"
+    }
+  } catch (err1) {
+    console.error(err1)
+    // alert(
+    //   "秘密鍵が設定されていません。暗号化メッセージが正しく読めません。マイページでインポートしてください。"
+    // )
+    // location.href = "/mypage?room=" + props.room_id + "#encrypt"
+  }
   socket.on("Comment", (d: ChatComment) => {
     const pid = activePoster.value?.id
     console.log("comment", d)
@@ -289,7 +362,7 @@ export const initChatService = async (
     console.log("myChatGroup", group)
     if (group) {
       if (!state.skywayRoom) {
-        state.skywayRoom = state.peer.joinRoom(group) as MeshRoom | SfuRoom
+        state.skywayRoom = state.peer?.joinRoom(group) as MeshRoom | SfuRoom
         state.skywayRoom.on("open", () => {
           if (state.skywayRoom) {
             state.skywayRoom.send({
@@ -324,7 +397,7 @@ export const initChatService = async (
     axios.get<ChatComment[]>("/maps/" + props.room_id + "/comments"),
     axios.get<ChatGroup[]>("/maps/" + props.room_id + "/groups"),
   ])
-  state.chatGroups = _.keyBy(groups, "id")
+  state.chatGroups = keyBy(groups, "id")
 
   const decrypted: ChatCommentDecrypted[] = []
   for (const c of comments) {
@@ -334,16 +407,15 @@ export const initChatService = async (
       c,
       state.privateKey
     )
+    console.log("decryptIfNeeded() result", r)
     const comment_decr: ChatCommentDecrypted = {
       id: c.id,
       timestamp: c.timestamp,
       last_updated: c.last_updated,
       text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
-      texts: _.map(
-        c.texts.map(t => {
-          return { to: t.to, encrypted: t.encrypted }
-        })
-      ),
+      texts: c.texts.map(t => {
+        return { to: t.to, encrypted: t.encrypted }
+      }),
       room: c.room,
       x: c.x,
       y: c.y,
@@ -353,91 +425,6 @@ export const initChatService = async (
     // comment.encrypted = r.encrypted || false
     decrypted.push(comment_decr)
   }
-  state.comments = _.keyBy(decrypted, "id")
+  state.comments = keyBy(decrypted, "id")
   return true
-}
-
-export const setupEncryption = async (
-  axios: AxiosStatic | AxiosInstance,
-  props: RoomAppProps,
-  state: RoomAppState,
-  pub_str_from_server: string | null
-): Promise<boolean> => {
-  state.enableEncryption =
-    localStorage["virtual-poster:" + props.myUserId + ":config:encryption"] ==
-    "1"
-  let pub_str_local: string | null =
-    localStorage["virtual-poster:" + props.myUserId + ":public_key_spki"]
-  if (pub_str_from_server && !pub_str_local) {
-    pub_str_local = pub_str_from_server
-    localStorage[
-      "virtual-poster:" + props.myUserId + ":public_key_spki"
-    ] = pub_str_from_server
-  }
-  const prv_str_local = {
-    jwk: (localStorage[
-      "virtual-poster:" + props.myUserId + ":private_key_jwk"
-    ] || null) as string | null,
-    pkcs8: (localStorage["virtual-poster:private_key:" + props.myUserId] ||
-      null) as string | null,
-  }
-
-  if (pub_str_from_server) {
-    state.publicKeyString = pub_str_from_server
-  } else {
-    if (pub_str_local) {
-      console.log(
-        "Public key does NOT exist on server, but found in localStorage."
-      )
-      console.log("Public key found in localStorage")
-      const { data } = await axios.post("/public_key", {
-        key: pub_str_local,
-      })
-      console.log("/public_key", data)
-      state.publicKeyString = pub_str_local
-    } else {
-      console.log(
-        "Public key NOT found either on server or client. Generating key pair and send a public key to server."
-      )
-      const { ok, pub_str, prv_str } = await encryption.generateAndSendKeys(
-        axios,
-        props.myUserId,
-        false
-      )
-      console.log("generateAndSendKeys()", ok)
-      if (!ok || !pub_str || !prv_str) {
-        console.error("Key generation failed")
-        return false
-      }
-      prv_str_local.jwk = prv_str
-      state.publicKeyString = pub_str
-      state.privateKeyString = prv_str
-    }
-  }
-  if (prv_str_local.jwk) {
-    state.privateKeyString = prv_str_local.jwk
-    const pub = await encryption.importPublicKey(state.publicKeyString, true)
-    if (!pub) {
-      console.error("Public key import failed")
-      return false
-    }
-    const obj = JSON.parse(prv_str_local.jwk)
-    const prv = await encryption.importPrivateKeyJwk(obj, pub, true)
-    if (!prv) {
-      console.error("Private key import failed")
-      return false
-    }
-    state.privateKey = prv.key
-    return true
-  } else if (prv_str_local.pkcs8) {
-    //Converting existing private key to JWK format.
-    const prv = await encryption.importPrivateKeyPKCS(prv_str_local.pkcs8, true)
-    state.privateKey = prv
-    prv_str_local.jwk = await encryption.exportPrivateKeyJwk(prv)
-    localStorage["virtual-poster:" + props.myUserId + ":private_key_jwk"] =
-      prv_str_local.jwk
-    state.privateKeyString = prv_str_local.jwk
-    return true
-  }
-  return false
 }

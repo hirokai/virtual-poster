@@ -5,6 +5,8 @@ import { RoomId, MapEnterResponse, Announcement } from "@/@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 
+const PRODUCTION = process.env.NODE_ENV == "production"
+
 async function maps_api_routes(
   fastify: FastifyInstance<any, any, any, any>
 ): Promise<void> {
@@ -57,9 +59,10 @@ async function maps_api_routes(
     }
 
     const r = await map.enterRoom(req["requester"])
+
     const r2: MapEnterResponse = {
       ...r,
-      socket_url: process.env.SOCKET_URL || "http://localhost:5000/",
+      socket_url: PRODUCTION ? "/" : "http://localhost:5000/",
       socket_protocol: "Socket.IO",
     }
     if (r.ok) {
@@ -68,18 +71,6 @@ async function maps_api_routes(
         [req["requester"]]
       )
       r2.public_key = rows[0]?.public_key
-    }
-    const rows = await model.db.query(`SELECT * FROM announce WHERE room=$1`, [
-      roomId,
-    ])
-    if (rows.length == 1) {
-      const d: Announcement = {
-        room: rows[0].room,
-        text: rows[0].text,
-        marquee: rows[0].marquee,
-        period: rows[0].period || 0,
-      }
-      emit.announce(d)
     }
     return r2
   })

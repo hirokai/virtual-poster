@@ -2,7 +2,7 @@ import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
-import { RoomId } from "@/@types/types"
+import { RoomId, Person, PersonUpdate } from "@/@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
 import fs from "fs"
@@ -102,7 +102,7 @@ async function routes(
       body,
       params: { userId },
     } = req
-    const obj = _.pick(body, ["name", "email", "x", "y", "avatar"])
+    const obj = _.pickBy(_.pick(body, ["name", "email", "avatar"]))
     const permitted =
       req["requester_type"] == "admin" || req["requester"] == userId
     if (!permitted) {
@@ -111,10 +111,18 @@ async function routes(
       fastify.log.debug(obj)
       const modified = await model.people.update(userId, obj)
       if (modified != null) {
-        const new_person = await model.people.get(userId)
-        if (new_person) {
-          emit.pushSocketQueue("person", new_person)
+        const u: PersonUpdate = {
+          id: userId,
+          last_updated: modified.update.last_updated,
         }
+        if (modified.keys.indexOf("avatar") != -1) {
+          u.avatar = obj.avatar
+        }
+        if (modified.keys.indexOf("name") != -1) {
+          u.name = obj.name
+        }
+        console.log("patch person", modified.keys, u)
+        emit.peopleUpdate([u])
         return { ok: true, modified }
       } else {
         return {
@@ -148,11 +156,32 @@ async function routes(
       "reject"
     )
     if (r.ok && r.user) {
+      console.log("model.people.create ", r.user)
       const sid = await model.people.createSessionId(
         "user",
         requester_email,
         r.user.id
       )
+      for (const room of r.user.rooms || []) {
+        const p: Person = {
+          id: r.user.id,
+          last_updated: r.user.last_updated,
+          room: room.room_id,
+          x: room.pos?.x || NaN,
+          y: room.pos?.y || NaN,
+          direction: room.pos?.direction || "none",
+          name: r.user.name,
+          moving: false,
+          avatar,
+          stats: {
+            walking_steps: 0,
+            people_encountered: [],
+            chat_count: 0,
+            chat_char_count: 0,
+          },
+        }
+        emit.room(room.room_id).peopleNew([p])
+      }
       return await res
         .setCookie("virtual_poster_session_id", sid, {
           expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
@@ -168,7 +197,7 @@ async function routes(
   })
 
   fastify.delete<any>("/people/:userId", async req => {
-    const userId = req.params.userId
+    const userId: string = req.params.userId
     if (req["requester_type"] == "admin" || req["requester"] == userId) {
       const u = await model.people.get(userId, true)
       if (!u) {
@@ -182,7 +211,7 @@ async function routes(
         console.log("Deleting firebase user", firebase_user.uid)
         await admin.auth().deleteUser(firebase_user.uid)
         console.log("Successfully deleted user")
-        emit.peopleRemove(userId)
+        emit.peopleRemove([userId])
       } catch (error) {
         console.log("Error deleting user:", error)
       }

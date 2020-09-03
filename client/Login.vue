@@ -13,20 +13,6 @@
       </div>
       <div>{{ verifyStatus }}</div>
     </div>
-    <div v-else-if="nextAction == 'register'">
-      <h2>
-        ユーザー情報を入力してください。
-      </h2>
-      <div>
-        <dir>Email: {{ user.email }}</dir>
-        <label for="">名前</label>
-        <input type="text" id="register-name" v-model="register_name" />
-        <label for="">アクセスコード</label>
-        <input type="text" id="access-code" v-model="access_code" />
-        <button @click="submitRegistration">登録</button>
-      </div>
-      <div>{{ verifyStatus }}</div>
-    </div>
   </div>
 </template>
 
@@ -38,10 +24,14 @@ import axios from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import * as firebaseui from "firebaseui"
+import jsSHA from "jssha"
 
 import Vue from "vue"
 import { defineComponent, reactive } from "@vue/composition-api"
+import firebaseConfig from "../firebaseConfig"
+
 import VueCompositionApi from "@vue/composition-api"
+import { setUserInfo, deleteUserInfoOnLogout } from "./util"
 
 Vue.use(VueCompositionApi)
 
@@ -51,33 +41,29 @@ axios.defaults.baseURL = API_ROOT
 export default defineComponent({
   setup() {
     const state = reactive({
-      user: null as any | null,
+      user: null as firebase.User | null,
       verifyStatus: "",
       nextAction: undefined as "register" | "verify" | undefined,
       register_name: "",
       access_code: "",
     })
 
-    const checkVerification = () => {
-      console.log(state.user)
+    // This is correct. User ID saved in localStorage must be deleted.
+    deleteUserInfoOnLogout()
+
+    const checkVerification = async () => {
+      state.user = await firebase.auth().currentUser
+      if (state.user) {
+        await state.user.reload()
+      }
       if (state.user && state.user.emailVerified) {
-        location.href = "/"
+        location.href = "/register"
       } else {
         state.verifyStatus = "メールリンクが未確認です。"
       }
     }
 
     onMounted(() => {
-      const firebaseConfig = {
-        apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-        authDomain: "coi-conf.firebaseapp.com",
-        databaseURL: "https://coi-conf.firebaseio.com",
-        projectId: "coi-conf",
-        storageBucket: "coi-conf.appspot.com",
-        messagingSenderId: "648033256432",
-        appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-        measurementId: "G-23RL5BGH9D",
-      }
       firebase.initializeApp(firebaseConfig)
       const uiConfig: firebaseui.auth.Config = {
         callbacks: {
@@ -95,14 +81,35 @@ export default defineComponent({
                   axios
                     .post<PostIdTokenResponse>("/id_token", {
                       token: idToken,
+                      force: true,
                     })
-                    .then(data => {
+                    .then(({ data }) => {
+                      const email = state.user?.email
+                      if (!email) {
+                        return
+                      }
                       console.log("/id_token result", data)
-                      if (data.data.registered == "can_register") {
+                      const shaObj = new jsSHA("SHA-256", "TEXT", {
+                        encoding: "UTF8",
+                      })
+                      shaObj.update(idToken)
+                      const jwt_hash = shaObj.getHash("HEX")
+                      localStorage["virtual-poster:jwt_hash"] = jwt_hash
+                      if (data.registered == "can_register") {
                         state.nextAction = "register"
-                      } else if (data.data.registered == "registered") {
+                        localStorage["virtual-poster:email"] = email
+                        location.href = "/register"
+                      } else if (
+                        data.registered == "registered" &&
+                        data.user_id &&
+                        data.admin != undefined
+                      ) {
                         state.nextAction = undefined
+                        setUserInfo(data.user_id, email, data.admin)
+                        localStorage["virtual-poster:name"] = data.name
                         location.href = "/"
+                      } else {
+                        console.warn("Something is wrong", data)
                       }
                     })
                     .catch(err => {
@@ -111,8 +118,10 @@ export default defineComponent({
                 })
               } else {
                 state.nextAction = "verify"
+                localStorage["virtual-poster:email"] = state.user.email
+                const url = new URL(location.href)
                 const actionCodeSettings = {
-                  url: "/",
+                  url: url.origin + "/register",
                 }
                 state.user
                   .sendEmailVerification(actionCodeSettings)
@@ -123,7 +132,9 @@ export default defineComponent({
                     console.error(error)
                   })
               }
-              return state.user.emailVerified
+
+              // return state.user.emailVerified
+              return false
             }
           },
         },
@@ -136,7 +147,7 @@ export default defineComponent({
           },
           firebase.auth.EmailAuthProvider.PROVIDER_ID,
         ],
-        signInSuccessUrl: "/",
+        // signInSuccessUrl: "/",
         tosUrl: "<your-tos-url>",
         privacyPolicyUrl: function() {
           window.location.assign("<your-privacy-policy-url>")
@@ -149,29 +160,9 @@ export default defineComponent({
       })
     })
 
-    console.log("state", state)
-    const submitRegistration = ev => {
-      console.log(state.register_name)
-      axios
-        .post("/register", {
-          email: state.user.email,
-          name: state.register_name,
-          access_code: state.access_code,
-        })
-        .then(({ data }) => {
-          console.log("/register result", data)
-          if (data.ok) {
-            location.href = "/"
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
-    }
     return {
       ...toRefs(state),
       checkVerification,
-      submitRegistration,
     }
   },
 })

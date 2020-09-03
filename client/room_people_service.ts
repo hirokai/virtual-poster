@@ -8,33 +8,27 @@ import {
   ActiveUsersSocketData,
   TypingSocketData,
   MySocketObject,
+  UserId,
 } from "../@types/types"
 import _ from "lodash-es"
 import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
-import { moveOneStep, jwt_hash } from "./room_map_service"
+import { moveOneStep } from "./room_map_service"
 import { SocketIO } from "socket.io-client"
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const BASE_URL = PRODUCTION ? "/" : "http://localhost:3000/"
-
-const setPerson = (
+const updatePerson = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   d: PersonUpdate
 ) => {
-  console.log("setPerson", d)
+  console.log("updatePerson", d)
   const p = state.people[d.id]
+  if (!p) {
+    console.warn("User not found (probably new user)")
+    return
+  }
   if (d.x != undefined && d.y != undefined && d.direction != undefined) {
-    moveOneStep(
-      axios,
-      props,
-      state,
-      d.id,
-      { x: d.x, y: d.y },
-      d.direction,
-      jwt_hash(props).value
-    )
+    moveOneStep(axios, props, state, d.id, { x: d.x, y: d.y }, d.direction)
     if (d.id != props.myUserId) {
       state.liveMapChangedAfterMove = true
     }
@@ -50,6 +44,7 @@ const setPerson = (
     moving: d.moving || p.moving,
     direction: d.direction || p.direction,
     stats: d.stats || p.stats,
+    public_key: d.public_key || p.public_key,
   }
   Vue.set(state.people, d.id, person)
 }
@@ -60,17 +55,32 @@ export const initPeopleService = async (
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
-  socket.on("person", d => {
-    console.log("socket person", d.name)
-    setPerson(axios, props, state, d)
+  socket.on("PersonNew", (ps: Person[]) => {
+    for (const p of ps) {
+      console.log("socket PersonNew", p)
+      Vue.set(state.people, p.id, p)
+    }
+  })
+  socket.on("PersonUpdate", (ps: PersonUpdate[]) => {
+    for (const p of ps) {
+      console.log("socket PersonUpdate", p)
+      updatePerson(axios, props, state, p)
+    }
+  })
+  socket.on("PersonRemove", (uids: UserId[]) => {
+    console.log({ msg: "PersonRemove", uids })
+    for (const uid of uids) {
+      Vue.delete(state.people, uid)
+    }
   })
   socket.on("person_multi", ds => {
     console.log("socket people", ds)
     for (const d of ds) {
-      setPerson(axios, props, state, d)
+      updatePerson(axios, props, state, d)
     }
   })
-  socket.on("active_users", (ds: ActiveUsersSocketData) => {
+  socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
+    console.log("ActiveUsers socket", ds)
     for (const d of ds) {
       const person: Person = {
         ...state.people[d.user],

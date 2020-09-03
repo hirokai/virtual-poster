@@ -1,12 +1,13 @@
 <template>
-  <div id="app" v-cloak>
+  <div id="app" v-cloak v-show="logged_in">
     <div id="login-info" v-if="!!user">
-      {{ user.displayName }}({{ user.email }})としてログイン
-      <button @click="signOut">ログアウト</button>
+      {{ user.name }}({{ user.email }})としてログイン
+      <button class="btn" @click="location.href = '/mypage'">マイページ</button>
+      <button class="btn" @click="signOut">ログアウト</button>
     </div>
     <div v-if="registered">
       <div v-if="loggedIn == 'Yes'">
-        <h1>ようこそ</h1>
+        <h1>会場の一覧</h1>
         <div id="rooms">
           <a
             v-for="room in rooms"
@@ -14,14 +15,14 @@
             class="room"
             :href="'/room?room_id=' + room.id"
           >
-            <h2>{{ room.name }}</h2>
+            <h2 :class="{ small: room.name.length >= 13 }">{{ room.name }}</h2>
             <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
           </a>
         </div>
         <div style="clear:both"></div>
-      </div>
-      <div v-if="admin">
-        <a href="/admin">管理画面</a>
+        <div style="margin-top: 30px">
+          <a v-if="user && user.admin" href="/admin">管理画面</a>
+        </div>
       </div>
     </div>
     <div v-else-if="required_action == 'register'">
@@ -57,8 +58,12 @@ Vue.use(VueCompositionApi)
 import { Room, UserId, PostIdTokenResponse } from "../@types/types"
 
 import axios from "axios"
+import * as encryption from "./encryption"
 import * as firebase from "firebase/app"
 import "firebase/auth"
+import jsSHA from "jssha"
+import firebaseConfig from "../firebaseConfig"
+import { deleteUserInfoOnLogout } from "./util"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -73,26 +78,30 @@ const debug_token: string | undefined =
 const logged_in = !!JSON.parse(url.searchParams.get("logged_in") || "false")
 export default defineComponent({
   setup() {
+    const name = localStorage["virtual-poster:name"]
+    const user_id = localStorage["virtual-poster:user_id"]
+    const email = localStorage["virtual-poster:email"]
+    const admin = localStorage["virtual-poster:admin"] == "1"
+    if (!name || !user_id || !email) {
+      console.warn("Not logged in.", user_id, email, name)
+      location.href = "/login"
+    }
     const state = reactive({
       myUserId: null as string | null,
-      user: null as firebase.User | null,
+      user: { name, user_id, email, admin } as {
+        name: string
+        email: string
+        user_id: string
+        admin: boolean
+      } | null,
       loggedIn: (logged_in ? "Yes" : "Unknown") as "Yes" | "No" | "Unknown",
       admin: false,
       registered: true,
       rooms: [] as Room[],
       required_action: undefined as undefined | "register" | "verify",
+      logged_in: false,
     })
     onMounted(() => {
-      const firebaseConfig = {
-        apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-        authDomain: "coi-conf.firebaseapp.com",
-        databaseURL: "https://coi-conf.firebaseio.com",
-        projectId: "coi-conf",
-        storageBucket: "coi-conf.appspot.com",
-        messagingSenderId: "648033256432",
-        appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-        measurementId: "G-23RL5BGH9D",
-      }
       axios.interceptors.request.use(config => {
         if (debug_as && debug_token) {
           config.params = config.params || {}
@@ -103,101 +112,92 @@ export default defineComponent({
           return config
         }
       })
+      ;(async () => {
+        console.log("User:", state.user)
+        if (debug_as && debug_token) {
+          console.log("Initializing debug mode...", debug_as)
+          state.myUserId = debug_as
+          const r = await axios.get("/maps")
+          console.log("/maps result", r)
+          state.rooms = r.data
+          state.loggedIn = "Yes"
+          const { data } = await axios.post<PostIdTokenResponse>("/id_token", {
+            token: "DEBUG_BYPASS",
+            debug_from: "Index",
+          })
+          console.log("/id_token result", data)
 
-      firebase.initializeApp(firebaseConfig)
-      window.firebase = firebase
-
-      firebase.auth().onAuthStateChanged(user => {
-        ;(async () => {
-          console.log("User:", user)
-          if (debug_as && debug_token) {
-            console.log("Initializing debug mode...", debug_as)
-            state.myUserId = debug_as
+          state.myUserId = data.user_id || null
+          if (data.ok) {
+            state.admin = data.admin || false
             const r = await axios.get("/maps")
-            console.log("/maps result", r)
             state.rooms = r.data
-            state.loggedIn = "Yes"
-            const { data } = await axios.post("/id_token", {
-              token: "DEBUG_BYPASS",
-              debug_from: "Index",
-            })
-            console.log("/id_token result", data)
-            state.myUserId = data.user_id
-            if (data.ok) {
-              state.admin = data.admin
-              const r = await axios.get("/maps")
-              state.rooms = r.data
-            } else {
-              state.registered = false
-              console.log("User auth failed")
-              location.reload()
-            }
-            return
-          }
-          if (!user) {
-            state.loggedIn = "No"
-            location.href = "/login"
+            state.logged_in = true
           } else {
-            await 1
-            state.user = user
-            state.loggedIn = "Yes"
-
-            const idToken = await user.getIdToken()
-            if (!user.emailVerified) {
-              location.href = "/login"
-            } else {
-              console.log("Already registered")
-              axios.defaults.headers.common = {
-                Authorization: `Bearer ${idToken}`,
-              }
-              const { data } = await axios.post<PostIdTokenResponse>(
-                "/id_token",
-                {
-                  token: idToken,
-                }
-              )
-              console.log("/id_token result", data)
-              state.myUserId = data.user_id || null
-              if (data.registered == "registered") {
-                state.admin = data.admin || false
-                const r = await axios.get("/maps")
-                state.rooms = r.data
-              } else if (data.registered == "can_register") {
-                state.required_action = "register"
-                state.registered = false
-              } else if (data.registered == "should_verify") {
-                state.required_action = "verify"
-                state.registered = false
-                const actionCodeSettings = {
-                  url: "/register",
-                }
-                state.user
-                  .sendEmailVerification(actionCodeSettings)
-                  .then(() => {
-                    console.log("Verification email sent")
-                  })
-                  .catch(function(error) {
-                    console.error(error)
-                  })
-                console.log("Waiting for email verification")
-              } else {
-                state.registered = false
-                console.log("User auth failed")
-              }
-            }
+            state.registered = false
+            console.log("User auth failed")
+            location.reload()
           }
-        })().catch(err => {
-          console.log(err)
-        })
+          return
+        }
+        if (!state.user) {
+          state.loggedIn = "No"
+          // location.href = "/login"
+        } else {
+          state.loggedIn = "Yes"
+          console.log("Already registered", state.user)
+          state.myUserId = state.user.user_id
+          if (state.myUserId) {
+            localStorage["virtual-poster:user_id"] = state.myUserId
+          }
+          const r = await axios.get("/maps").catch(err => {
+            console.log(err)
+            // location.href = "/login"
+            return { data: [] }
+          })
+          state.rooms = r.data
+          const { data } = await axios.get("/public_key")
+          console.log("/public_key result", data)
+
+          const r2 = await encryption.setupEncryption(
+            axios,
+            state.myUserId,
+            data.public_key
+          )
+          state.logged_in = true
+
+          /*
+          const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
+          shaObj.update(idToken)
+          const jwt_hash = shaObj.getHash("HEX")
+          localStorage["virtual-poster:jwt_hash"] = jwt_hash
+          */
+        }
+      })().catch(err => {
+        console.log(err)
       })
     })
+
+    firebase.initializeApp(firebaseConfig)
+
     const signOut = () => {
       firebase
         .auth()
         .signOut()
         .then(() => {
-          console.log("signed out")
-          location.href = "/login"
+          console.log("Firebase signed out")
+          axios
+            .post("/logout")
+            .then(() => {
+              console.log("App signed out")
+              deleteUserInfoOnLogout()
+              location.href = "/login"
+            })
+            .catch(err => {
+              console.error(err)
+              deleteUserInfoOnLogout()
+              location.href = "/login"
+            })
         })
         .catch(err => {
           console.error(err)
@@ -206,33 +206,85 @@ export default defineComponent({
     const enterRoom = (room_id: string) => {
       location.href = "/room?room_id=" + room_id
     }
-    return { ...toRefs(state), signOut, enterRoom }
+    return { ...toRefs(state), signOut, enterRoom, location }
   },
 })
 </script>
 
 <style>
+/* https://jajaaan.co.jp/css/button/ */
+*,
+*:before,
+*:after {
+  -webkit-box-sizing: inherit;
+  box-sizing: inherit;
+}
+
+html {
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  font-size: 62.5%;
+}
+
+.btn,
+a.btn,
+button.btn {
+  font-size: 1.6rem;
+  /* font-weight: 700; */
+  line-height: 1.5;
+  position: relative;
+  display: inline-block;
+  padding: 0.1rem 1rem;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-transition: all 0.3s;
+  transition: all 0.3s;
+  text-align: center;
+  vertical-align: middle;
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  color: #212529;
+  border-radius: 0.5rem;
+
+  background-color: #ccc;
+  border: 1px #777 solid;
+}
+
 body {
   font-family: Loto, "YuGothic", sans-serif;
+  margin: 15px;
+  font-size: 14px;
 }
+
+h1 {
+  margin: 0px;
+  line-height: 1;
+}
+
 #login-info {
-  background: #eeeeff;
-  height: 25px;
+  background: #f3f3ff;
+  height: 45px;
   padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0px;
 }
 
 .room {
-  width: 200px;
-  height: 170px;
-  border-radius: 10px;
+  width: 260px;
+  height: 200px;
+  border-radius: 8px;
   background: #eee;
   cursor: pointer;
   float: left;
-  margin: 10px;
+  margin: 10px 15px 10px 0px;
+  padding: 10px;
   text-decoration: none;
 }
 
-.room:visited {
+.room {
   color: black;
 }
 
@@ -241,16 +293,33 @@ body {
 }
 
 .room h2 {
+  font-size: 21px;
   display: block;
   position: relative;
   text-align: center;
   margin: 0px;
+  padding: 0px;
+  height: 32px;
+}
+
+.room h2.small {
+  font-size: 14px;
 }
 
 .room img {
-  max-width: 180px;
-  max-height: 150px;
+  max-width: 300px;
+  max-height: 140px;
   margin: auto;
   display: block;
+}
+
+#login-info button {
+  font-size: 14px;
+  margin-right: 10px;
+  vertical-align: 1px;
+}
+
+[v-cloak] {
+  display: none;
 }
 </style>

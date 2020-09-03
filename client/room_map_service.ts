@@ -10,6 +10,9 @@ import {
 import { startChat, myChatGroup } from "./room_chat_service"
 import { addLatencyLog } from "./room_log_service"
 import { SocketIO } from "socket.io-client"
+import * as firebase from "firebase/app"
+import "firebase/auth"
+import jsSHA from "jssha"
 
 import {
   UserId,
@@ -19,6 +22,7 @@ import {
   RoomAppProps,
   RoomAppState,
   MoveSocketData,
+  AuthSocket,
   Poster,
   ChatGroup,
   DirectionSendSocket,
@@ -28,23 +32,12 @@ import {
   MapRoomResponse,
   MoveErrorSocketData,
   MySocketObject,
+  PostIdTokenResponse,
 } from "../@types/types"
 
 const BATCH_MOVE_INTERVAL = 400
 import _ from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
-import jsSHA from "jssha"
-
-export const jwt_hash = (props: RoomAppProps): ComputedRef<string> =>
-  computed((): string => {
-    if (props.debug_as) {
-      return props.debug_token || ""
-    } else {
-      const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
-      shaObj.update(props.idToken)
-      return shaObj.getHash("HEX")
-    }
-  })
 
 export const personAt = (
   people: { [user_id: string]: Person },
@@ -70,7 +63,6 @@ export let moveOneStep = (
   user_id: string,
   to: Point,
   direction: Direction,
-  jwt_hash: string,
   on_complete: (_g: ChatGroup | undefined) => void = () => {
     /* */
   }
@@ -84,7 +76,6 @@ export const moveTo = (
   state: RoomAppState,
   myself: Person,
   to: Point,
-  jwt_hash: string,
   on_complete: (g: ChatGroup | undefined) => void = () => {
     /* */
   },
@@ -108,26 +99,23 @@ export const moveTo = (
     !personAt(state.people, to)
   ) {
     if (immediate) {
-      moveOneStep(
-        axios,
-        props,
-        state,
-        myself.id,
-        to,
-        calcDirection(from, to),
-        jwt_hash
-      )
+      moveOneStep(axios, props, state, myself.id, to, calcDirection(from, to))
     }
-    const d: MoveSocketData = {
-      ...to,
-      room: props.room_id,
-      user: props.myUserId,
-      token: jwt_hash,
-      debug_as: props.debug_as,
-    }
-    state.move_emitted = Date.now()
-    console.log("Socket", state.socket)
+    const d: MoveSocketData = props.debug_as
+      ? {
+          ...to,
+          room: props.room_id,
+          user: props.myUserId,
+          debug_as: props.debug_as,
+        }
+      : {
+          ...to,
+          room: props.room_id,
+          user: props.myUserId,
+        }
+    console.log("moveTo() emitting", d)
     state.socket?.emit("Move", d)
+    state.move_emitted = performance.now()
     return true
   } else {
     const person = personAt(state.people, to)
@@ -136,7 +124,7 @@ export const moveTo = (
       console.info("Cannot move to an occupied cell", state.hallMap[to.y][to.x])
       return false
     }
-    const ti = Date.now()
+    const ti = performance.now()
     let points: Point[] | null = null
     for (const margin of [3, 5, 10, undefined]) {
       points = findRoute(
@@ -151,7 +139,7 @@ export const moveTo = (
         break
       }
     }
-    const tf = Date.now()
+    const tf = performance.now()
     console.log(`Route finding in ${tf - ti} ms`)
     if (!points) {
       console.info("No route was found.")
@@ -196,8 +184,7 @@ export const moveTo = (
             state,
             props.myUserId,
             points[idx],
-            calcDirection(points[idx - 1], p2),
-            jwt_hash
+            calcDirection(points[idx - 1], p2)
           )
         }
         state.liveMapChangedAfterMove = false
@@ -205,10 +192,9 @@ export const moveTo = (
           ...p2,
           room: props.room_id,
           user: props.myUserId,
-          token: props.debug_as ? props.debug_token || "" : jwt_hash,
           debug_as: props.debug_as,
         }
-        state.move_emitted = Date.now()
+        state.move_emitted = performance.now()
         state.socket?.emit("Move", d)
         if (idx == points.length - 1 && state.batchMoveTimer) {
           clearInterval(state.batchMoveTimer)
@@ -216,9 +202,9 @@ export const moveTo = (
           if (state.chatAfterMove) {
             state.selectedUsers = new Set([state.chatAfterMove])
             startChat(props, state, axios)
-              .then(group => {
-                on_complete(group)
-                if (group) {
+              .then(d => {
+                on_complete(d?.group)
+                if (d) {
                   state.selectedUsers.clear()
                 }
               })
@@ -244,7 +230,6 @@ moveOneStep = (
   user_id: string,
   to: Point,
   direction: Direction,
-  jwt_hash: string,
   on_complete: (g: ChatGroup | undefined) => void = () => {
     /* */
   }
@@ -273,7 +258,6 @@ moveOneStep = (
         state,
         state.people[props.myUserId],
         state.batchMovePoints[state.batchMovePoints.length - 1],
-        jwt_hash,
         on_complete
       )
       return true
@@ -290,8 +274,7 @@ export const moveByArrow = (
   props: RoomAppProps,
   state: RoomAppState,
   me: Person,
-  key: ArrowKey,
-  jwt_hash: string
+  key: ArrowKey
 ): { ok: boolean; moved: boolean; error?: "during_chat" | undefined } => {
   let dx = 0,
     dy = 0
@@ -327,13 +310,20 @@ export const moveByArrow = (
         const d: TypingSocketSendData = {
           user: me.id,
           room: props.room_id,
-          token: jwt_hash,
+          token: localStorage["virtual-poster:jwt_hash"],
           typing: false,
         }
         state.socket?.emit("ChatTyping", d)
       }
       state.selectedUsers.clear()
-      moveTo(axios, props, state, me, { x: nx, y: ny }, jwt_hash)
+      moveTo(
+        axios,
+        props,
+        state,
+        me,
+        { x: nx, y: ny },
+        localStorage["virtual-poster:jwt_hash"]
+      )
       moved = true
     } else {
       const d = {
@@ -350,7 +340,7 @@ export const moveByArrow = (
       user: props.myUserId,
       room: props.room_id,
       direction: me.direction,
-      token: jwt_hash,
+      token: localStorage["virtual-poster:jwt_hash"],
       debug_as: props.debug_as,
     }
     state.socket?.emit("Direction", d)
@@ -377,8 +367,7 @@ const on_socket_move = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
-  s: string,
-  jwt_hash: string
+  s: string
 ) => {
   const pos = decodeMoved(s, props.room_id)
   // console.log("on_socket_move", s, pos)
@@ -395,9 +384,9 @@ const on_socket_move = (
     state.oneStepAccepted = true
   }
   if (pos.user == props.myUserId && state.move_emitted) {
-    const latency = Date.now() - state.move_emitted
+    const latency = performance.now() - state.move_emitted
     state.move_emitted = null
-    console.log("%c" + latency + "ms socket move", "color: green")
+    console.log("%c" + latency.toFixed(2) + "ms socket move", "color: green")
     addLatencyLog(axios, {
       url: "socket:move",
       latency,
@@ -410,8 +399,7 @@ const on_socket_move = (
     state,
     pos.user,
     { x: pos.x, y: pos.y },
-    pos.direction,
-    jwt_hash
+    pos.direction
   )
   if (pos.user != props.myUserId) {
     state.liveMapChangedAfterMove = true
@@ -422,18 +410,44 @@ export const initMapService = async (
   axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
   props: RoomAppProps,
-  state: RoomAppState,
-  jwt_hash: ComputedRef<string>
+  state: RoomAppState
 ): Promise<boolean> => {
   console.log("initMapService", socket)
   socket.on("Moved", data => {
     const ss = data.split(";")
     for (const s of ss) {
-      on_socket_move(axios, props, state, s, jwt_hash.value)
+      on_socket_move(axios, props, state, s)
     }
   })
   socket.on("MoveError", (msg: MoveErrorSocketData) => {
     console.log("MoveError socket", msg)
+    if (msg.error.indexOf("Access denied") == 0) {
+      ;(async () => {
+        const user = firebase.auth().currentUser
+        if (user) {
+          const token = await user.getIdToken(true)
+          const { data } = await axios.post<PostIdTokenResponse>("/id_token", {
+            token,
+          })
+          console.log("/id_token result", data)
+          if (data.token_actual && data.user_id) {
+            const shaObj = new jsSHA("SHA-256", "TEXT", {
+              encoding: "UTF8",
+            })
+            shaObj.update(data.token_actual)
+            const jwt_hash = shaObj.getHash("HEX")
+            localStorage["virtual-poster:jwt_hash"] = jwt_hash
+            const d: AuthSocket = {
+              user: data.user_id,
+              jwt_hash,
+            }
+            socket.emit("Auth", d)
+          }
+        }
+      })().catch(() => {
+        //
+      })
+    }
     if (msg.user_id && msg.pos != undefined) {
       moveOneStep(
         axios,
@@ -441,8 +455,7 @@ export const initMapService = async (
         state,
         msg.user_id,
         { x: msg.pos.x, y: msg.pos.y },
-        msg.pos.direction as Direction,
-        jwt_hash.value
+        msg.pos.direction as Direction
       )
     }
     if (msg.error.indexOf("Access denied") != -1) {

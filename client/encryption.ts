@@ -1,5 +1,8 @@
 import { AxiosInstance, AxiosStatic } from "axios"
 import * as bip39 from "bip39"
+import { UserId } from "../@types/types"
+import { difference } from "lodash-es"
+
 type EncryptedData = {
   iv: string
   data: string
@@ -29,6 +32,14 @@ export async function exportPrivateKeyPKCS(key: CryptoKey): Promise<string> {
   return encodingFunc(new Uint8Array(v))
 }
 
+function encodeBase64URL(v: Uint8Array): string {
+  const s = btoa(String.fromCharCode(...v))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "")
+  return s
+}
+
 function decodeBase64URL(s: string): Uint8Array {
   return Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), c =>
     c.charCodeAt(0)
@@ -37,13 +48,17 @@ function decodeBase64URL(s: string): Uint8Array {
 
 export async function exportPrivateKeyJwk(key: CryptoKey): Promise<string> {
   const v = await crypto.subtle.exportKey("jwk", key)
-  console.log(decodeBase64URL(v.x!))
   return JSON.stringify(v)
 }
 
 export async function exportPublicKey(key: CryptoKey): Promise<string> {
   const v = await crypto.subtle.exportKey("spki", key)
   return encodingFunc(new Uint8Array(v))
+}
+
+export async function exportPublicKeyJwk(key: CryptoKey): Promise<JsonWebKey> {
+  const v = await crypto.subtle.exportKey("jwk", key)
+  return v
 }
 
 // https://stackoverflow.com/a/42590106
@@ -280,11 +295,38 @@ export async function decrypt_str(
   return decrypted ? fromUint8Array(decrypted) : null
 }
 
-export function getMnemonic(secret_d: string) {
+export function getMnemonic(secret_d: string): string {
   const buffer = Buffer.from(decodeBase64URL(secret_d))
   const hex = buffer.toString("hex")
   const mnemonic = bip39.entropyToMnemonic(hex)
   return mnemonic
+}
+
+function fromHexString(hexString: string): Uint8Array {
+  return new Uint8Array(
+    hexString.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+  )
+}
+export function fromMnemonic(
+  mnemonic: string
+): { key?: string; error?: string } {
+  try {
+    const mnemonic_normalized = mnemonic.replace(/\s+/g, " ").trim()
+    const words = mnemonic_normalized.split(" ")
+    if (words.length != 24) {
+      return { error: "パスフレーズは英単語24個です" }
+    }
+    if (difference(words, bip39.wordlists["english"]).length != 0) {
+      return { error: "無効な単語が含まれています" }
+    }
+    const hex = bip39.mnemonicToEntropy(mnemonic_normalized)
+    const buffer = fromHexString(hex)
+    const data_d = encodeBase64URL(buffer)
+    return { key: data_d }
+  } catch (err) {
+    console.error(err)
+    return { error: "パスフレーズが正しくありません" }
+  }
 }
 
 export async function importPrivateKeyJwk(
@@ -301,17 +343,21 @@ export async function importPrivateKeyJwk(
       decodeBase64URL(data.y!).length
     )
 
-    const fromHexString = hexString =>
-      new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)))
-
     // const buffer = Buffer.from(decodeBase64URL(data.d!))
     // const hex = buffer.toString("hex")
-    // const mnemonic = bip39.entropyToMnemonic(hex)
-    // const hex2 = bip39.mnemonicToEntropy(mnemonic)
+    // const mnemonic1 = bip39.entropyToMnemonic(hex)
+    // const hex2 = bip39.mnemonicToEntropy(mnemonic1)
     // const buffer2 = fromHexString(hex2)
-    // console.log(buffer, hex, mnemonic, hex2, buffer2)
+    // const data_d2 = encodeBase64URL(buffer2)
+    // console.log(data.d, buffer, hex, mnemonic1, hex2, buffer2, data_d2)
 
     const mnemonic = getMnemonic(data.d!)
+    // const {key: d_again} = fromMnemonic(mnemonic)
+    // console.log(data.d, mnemonic, d_again)
+    // const mnemonic_again = getMnemonic(d_again!)
+    // console.log(mnemonic_again)
+
+    console.log("Calling crypto.subtle.importKey()", data)
 
     const key = await crypto.subtle.importKey(
       "jwk",
@@ -370,5 +416,92 @@ export async function generateAndSendKeys(
     return { ok: !!data.ok, pub_str, prv_str }
   } catch (err) {
     return { ok: false }
+  }
+}
+
+export async function setupEncryption(
+  axios: AxiosStatic | AxiosInstance,
+  myUserId: UserId,
+  pub_str_from_server?: string
+): Promise<{
+  ok: boolean
+  pub?: string
+  prv?: string
+  prv_mnemonic?: string
+  enabled: boolean
+}> {
+  const enabled =
+    localStorage["virtual-poster:" + myUserId + ":config:encryption"] == "1"
+  let pub_str_local: string | null =
+    localStorage["virtual-poster:" + myUserId + ":public_key_spki"]
+  if (pub_str_from_server && !pub_str_local) {
+    pub_str_local = pub_str_from_server
+    localStorage[
+      "virtual-poster:" + myUserId + ":public_key_spki"
+    ] = pub_str_from_server
+  }
+  const prv_str_local = {
+    jwk: (localStorage["virtual-poster:" + myUserId + ":private_key_jwk"] ||
+      null) as string | null,
+    pkcs8: (localStorage["virtual-poster:private_key:" + myUserId] || null) as
+      | string
+      | null,
+  }
+
+  let publicKeyString: string | null
+  let privateKeyString: string | null
+
+  if (pub_str_from_server) {
+    publicKeyString = pub_str_from_server
+  } else if (pub_str_local) {
+    console.log("Public key: found in localStorage, not found on server.")
+    const { data } = await axios.post("/public_key", {
+      key: pub_str_local,
+    })
+    console.log("posted /public_key", data)
+    publicKeyString = pub_str_local
+  } else {
+    console.log(
+      "Public key NOT found either on server or client. Generating key pair and send a public key to server."
+    )
+    const { ok, pub_str, prv_str } = await generateAndSendKeys(
+      axios,
+      myUserId,
+      false
+    )
+    console.log("generateAndSendKeys()", ok)
+    if (!ok || !pub_str || !prv_str) {
+      console.error("Key generation failed")
+      localStorage["virtual-poster:" + myUserId + ":config:encryption"] = "0"
+      return { ok: false, enabled: false }
+    }
+    prv_str_local.jwk = prv_str
+    publicKeyString = pub_str
+    privateKeyString = prv_str
+  }
+
+  if (prv_str_local.jwk) {
+    privateKeyString = prv_str_local.jwk
+    const pub = await importPublicKey(publicKeyString, true)
+    if (!pub) {
+      console.error("Public key import failed")
+      return { ok: false, enabled: false }
+    }
+    const obj = JSON.parse(privateKeyString)
+    const prv = await importPrivateKeyJwk(obj, pub, true)
+    if (!prv) {
+      console.error("Private key import failed")
+      return { ok: false, enabled: false }
+    } else {
+      return {
+        ok: true,
+        enabled,
+        pub: publicKeyString,
+        prv: privateKeyString,
+        prv_mnemonic: prv.mnemonic,
+      }
+    }
+  } else {
+    return { ok: false, enabled: false }
   }
 }

@@ -10,7 +10,7 @@
     "prod:log": "NODE_ENV=production DEBUG_LOG=1 ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "nohup": "NODE_ENV=production nohup node_modules/.bin/ts-node -O '{\"module\": \"commonjs\"}' server/index.ts &",
     "socket": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts | bunyan -o short",
-    "socket:nohup": "NODE_ENV=production nohup ts-node -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts > socket.nohup.out &",
+    "socket:nohup": "NODE_ENV=production NO_TLS=1 PORT=80 nohup ts-node -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts > socket.nohup.out &",
     "serve": "vue-cli-service serve",
     "server": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "dev": "set NODE_ENV=development && nodemon -L >&2 | npm run serve",

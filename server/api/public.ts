@@ -5,6 +5,7 @@ import { UserId, PostIdTokenResponse } from "@/@types/types"
 import { verifyIdToken } from "../auth"
 
 const USER_REGISTRATION = process.env.USER_REGISTRATION == "YES"
+const PRODUCTION = process.env.NODE_ENV == "production"
 
 async function public_api_routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -186,7 +187,7 @@ async function public_api_routes(
   )
   fastify.get("/socket_url", async () => {
     return {
-      socket_url: process.env.SOCKET_URL || "http://localhost:5000/socket.io",
+      socket_url: PRODUCTION ? "/" : "http://localhost:5000/socket.io",
     }
   })
 }

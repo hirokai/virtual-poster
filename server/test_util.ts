@@ -1,5 +1,5 @@
 import * as model from "./model"
-import { RoomId, PersonWithEmail, Point } from "@/@types/types"
+import { RoomId, UserId, Point, PosDir } from "@/@types/types"
 import { inRange } from "../common/util"
 import _ from "lodash"
 
@@ -13,7 +13,15 @@ export const random_str = (N?: number): string => {
     .join("")
 }
 
-export const createUser = async (room_id: RoomId): Promise<PersonWithEmail> => {
+export const createUser = async (
+  room_id: RoomId
+): Promise<{
+  id: UserId
+  last_updated: number
+  name: string
+  email?: string
+  rooms?: { room_id: RoomId; pos?: PosDir }[]
+}> => {
   const name = "Test user " + random_str(5)
   const email = "hoge" + random_str(5) + "@gmail.com"
   const { user } = await model.people.create(

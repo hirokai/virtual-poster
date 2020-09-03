@@ -97,7 +97,7 @@
           >
           <span
             class="comment-content"
-            v-html="c.text.replace(/[\r\n]/g, '<br>')"
+            v-html="c.text_decrypted.replace(/[\r\n]/g, '<br>')"
           ></span>
         </div>
       </div>

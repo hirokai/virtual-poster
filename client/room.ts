@@ -4,6 +4,7 @@ import * as firebase from "firebase/app"
 import "firebase/auth"
 import axiosDefault from "axios"
 import { UserId, RoomId } from "../@types/types"
+import firebaseConfig from "../firebaseConfig"
 
 Vue.config.productionTip = true
 
@@ -11,17 +12,6 @@ const API_ROOT = "/api"
 const axios = axiosDefault.create({
   baseURL: API_ROOT,
 })
-
-const firebaseConfig = {
-  apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-  authDomain: "coi-conf.firebaseapp.com",
-  databaseURL: "https://coi-conf.firebaseio.com",
-  projectId: "coi-conf",
-  storageBucket: "coi-conf.appspot.com",
-  messagingSenderId: "648033256432",
-  appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-  measurementId: "G-23RL5BGH9D",
-}
 
 firebase.initializeApp(firebaseConfig)
 window.firebase = firebase
@@ -49,68 +39,73 @@ declare module "vue/types/vue" {
   }
 }
 
-firebase.auth().onAuthStateChanged(user => {
-  ;(async () => {
-    console.log("User:", user, debug_as)
-    if (debug_as) {
-      console.log("Initializing debug mode...", debug_as)
-      const propsData = {
-        room_id,
-        debug_as,
-        debug_token,
-        myUserId: debug_as,
-        user,
-        bot_mode,
-        idToken: "",
-        axios,
-      }
-      new Vue({
-        render: h => h(Room, { props: propsData }),
-        el: "#app",
-      })
-      return
+// firebase.auth().onAuthStateChanged(user => {
+;(async () => {
+  const user = { emailVerified: true, email: "hoge" }
+  // console.log("User:", user, debug_as)
+  if (debug_as) {
+    console.log("Initializing debug mode...", debug_as)
+    const propsData = {
+      room_id,
+      debug_as,
+      debug_token,
+      myUserId: debug_as,
+      user,
+      bot_mode,
+      idToken: "",
+      axios,
     }
-    if (!user) {
-      location.href = "/login"
+    new Vue({
+      render: h => h(Room, { props: propsData }),
+      el: "#app",
+    })
+    return
+  }
+  if (!user) {
+    location.href = "/login"
+  } else {
+    if (!user.emailVerified) {
+      firebase.auth().languageCode = "ja"
+      // await user.sendEmailVerification().catch(function(error) {
+      //   console.error(error)
+      // })
+      console.log("Verification email sent")
+      location.href = "/"
     } else {
-      const idToken = await user.getIdToken()
-      if (!user.emailVerified) {
-        firebase.auth().languageCode = "ja"
-        await user.sendEmailVerification().catch(function(error) {
-          console.error(error)
-        })
-        console.log("Verification email sent")
-        location.href = "/"
+      // console.log("Already registered")
+      // axios.defaults.headers.common = {
+      //   Authorization: `Bearer ${idToken}`,
+      // }
+      // const idToken = await user.getIdToken()
+      // const { data } = await axios.post("/id_token", {
+      //   token: idToken,
+      //   debug_from: "room",
+      // })
+      const user_id: string | undefined = localStorage["virtual-poster:user_id"]
+      const jwt_hash_initial: string | undefined =
+        localStorage["virtual-poster:jwt_hash"]
+      const data = { ok: true, user_id }
+      if (!data.ok) {
+        console.log("User auth failed")
       } else {
-        // console.log("Already registered")
-        axios.defaults.headers.common = {
-          Authorization: `Bearer ${idToken}`,
+        const propsData = {
+          room_id,
+          myUserId: data.user_id,
+          user: user,
+          bot_mode: bot_mode,
+          jwt_hash_initial,
+          axios,
         }
-        const { data } = await axios.post("/id_token", {
-          token: idToken,
-          debug_from: "room",
+        console.log("Initializing...", data, user?.email, propsData)
+        // app.$props.socket = app.$mount("#app")
+        new Vue<typeof Room>({
+          render: h => h(Room, { props: propsData }),
+          el: "#app",
         })
-        if (!data.ok) {
-          console.log("User auth failed")
-        } else {
-          const propsData = {
-            room_id,
-            myUserId: data.user_id,
-            user: user,
-            bot_mode: bot_mode,
-            idToken,
-            axios,
-          }
-          console.log("Initializing...", data, user?.email, propsData)
-          // app.$props.socket = app.$mount("#app")
-          new Vue<typeof Room>({
-            render: h => h(Room, { props: propsData }),
-            el: "#app",
-          })
-        }
       }
     }
-  })().catch(err => {
-    console.log(err)
-  })
+  }
+})().catch(err => {
+  console.log(err)
 })
+// })

@@ -61,6 +61,11 @@ export class Emit {
     }, 100)
   }
 
+  room(name: string): Emit {
+    this.log.debug("emit.room", name)
+    return new Emit(this.emitter.to(name))
+  }
+
   emitQueuedMessages(msg: string): void {
     const rooms: RoomId[] = Object.keys(this.socketQueue[msg])
     if (msg == "moved") {
@@ -114,8 +119,9 @@ export class Emit {
   moveError(d: MoveErrorSocketData, socket: Emitter): void {
     socket.emit("MoveError", d)
   }
-  people(d: Person[], socket: Emitter = this.emitter): void {
-    socket.emit("Person", d)
+  peopleNew(d: Person[], socket: Emitter = this.emitter): void {
+    this.log.debug("PersonNew", d)
+    socket.emit("PersonNew", d)
   }
   peopleUpdate(ds: PersonUpdate[], socket: Emitter = this.emitter): void {
     socket.emit("PersonUpdate", ds)
@@ -134,8 +140,8 @@ export class Emit {
       this.emitter.to(t.to).emit("Comment", d)
     }
   }
-  announce(d: Announcement): void {
-    this.emitter.to(d.room).emit("Announce", d)
+  announce(d: Announcement, socket: Emitter = this.emitter): void {
+    socket.emit("Announce", d)
   }
   posterComment(d: ChatCommentDecrypted, socket: Emitter = this.emitter): void {
     socket.emit("PosterComment", d)
@@ -285,6 +291,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
   io.on("connection", function(socket: SocketIO.Socket) {
     log.info("Connected:", socket.id)
     socket.emit("greeting")
+
     addHandler(socket, "Auth", (d: AuthSocket) => {
       ;(async () => {
         const verified = await model.people.authSocket({
@@ -358,7 +365,24 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         socket.join(user)
 
         const ds: ActiveUsersSocketData = [{ room, user, active: true }]
-        io.to(room).emit("active_users", ds)
+        io.to(room).emit("ActiveUsers", ds)
+
+        model.db
+          .query(`SELECT * FROM announce WHERE room=$1`, [room])
+          .then(rows => {
+            if (rows.length == 1) {
+              const d: Announcement = {
+                room: rows[0].room,
+                text: rows[0].text,
+                marquee: rows[0].marquee,
+                period: rows[0].period || 0,
+              }
+              emit.announce(d, socket)
+            }
+          })
+          .catch(err => {
+            //
+          })
       })().catch(err => {
         log.error(err)
       })
@@ -416,7 +440,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
       })
       log.debug("make_announcement", d)
       if (d.room && d.text) {
-        io.emit("announce", d)
+        emit.announce(d)
         model.maps[d.room].announce(d)
       }
     })

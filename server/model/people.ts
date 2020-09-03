@@ -96,7 +96,17 @@ export async function create(
   avatar: string,
   allowed_rooms: RoomId[],
   merge_strategy: "reject" | "replace" | "append" = "append"
-): Promise<{ ok: boolean; user?: PersonWithEmail; error?: string }> {
+): Promise<{
+  ok: boolean
+  user?: {
+    id: UserId
+    last_updated: number
+    name: string
+    email?: string
+    rooms?: { room_id: RoomId; pos?: PosDir }[]
+  }
+  error?: string
+}> {
   if ((email == "" || name == "") && merge_strategy == "reject") {
     return { ok: false, error: "Name and/or email is missing" }
   }
@@ -116,7 +126,6 @@ export async function create(
   }
   const uid = genUserId()
   try {
-    await db.query(`BEGIN`)
     if (merge_strategy == "reject") {
       const r = await db.query(`SELECT 1 FROM person WHERE email=$1;`, [email])
       if (r.length > 0) {
@@ -151,6 +160,7 @@ export async function create(
         uid_actual,
       ])
     }
+    const rooms: { room_id: string; pos?: PosDir }[] = []
     for (const room of allowed_rooms) {
       if (!maps[room]) {
         log.warn("Room does not exist", room)
@@ -160,23 +170,16 @@ export async function create(
         `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING;`,
         [room, uid_actual, typ]
       )
-      const pos = await maps[room].getRandomOpenPos(uid_actual)
-      if (pos) {
-        const _person = await db.query(
-          `INSERT INTO person_position (person,room,last_updated,x,y,direction) values ($1,$2,$3,$4,$5,$6) ON CONFLICT ON CONSTRAINT person_position_pkey DO NOTHING RETURNING person;`,
-          [uid_actual, room, Date.now(), pos.x, pos.y, randomDirection()]
-        )
-      } else {
+      const pos = await maps[room].assignRandomOpenPos(uid_actual)
+      rooms.push({ room_id: room, pos: pos || undefined })
+      if (!pos) {
         log.warn("No open space or map uninitialized")
-        await db.query(`ROLLBACK`)
-        return { ok: false, error: "No open space or map uninitialized" }
       }
     }
     const user = await getUnwrap(uid_actual)
-    await db.query(`COMMIT`)
+    user.rooms = rooms
     return { ok: true, user }
   } catch (err) {
-    await db.query("ROLLBACK")
     log.error(err)
     return { ok: false }
   }
@@ -242,10 +245,17 @@ export async function getAdmin(): Promise<UserId[] | null> {
   return admins.length == 0 ? null : admins
 }
 export async function get(
-  user_id: string,
+  user_id: UserId,
   with_email = false,
   with_room_access = false
-): Promise<PersonWithEmail | null> {
+): Promise<{
+  id: UserId
+  last_updated: number
+  name: string
+  avatar?: string
+  email?: string
+  rooms?: { room_id: RoomId; pos?: PosDir }[]
+} | null> {
   if (!initialized) {
     throw new Error("Not initialized")
   }
@@ -258,20 +268,36 @@ export async function get(
         `SELECT * from person left join public_key as k on person.id=k.person where id=$1;`,
         [user_id]
       )
-  const p: PersonWithEmail | null = rows[0]
-  if (p) {
-    p.public_key = rows[0].public_key || undefined
-    if (with_email) {
-      p.email = (await redis.accounts.get("uid:" + user_id)) || undefined
-    }
-  }
+  const p =
+    rows.length == 0
+      ? null
+      : {
+          id: rows[0].id,
+          last_updated: parseInt(rows[0].last_updated),
+          public_key: rows[0].public_key || undefined,
+          room: rows[0].room,
+          name: rows[0].name,
+          rooms:
+            rows[0].rooms?.split("::::")?.map((room_id: string) => {
+              return { room_id }
+            }) || [],
+          email: with_email
+            ? (await redis.accounts.get("uid:" + user_id)) || undefined
+            : undefined,
+        }
   return p
 }
 export async function getUnwrap(
   user_id: string,
   with_email = false,
   with_room_access = false
-): Promise<PersonWithEmail> {
+): Promise<{
+  id: UserId
+  last_updated: number
+  name: string
+  email?: string
+  rooms?: { room_id: RoomId; pos?: PosDir }[]
+}> {
   const p = await get(user_id, with_email, with_room_access)
   if (p) {
     return p
@@ -405,14 +431,12 @@ export async function set(
   if (!initialized) {
     throw new Error("Not initialized")
   }
-  const q = await pgp.helpers.update(
-    {
-      ..._.pick(data, ["name", "email", "avatar"]),
-      last_updated: Date.now(),
-    },
-    null,
-    "person"
-  )
+  const updateObj = {
+    ..._.pickBy(_.pick(data, ["name", "email", "avatar"])),
+    last_updated: Date.now(),
+  }
+  console.log(updateObj)
+  const q = await pgp.helpers.update(updateObj, null, "person")
   const condition = pgp.as.format(" WHERE id=$1", person_id)
   await db.query(q + condition)
   if (data.email) {
@@ -431,10 +455,14 @@ export async function set_stats(pid: UserId, stats: PersonStat): Promise<void> {
   log.debug("set_stats() stub:", pid, stats)
   await 1
 }
+
 export async function update(
   user_id: UserId,
   obj: { [index: string]: string | number }
-): Promise<string[] | null> {
+): Promise<{
+  keys: string[]
+  update: { id: UserId; last_updated: number; name?: string; email?: string }
+} | null> {
   if (!initialized) {
     throw new Error("Not initialized")
   }
@@ -445,23 +473,15 @@ export async function update(
     log.debug(obj)
     const last_updated = Date.now()
     const new_person = { ...person, last_updated }
-    const keys = _.intersection(Object.keys(obj), [
-      "name",
-      "email",
-      "x",
-      "y",
-      "avatar",
-    ])
+    const keys = _.intersection(Object.keys(obj), ["name", "email", "avatar"])
     for (const k of keys) {
       new_person[k] = obj[k]
     }
     await set(user_id, new_person)
-
-    const email: string | undefined = obj["email"] as string | undefined
-
-    return keys.concat(email ? ["email"] : [])
+    return { keys: keys.concat(["last_updated"]), update: new_person }
   }
 }
+
 export async function getUserIdFromEmail(
   email: string
 ): Promise<string | null> {

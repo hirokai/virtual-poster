@@ -1,3 +1,5 @@
+import { UserId } from "../@types/types"
+
 //https://stackoverflow.com/questions/28905965/textarea-how-to-count-wrapped-lines-rows
 /** @type {HTMLTextAreaElement} */
 let _buffer
@@ -47,4 +49,21 @@ export function countLines(textarea: HTMLTextAreaElement): number {
   let result = Math.floor(_buffer.scrollHeight / lh)
   if (result == 0) result = 1
   return result
+}
+
+export function setUserInfo(
+  user_id: UserId,
+  email: string,
+  admin: boolean
+): void {
+  localStorage["virtual-poster:user_id"] = user_id
+  localStorage["virtual-poster:email"] = email
+  localStorage["virtual-poster:admin"] = admin ? "1" : "0"
+}
+
+export function deleteUserInfoOnLogout(): void {
+  localStorage.removeItem("virtual-poster:user_id")
+  localStorage.removeItem("virtual-poster:email")
+  localStorage.removeItem("virtual-poster:admin")
+  localStorage.removeItem("virtual-poster:jwt_hash")
 }

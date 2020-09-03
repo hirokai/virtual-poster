@@ -3,7 +3,7 @@
     <div id="header">
       <span v-if="!!myself">
         {{ myself ? myself.name : "" }}さん
-        <span id="login-info" v-if="user && !debug_as">({{ user.email }})</span>
+        <span id="login-info">({{ myUserId }})</span>
       </span>
 
       <img
@@ -120,6 +120,7 @@
       :poster="botActive ? null : activePoster"
       :people_typing="people_typing"
       :enableEncryption="enableEncryption"
+      :encryptionPossibleInChat="encryption_possible_in_chat"
       @leave-chat="leaveChat"
       @submit-comment="submitComment"
       @update-comment="sendOrUpdateComment"
@@ -189,6 +190,7 @@ import {
   TypingSocketSendData,
   MapEnterResponse,
   SocketMessageFromUser,
+  PostIdTokenResponse,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -200,10 +202,11 @@ import { inRange, getClosestAdjacentPoints, isAdjacent } from "../common/util"
 
 import axiosDefault, { AxiosInstance } from "axios"
 import io from "socket.io-client"
-import _ from "lodash-es"
+import { every, keyBy, find } from "lodash-es"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-
+import * as encryption from "./encryption"
+import jsSHA from "jssha"
 import Peer from "skyway-js"
 import { MeshRoom, SfuRoom } from "skyway-js"
 
@@ -217,7 +220,6 @@ import {
   chatGroupOfUser,
   inviteToChat,
   myChatGroup as _myChatGroup,
-  setupEncryption,
 } from "./room_chat_service"
 
 import {
@@ -227,7 +229,6 @@ import {
   moveByArrow,
   cellsMag,
   initMapService,
-  jwt_hash as _jwt_hash,
 } from "./room_map_service"
 
 import {
@@ -240,6 +241,8 @@ import {
 } from "./room_poster_service"
 
 import { addLatencyLog } from "./room_log_service"
+
+import { deleteUserInfoOnLogout } from "./util"
 
 class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]> = {}
@@ -332,16 +335,11 @@ export default defineComponent({
       type: String,
       required: true,
     },
-    idToken: {
+    jwt_hash_initial: {
       type: String,
-      required: true,
     },
     bot_mode: {
       type: Boolean,
-      required: true,
-    },
-    user: {
-      type: Object as PropType<firebase.User>,
       required: true,
     },
     debug_as: {
@@ -355,7 +353,7 @@ export default defineComponent({
       required: true,
     },
   },
-  setup(props) {
+  setup(props, context) {
     const axios = props.axios
     axios.interceptors.request.use(request => {
       request["ts"] = performance.now()
@@ -382,7 +380,7 @@ export default defineComponent({
         "%c" +
           latency +
           "ms " +
-          response.config.method +
+          (response.config.method || "unknown").toUpperCase() +
           " " +
           response.status +
           " ",
@@ -393,9 +391,9 @@ export default defineComponent({
     })
 
     console.log(props)
-    axios.defaults.headers.common = {
-      Authorization: `Bearer ${props.idToken}`,
-    }
+    // axios.defaults.headers.common = {
+    //   Authorization: `Bearer ${props.idToken}`,
+    // }
 
     if (!process.env.VUE_APP_SKYWAY_API_KEY) {
       console.warn("Skyway API key not set.")
@@ -403,9 +401,7 @@ export default defineComponent({
 
     const state = reactive<RoomAppState>({
       socket: null as SocketIO.Socket | null,
-      peer: new Peer(props.myUserId + "-" + Date.now(), {
-        key: process.env.VUE_APP_SKYWAY_API_KEY || "",
-      }),
+      peer: null,
       skywayRoom: null,
       enableEncryption: false,
       avatarImages: {} as { [index: string]: string },
@@ -464,6 +460,8 @@ export default defineComponent({
 
       people_typing: {} as { [index: string]: boolean },
 
+      encryption_possible_in_chat: true,
+
       privateKeyString: null as string | null,
       privateKey: null as CryptoKey | null,
       publicKeyString: null as string | null,
@@ -485,18 +483,38 @@ export default defineComponent({
       },
       error => {
         if (403 === error.response.status) {
-          //
+          ;(async () => {
+            const user = firebase.auth().currentUser
+            if (user) {
+              const token = await user.getIdToken(true)
+              const { data } = await axios.post<PostIdTokenResponse>(
+                "/id_token",
+                { token }
+              )
+              if (data.updated) {
+                console.log("/id_token result", data)
+                const shaObj = new jsSHA("SHA-256", "TEXT", {
+                  encoding: "UTF8",
+                })
+                shaObj.update(token)
+                const jwt_hash = shaObj.getHash("HEX")
+                localStorage["virtual-poster:jwt_hash"] = jwt_hash
+              }
+            }
+          })().catch(err => {
+            //
+          })
         }
       }
     )
 
-    state.peer.on("connection", d => {
-      console.log("Skyway peer connection", d)
-    })
+    // state.peer?.on("connection", d => {
+    //   console.log("Skyway peer connection", d)
+    // })
 
-    state.peer.on("data", d => {
-      console.log("Skyway peer data", d)
-    })
+    // state.peer?.on("data", d => {
+    //   console.log("Skyway peer data", d)
+    // })
 
     const myself: ComputedRef<Person | undefined> = computed(
       (): Person => {
@@ -535,21 +553,18 @@ export default defineComponent({
           axios
             .get<ChatCommentDecrypted[]>("/posters/" + poster.id + "/comments")
             .then(({ data }) => {
-              state.posterComments = _.keyBy(data, "id")
+              state.posterComments = keyBy(data, "id")
             })
             .catch(err => console.error(err))
         }
       }
     )
 
-    const jwt_hash = _jwt_hash(props)
-
     const posterComponent = ref<typeof Poster>()
 
-    const chatLocal = ref()
-
     const clearInput = () => {
-      chatLocal.value?.clearInput()
+      console.log("clearInput")
+      context.emit("clear-chat-input")
     }
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
@@ -559,11 +574,11 @@ export default defineComponent({
         socket.emit("Active", {
           room: props.room_id,
           user: props.myUserId,
-          token: jwt_hash.value,
+          token: props.jwt_hash_initial,
         })
         socket.emit("Subscribe", {
           channel: props.room_id,
-          token: jwt_hash.value,
+          token: props.jwt_hash_initial,
         })
       })
       socket.on("auth_error", () => {
@@ -639,7 +654,6 @@ export default defineComponent({
         }
         const to_users = state.chatGroups[myChatGroup.value].users
         await sendOrUpdateComment(text, state.enableEncryption, to_users)
-        clearInput()
         ;(document.querySelector("#local-chat-input") as any)?.focus()
       }
     }
@@ -659,14 +673,7 @@ export default defineComponent({
         }
         return true
       } else {
-        const { error } = moveByArrow(
-          axios,
-          props,
-          state,
-          me,
-          key,
-          jwt_hash.value
-        )
+        const { error } = moveByArrow(axios, props, state, me, key)
         if (error == "during_chat") {
           showMessage("会話中は動けません。動くためには一度退出してください。")
         }
@@ -737,16 +744,17 @@ export default defineComponent({
         )
       }
       ;(async () => {
-        const res = await axios.post<MapEnterResponse>(
-          "/maps/" + props.room_id + "/enter"
-        )
-        console.log("enter result", res.data)
-        if (!res.data.ok) {
-          alert("部屋に入れませんでした: " + res.data.status)
+        const res = await axios
+          .post<MapEnterResponse>("/maps/" + props.room_id + "/enter")
+          .catch(() => null)
+        console.log("enter result", res?.data)
+        if (!res || !res?.data.ok) {
+          alert("部屋に入れませんでした: " + res?.data.status)
           location.href = "/"
+          return
         }
         // let socket_url = "http://localhost:5000/"
-        let socket_url = res.data.socket_url
+        let socket_url = res?.data.socket_url
         if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"
@@ -754,7 +762,7 @@ export default defineComponent({
         }
         console.log("Socket URL: " + socket_url)
         if (res.data.socket_protocol == "Socket.IO") {
-          state.socket = io(socket_url, { transports: ["websocket"] })
+          state.socket = io(socket_url)
         } else if (res.data.socket_protocol == "WebSocket") {
           state.socket = new MySocketObject(socket_url)
         } else {
@@ -766,12 +774,32 @@ export default defineComponent({
         }
 
         setupSocketHandlers(state.socket)
+        // We have to get public keys of users first.
+        await initPeopleService(axios, state.socket, props, state)
+        // Then chat comments, map data, poster data.
         await Promise.all([
-          initPeopleService(axios, state.socket, props, state),
-          initMapService(axios, state.socket, props, state, jwt_hash),
-          initChatService(axios, state.socket, props, state, activePoster),
+          initMapService(axios, state.socket, props, state),
+          initChatService(
+            axios,
+            state.socket,
+            props,
+            state,
+            activePoster,
+            res.data?.public_key
+          ),
           initPosterService(axios, state.socket, props, state, activePoster),
         ])
+        const other_users_encryptions = myChatGroup.value
+          ? every(
+              state.chatGroups[myChatGroup.value!].users.map(
+                u => !!state.people[u]?.public_key
+              )
+            )
+          : true
+
+        state.encryption_possible_in_chat =
+          !!state.privateKey && other_users_encryptions
+
         state.hidden = false
 
         const me = myself.value
@@ -780,27 +808,6 @@ export default defineComponent({
             x: inRange(me.x, 5, state.cols - 6),
             y: inRange(me.y, 5, state.rows - 6),
           }
-        }
-
-        try {
-          const r = await setupEncryption(
-            axios,
-            props,
-            state,
-            res.data.public_key || null
-          )
-          if (!r) {
-            // alert(
-            //   "秘密鍵が設定されていません。暗号化メッセージが正しく読めません。マイページでインポートしてください。"
-            // )
-            // location.href = "/mypage?room=" + props.room_id + "#encrypt"
-          }
-        } catch (err1) {
-          console.error(err1)
-          // alert(
-          //   "秘密鍵が設定されていません。暗号化メッセージが正しく読めません。マイページでインポートしてください。"
-          // )
-          // location.href = "/mypage?room=" + props.room_id + "#encrypt"
         }
       })().catch(err => {
         console.error(err)
@@ -824,12 +831,21 @@ export default defineComponent({
       if (!confirm("ログアウトしますか？")) {
         return
       }
+      deleteUserInfoOnLogout()
       firebase
         .auth()
         .signOut()
         .then(() => {
-          console.log("signed out")
-          location.href = "/"
+          console.log("Firebase signed out")
+          axios
+            .post("/logout")
+            .then(() => {
+              console.log("App signed out")
+              location.href = "/login"
+            })
+            .catch(err => {
+              console.error(err)
+            })
         })
         .catch(err => {
           console.error(err)
@@ -845,7 +861,6 @@ export default defineComponent({
         user: me.id,
         room: props.room_id,
         typing: true,
-        token: jwt_hash.value,
         debug_as: props.debug_as,
       }
       if (!state.people_typing[props.myUserId]) {
@@ -855,7 +870,6 @@ export default defineComponent({
             user: me.id,
             room: props.room_id,
             typing: false,
-            token: jwt_hash.value,
             debug_as: props.debug_as,
           }
           state.socket?.emit("ChatTyping", d2)
@@ -863,7 +877,9 @@ export default defineComponent({
       }
     }
     const setEncryption = (enabled: boolean) => {
-      state.enableEncryption = enabled
+      if (state.privateKey) {
+        state.enableEncryption = enabled
+      }
     }
 
     const hideMessage = () => {
@@ -904,7 +920,7 @@ export default defineComponent({
           user: myself.value.id,
           room: props.room_id,
           typing: false,
-          token: jwt_hash.value,
+          token: props.jwt_hash_initial,
           debug_as: props.debug_as,
         }
         state.socket?.emit("ChatTyping", d)
@@ -916,10 +932,16 @@ export default defineComponent({
           if (person) {
             state.selectedUsers.add(person.id)
             startChat(props, state, axios)
-              .then(group => {
-                if (group) {
+              .then(d => {
+                if (d) {
+                  const group = d.group
+                  state.encryption_possible_in_chat =
+                    !!state.privateKey && d.encryption_possible
                   state.selectedUsers.clear()
                   if (!state.skywayRoom) {
+                    state.peer = new Peer(props.myUserId + "-" + Date.now(), {
+                      key: process.env.VUE_APP_SKYWAY_API_KEY || "",
+                    })
                     state.skywayRoom = state.peer.joinRoom(group.id) as
                       | MeshRoom
                       | SfuRoom
@@ -954,7 +976,6 @@ export default defineComponent({
               state,
               me,
               p1,
-              jwt_hash.value,
               group => {
                 if (group) {
                   showMessage(
@@ -972,7 +993,7 @@ export default defineComponent({
         }
       } else {
         state.selectedUsers.clear()
-        moveTo(axios, props, state, me, p, jwt_hash.value)
+        moveTo(axios, props, state, me, p)
       }
     }
 
@@ -990,7 +1011,7 @@ export default defineComponent({
     }) => {
       console.log(pos, event)
       state.selectedPos = pos
-      const person: Person | undefined = _.find(
+      const person: Person | undefined = find(
         Object.values(state.people),
         person =>
           person.id != props.myUserId && person.x == pos.x && person.y == pos.y
@@ -1031,7 +1052,7 @@ export default defineComponent({
         const dir = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"][
           Math.floor(Math.random() * 4)
         ] as ArrowKey
-        moveByArrow(axios, props, state, me, dir, jwt_hash.value)
+        moveByArrow(axios, props, state, me, dir)
         if (!state.botActive) {
           window.clearInterval(id)
         }
@@ -1060,6 +1081,7 @@ export default defineComponent({
               Vue.set(state.chatGroups, group_id, data.leftGroup)
             }
             showMessage("会話から離脱しました。")
+            state.encryption_possible_in_chat = !!state.privateKey
             Vue.set(state.people_typing, props.myUserId, false)
             if (state.skywayRoom) {
               state.skywayRoom.close()
@@ -1090,7 +1112,6 @@ export default defineComponent({
       ...toRefs(state),
       signOut,
       setEncryption,
-      jwt_hash,
       adjacentPosters,
       leaveChat,
       uploadPoster,

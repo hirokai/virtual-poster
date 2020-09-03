@@ -51,7 +51,7 @@
           <tr v-for="room in rooms" :key="room.id">
             <td>{{ room.id }}</td>
             <td>
-              <a :href="'/rooms?room_id=' + room.id">{{ room.name }}</a>
+              <a :href="'/room?room_id=' + room.id">{{ room.name }}</a>
             </td>
             <td>
               {{ room.numCols * room.numRows }}（縦{{ room.numCols }} x 横{{
@@ -95,7 +95,7 @@ export default defineComponent({
       type: String,
     },
   },
-  setup (props) {
+  setup(props) {
     console.log(props)
     const state = reactive<{
       rooms: { [room_id: string]: Room }

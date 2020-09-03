@@ -101,59 +101,7 @@
           </button>
         </div>
       </div>
-      <div v-if="tab == 'encrypt'">
-        <div>
-          個別のチャットはエンドツーエンド暗号化が可能です。<a
-            href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
-            >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
-          >および128ビット<a
-            href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
-            >AES-GCM</a
-          >を使用。<br />
-          <span class="danger"
-            >秘密鍵はこの端末のみに保管されています。秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
-          >秘密鍵を安全な場所にコピーして保存してください。
-        </div>
-        <div>
-          <h3>公開鍵</h3>
 
-          <div class="keys">{{ publicKeyString }}</div>
-          <h3>秘密鍵</h3>
-          <div v-if="privateKeyString">秘密鍵が設定されています</div>
-          <div class="danger" v-if="!privateKeyString">秘密鍵がありません</div>
-          <button @click="setPrivateKey">
-            秘密鍵を設定
-          </button>
-          <button
-            :disabled="!privateKeyString"
-            @click="showPrivKey = !showPrivKey"
-          >
-            秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
-          </button>
-          <pre class="keys" style="word-break: normal;" v-if="showPrivKey"
-            >{{ privateKeyMnemonic }}
-          </pre>
-
-          <!-- <div class="keys" v-if="showPrivKey">
-            {{ privateKeyString }}
-          </div> -->
-
-          <div>
-            <input
-              type="checkbox"
-              name=""
-              v-model="enableEncryption"
-              id="check-enable-encrypt"
-            /><label
-              for="check-enable-encrypt"
-              :class="{ danger: !enableEncryption }"
-              >エンドツーエンド暗号化を使用{{
-                enableEncryption ? "する" : "していません"
-              }}</label
-            >
-          </div>
-        </div>
-      </div>
       <div v-if="tab == 'vote'">
         <h2>投票</h2>
 
@@ -187,6 +135,70 @@
           </div>
         </div>
       </div>
+      <div v-if="tab == 'account'">
+        <h2>アカウント</h2>
+        <div>
+          <button class="btn-danger" @click="deleteAccount">
+            アカウントの削除
+          </button>
+        </div>
+        <h2>暗号化</h2>
+        <div>
+          個別のチャットはエンドツーエンド暗号化が可能です。<a
+            href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
+            >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
+          >および128ビット<a
+            href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
+            >AES-GCM</a
+          >を使用。<br />
+        </div>
+        <div>
+          <h3>公開鍵</h3>
+
+          <div class="keys">{{ publicKeyString }}</div>
+          <h3>秘密鍵</h3>
+
+          <div>
+            <input
+              type="checkbox"
+              name=""
+              v-model="enableEncryption"
+              id="check-enable-encrypt"
+              :disabled="!privateKeyString"
+            /><label for="check-enable-encrypt"
+              >エンドツーエンド暗号化を使用</label
+            >
+          </div>
+
+          <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
+            秘密鍵が設定されています
+          </div>
+          <div
+            class="danger"
+            v-if="!privateKeyString"
+            style="height: 40px; margin: 10px;"
+          >
+            <span style="margin-right: 10px;">秘密鍵がありません</span>
+          </div>
+          <button @click="setPrivateKey">
+            秘密鍵を読み込み
+          </button>
+          <button
+            :disabled="!privateKeyString"
+            @click="showPrivKey = !showPrivKey"
+          >
+            秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
+          </button>
+          <pre id="mnemonic" v-if="showPrivKey">{{ privateKeyMnemonic }}</pre>
+          <pre id="mnemonic" class="hidden" v-else
+            >{{ privateKeyMnemonic }}
+</pre
+          >
+          <span class="danger"
+            >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
+          >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -214,7 +226,8 @@ import jsSHA from "jssha"
 import * as encryption from "./encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
-
+import firebaseConfig from "../firebaseConfig"
+import { deleteUserInfoOnLogout } from "./util"
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"
@@ -230,7 +243,7 @@ const debug_as: UserId | null = url.searchParams.get("debug_as") || null
 const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
-console.log(debug_as, debug_token)
+console.log({ debug_as, debug_token })
 location.hash = "#" + tab
 
 let socket: SocketIO.Socket | null = null
@@ -239,10 +252,21 @@ const bgPositions: string[] = ["down", "left", "up", "right"]
 
 export default defineComponent({
   setup: () => {
+    firebase.initializeApp(firebaseConfig)
     const myUserId = ""
+    const name = localStorage["virtual-poster:name"]
+    const user_id = localStorage["virtual-poster:user_id"]
+    const email = localStorage["virtual-poster:email"]
+    if (!(name && user_id && email)) {
+      location.href = "/login"
+    }
     const state = reactive({
       tab,
-      user: null as firebase.User | null,
+      user: { name, user_id, email } as {
+        name: string
+        email: string
+        user_id: string
+      } | null,
       myUserId: myUserId,
       idToken: null as string | null,
       debug_as,
@@ -263,7 +287,7 @@ export default defineComponent({
         { id: "avatar", name: "アバター" },
         { id: "poster", name: "ポスター" },
         { id: "vote", name: "投票" },
-        { id: "encrypt", name: "暗号化" },
+        { id: "account", name: "アカウント" },
       ],
 
       bgPosition: bgPositions[0],
@@ -316,7 +340,7 @@ export default defineComponent({
           state.avatarImages[
             n + "-" + (state.mouseOnAvatar[n] ? state.bgPosition : "down")
           ]
-        return data_url ? "url('data:image/png;base64," + +"')" : ""
+        return data_url ? "url('data:image/png;base64," + data_url + "')" : ""
       } else {
         return ""
       }
@@ -328,7 +352,7 @@ export default defineComponent({
       state.enableEncryption =
         localStorage[
           "virtual-poster:" + state.myUserId + ":config:encryption"
-        ] == "1"
+        ] != "0"
       let pub_str_local: string | null =
         localStorage["virtual-poster:" + state.myUserId + ":public_key_spki"]
       if (pub_str_from_server && !pub_str_local) {
@@ -391,7 +415,6 @@ export default defineComponent({
           return false
         }
         state.privateKey = prv.key
-        console.log(chunk(prv.mnemonic.split(" "), 6))
         state.privateKeyMnemonic = chunk(prv.mnemonic.split(" "), 6)
           .map(c => c.join(" "))
           .join("\n")
@@ -420,7 +443,13 @@ export default defineComponent({
             data: { public_key: pub_str_from_server },
           },
         ] = await Promise.all([
-          axios.get<{ [index: string]: Person }>("/people"),
+          axios.get<{ [index: string]: Person }>("/people").catch(err => {
+            if (err.response.status == 403) {
+              deleteUserInfoOnLogout()
+              location.href = "/login"
+            }
+            return { data: {} as { [index: string]: Person } }
+          }),
           axios.get<{ posters: Poster[] | null }>(
             "/people/" + state.myUserId + "/posters"
           ),
@@ -438,9 +467,16 @@ export default defineComponent({
       })
     }
     const clickAvatar = (n: string) => {
-      axios.patch("/people/" + state.myUserId, { avatar: n }).catch(err => {
-        console.error(err)
-      })
+      axios
+        .patch("/people/" + state.myUserId, { avatar: n })
+        .then(({ data }) => {
+          if (data.ok) {
+            Vue.set(state.people[state.myUserId], "avatar", n)
+          }
+        })
+        .catch(err => {
+          console.error(err)
+        })
     }
     const setPerson = (d: PersonUpdate) => {
       console.log("setPerson", d)
@@ -487,8 +523,19 @@ export default defineComponent({
         .auth()
         .signOut()
         .then(() => {
-          console.log("signed out")
-          location.href = "/"
+          console.log("Firebase signed out")
+          axios
+            .post("/logout")
+            .then(() => {
+              console.log("App signed out")
+              localStorage.removeItem("virtual-poster:user_id")
+              localStorage.removeItem("virtual-poster:email")
+              localStorage.removeItem("virtual-poster:name")
+              location.href = "/login"
+            })
+            .catch(err => {
+              console.error(err)
+            })
         })
         .catch(err => {
           console.error(err)
@@ -571,16 +618,6 @@ export default defineComponent({
         .catch(err => {
           console.error(err)
         })
-      const firebaseConfig = {
-        apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-        authDomain: "coi-conf.firebaseapp.com",
-        databaseURL: "https://coi-conf.firebaseio.com",
-        projectId: "coi-conf",
-        storageBucket: "coi-conf.appspot.com",
-        messagingSenderId: "648033256432",
-        appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-        measurementId: "G-23RL5BGH9D",
-      }
 
       axios.interceptors.request.use(config => {
         if (debug_as && debug_token) {
@@ -595,90 +632,54 @@ export default defineComponent({
       axiosDefault
         .get("/img/avatars_base64.json")
         .then(({ data }) => {
+          console.log(data)
           state.avatarImages = data
         })
         .catch(console.error)
-
-      window.setInterval(() => {
-        const user = firebase.auth().currentUser
-        if (user) {
-          user
-            .getIdToken(true)
-            .then(idToken => {
-              state.idToken = idToken
-            })
-            .catch(err => {
-              console.error(err)
-            })
-        }
-      }, 1000 * 60 * 59)
-
-      firebase.initializeApp(firebaseConfig)
-      firebase.auth().onAuthStateChanged(user => {
-        ;(async () => {
-          // console.log("User:", user, state.debug_as)
-          if (state.debug_as && state.debug_token) {
-            console.log("Initializing debug mode...", state.debug_as)
-            state.myUserId = state.debug_as
-            state.privateKey =
-              localStorage[
-                "virtual-poster:" + state.myUserId + ":private_key_jwk"
-              ] || null
-            state.enableEncryption = localStorage[
+      ;(async () => {
+        // console.log("User:", user, state.debug_as)
+        if (state.debug_as && state.debug_token) {
+          console.log("Initializing debug mode...", state.debug_as)
+          state.myUserId = state.debug_as
+          state.privateKey =
+            localStorage[
+              "virtual-poster:" + state.myUserId + ":private_key_jwk"
+            ] || null
+          state.enableEncryption =
+            localStorage[
               "virtual-poster:" + state.myUserId + ":config:encryption"
-            ]
+            ] != "0"
               ? localStorage[
                   "virtual-poster:" + state.myUserId + "config:encryption"
                 ] == "1"
               : false
-            reload()
-            return
-          }
-          if (!user) {
-            // location.href = "/login?page=index"
-            // state.loggedIn = "No"
-            location.href = "/"
-          } else {
-            await 1
-            state.user = user
-            // state.loggedIn = "Yes"
-            if (user.emailVerified) {
-              const idToken = await user.getIdToken()
-              const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
-              shaObj.update(idToken)
-              state.jwt_hash = shaObj.getHash("HEX")
-              axios.defaults.headers.common = {
-                Authorization: `Bearer ${idToken}`,
-              }
-              const {
-                data: { user_id },
-              } = await axios.post("/id_token", {
-                token: idToken,
-                debug_from: "MyPage",
-              })
-              state.myUserId = user_id
-              // console.log("Already registered:", user_id)
+          reload()
+          return
+        }
+        if (!state.user) {
+          // location.href = "/login?page=index"
+          // state.loggedIn = "No"
+          location.href = "/"
+        } else {
+          // state.loggedIn = "Yes"
 
-              state.privateKey =
-                localStorage[
-                  "virtual-poster:" + state.myUserId + ":private_key_jwk"
-                ] || null
+          state.myUserId = user_id
+          // console.log("Already registered:", user_id)
 
-              state.enableEncryption = localStorage[
-                "virtual-poster:" + state.myUserId + ":config:encryption"
-              ]
-                ? localStorage[
-                    "virtual-poster:" + state.myUserId + ":config:encryption"
-                  ] == "1"
-                : false
+          state.privateKey =
+            localStorage[
+              "virtual-poster:" + state.myUserId + ":private_key_jwk"
+            ] || null
 
-              reload()
-            } else {
-              console.error("User email has not been verified")
-            }
-          }
-        })().catch(console.error)
-      })
+          state.enableEncryption =
+            localStorage[
+              "virtual-poster:" + state.myUserId + ":config:encryption"
+            ] != "0"
+
+          reload()
+        }
+      })().catch(console.error)
+
       window.setInterval(() => {
         state.count += 1
         if (state.count >= bgPositions.length) {
@@ -737,7 +738,7 @@ export default defineComponent({
       // console.log("mouse", n, b, state.mouseOnAvatar)
     }
     const setPrivateKey = () => {
-      const prv_str_to_import = prompt("秘密鍵を入力してください")
+      const prv_str_to_import = prompt("秘密鍵のパスフレーズを入力してください")
       console.log("prv_str_to_import", prv_str_to_import)
       if (!prv_str_to_import) {
         return
@@ -749,26 +750,46 @@ export default defineComponent({
         ;(async (prv_key_str: string, pub_key_str: string) => {
           try {
             console.log("Start importing")
+            const { key: prv_d, error } = encryption.fromMnemonic(prv_key_str)
+            if (!prv_d) {
+              alert("パスフレーズを読み込めませんでした: " + error)
+              return
+            }
             const pub = await encryption.importPublicKey(pub_key_str, true)
             if (!pub) {
               alert("公開鍵が正しくないため，インポートできませんでした")
               return
             }
+            console.log("pub_key_str", pub_key_str)
+            const prv_key_obj: JsonWebKey = await encryption.exportPublicKeyJwk(
+              pub
+            )
+            prv_key_obj.d = prv_d
+            prv_key_obj.key_ops = ["deriveKey", "deriveBits"]
+            console.log(prv_key_obj)
             try {
               const prv = await encryption.importPrivateKeyJwk(
-                JSON.parse(prv_key_str),
+                prv_key_obj,
                 pub,
                 true
               )
               console.log("Imported private key", prv)
               if (!prv) {
-                alert("秘密鍵が正しくないため，インポートできませんでした")
+                alert(
+                  "秘密鍵と公開鍵が適合しないため，インポートできませんでした"
+                )
                 return
               }
-              state.privateKeyString = prv_key_str
+              state.privateKeyString = await encryption.exportPrivateKeyJwk(
+                prv.key
+              )
+              state.privateKeyMnemonic = chunk(prv.mnemonic.split(" "), 6)
+                .map(c => c.join(" "))
+                .join("\n")
+
               localStorage[
                 "virtual-poster:" + state.myUserId + ":private_key_jwk"
-              ] = prv_key_str
+              ] = state.privateKeyString
               alert("秘密鍵をインポートしました")
             } catch (err1) {
               console.error(err1)
@@ -886,11 +907,48 @@ export default defineComponent({
       console.log("Blind signature verification", data3, unblinded.toString())
     }
 
+    const deleteAccount = async () => {
+      const r = confirm(
+        "アカウントを削除します。一旦削除すると取り消せません。本当にいいですか？"
+      )
+      if (!r) {
+        return
+      }
+      const { data } = await axios.delete("/people/" + state.myUserId)
+      console.log("delete account result", r)
+      if (data.ok) {
+        localStorage.removeItem("virtual-poster:user_id")
+        localStorage.removeItem("virtual-poster:email")
+        localStorage.removeItem("virtual-poster:name")
+        localStorage.removeItem("virtual-poster:admin")
+
+        var arr = [] as string[]
+        for (let i = 0; i < localStorage.length; i++) {
+          if (
+            localStorage.key(i)?.indexOf("virtual-poster:" + state.myUserId) ==
+            0
+          ) {
+            const k = localStorage.key(i)
+            if (k) {
+              arr.push(k)
+            }
+          }
+        }
+
+        // Iterate over arr and remove the items by key
+        for (var i = 0; i < arr.length; i++) {
+          localStorage.removeItem(arr[i])
+        }
+        location.href = "/login"
+      }
+    }
+
     return {
       ...toRefs(state),
       onMouseOverAvatar,
       validateVote,
       setupEncryption,
+      deleteAccount,
       setPrivateKey,
       blindSign,
       bgImage,
@@ -1003,7 +1061,7 @@ div.poster-entry {
 }
 
 .danger {
-  color: red;
+  color: #f44;
   font-weight: bold;
 }
 
@@ -1051,5 +1109,25 @@ button.remove-poster {
   position: relative;
   left: 10px;
   bottom: 1px;
+}
+
+.btn-danger {
+  background: red;
+}
+
+#mnemonic {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 21px;
+  word-break: normal;
+  border: 1px solid black;
+  padding: 10px;
+  height: 120px;
+  width: 700px;
+}
+
+#mnemonic.hidden {
+  color: transparent;
+  /* background: #ccc; */
+  text-shadow: 0 0 16px rgba(0, 0, 0, 0.9);
 }
 </style>

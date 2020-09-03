@@ -221,7 +221,7 @@ export default defineComponent({
       type: String,
     },
   },
-  setup (props) {
+  setup(props) {
     const state = reactive<{
       API_ROOT: string
       files: { [index: string]: File }

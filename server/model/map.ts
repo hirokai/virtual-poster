@@ -3,12 +3,14 @@ import {
   Poster,
   Announcement,
   Point,
+  PosDir,
   PosterId,
   RoomId,
   UserId,
   MapCellId,
   TryToMoveResult,
   MapCellRDB,
+  Direction,
 } from "@/@types/types"
 import shortid from "shortid"
 import { redis, log, db, POSTGRES_CONNECTION_STRING } from "./index"
@@ -270,23 +272,20 @@ export class MapModel {
     if (r[0].count == 0) {
       return { ok: false, status: "NoAccess" }
     }
-    const pos: Point | null = await this.getRandomOpenPos(user_id)
+    const pos: PosDir | null = await this.assignRandomOpenPos(user_id)
     if (!pos) {
       log.error("No open space")
       return { ok: false, status: "NoSpace" }
     }
     console.log("Found open pos for user:", pos)
-    const r2 = await model.people.setPos(
+    await model.people.setPos(
       user_id,
       this.room_id,
-      pos,
-      "down",
+      { x: pos.x, y: pos.y },
+      pos.direction,
       true
     )
-    if (r2) {
-      return { ok: true, status: "New" }
-    }
-    return { ok: false, status: "NoSpace" }
+    return { ok: true, status: "New" }
   }
   async enterRoom(
     user_id: UserId
@@ -319,9 +318,9 @@ export class MapModel {
       typing ? "1" : "0"
     )
   }
-  async getRandomOpenPos(user_id: UserId): Promise<Point | null> {
+  async assignRandomOpenPos(user_id: UserId): Promise<PosDir | null> {
     const last_updated = Date.now()
-    const direction = "up"
+    const direction: Direction = "up"
     const rows = await db.query(
       `INSERT INTO person_position
             (room,person,last_updated,x,y,direction)
@@ -341,7 +340,12 @@ export class MapModel {
     if (rows.length == 0) {
       return null
     } else {
-      return { x: rows[0].x, y: rows[0].y }
+      const pos = { x: rows[0].x, y: rows[0].y, direction }
+      await redis.accounts.set(
+        "pos:" + this.room_id + ":" + user_id,
+        "" + pos.x + "." + pos.y + "." + pos.direction
+      )
+      return pos
     }
   }
   async tryToMove(

@@ -133,6 +133,7 @@ import Manage from "./admin/Manage.vue"
 import ManageRooms from "./admin/ManageRooms.vue"
 import MemberList from "./admin/MemberList.vue"
 import ManagePosters from "./admin/ManagePosters.vue"
+import firebaseConfig from "../firebaseConfig"
 
 import { keyBy, flatten, difference } from "lodash-es"
 import io from "socket.io-client"
@@ -377,16 +378,6 @@ export default defineComponent({
           console.error(err)
         })
 
-      const firebaseConfig = {
-        apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-        authDomain: "coi-conf.firebaseapp.com",
-        databaseURL: "https://coi-conf.firebaseio.com",
-        projectId: "coi-conf",
-        storageBucket: "coi-conf.appspot.com",
-        messagingSenderId: "648033256432",
-        appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-        measurementId: "G-23RL5BGH9D",
-      }
       firebase.initializeApp(firebaseConfig)
 
       // console.log("User", firebase.auth().currentUser)
@@ -396,7 +387,7 @@ export default defineComponent({
           console.log("onAuthStateChanged", user)
           state.user = user
           if (!user) {
-            location.href = "/"
+            location.href = "/login"
           } else {
             const idToken = await user.getIdToken()
             state.idToken = idToken

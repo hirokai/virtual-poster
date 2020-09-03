@@ -83,5 +83,6 @@ module.exports = {
         secure: false,
       },
     },
+    headers: { "Cache-Control": "no-store" },
   },
 }

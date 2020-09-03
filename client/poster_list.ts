@@ -4,22 +4,12 @@ import * as firebase from "firebase/app"
 import "firebase/auth"
 import axios from "axios"
 import { PostIdTokenResponse } from "@/@types/types"
+import firebaseConfig from "../firebaseConfig"
 
 Vue.config.productionTip = true
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
-
-const firebaseConfig = {
-  apiKey: "AIzaSyC6-xLMRmgbrr_7vJLLk9WZUrXiUkskWT4",
-  authDomain: "coi-conf.firebaseapp.com",
-  databaseURL: "https://coi-conf.firebaseio.com",
-  projectId: "coi-conf",
-  storageBucket: "coi-conf.appspot.com",
-  messagingSenderId: "648033256432",
-  appId: "1:648033256432:web:17b78f6d2ffe5913979335",
-  measurementId: "G-23RL5BGH9D",
-}
 
 firebase.initializeApp(firebaseConfig)
 window.firebase = firebase

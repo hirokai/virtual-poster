@@ -256,15 +256,23 @@ export function mkRouteGraph(
         }).forEach(d => {
           const x = a.x + d[0]
           const y = a.y + d[1]
+          const ca = staticMap[a.y][a.x]
+          const cb = staticMap[y][x]
+          const cost =
+            ca.kind == "poster_seat" || cb.kind == "poster_seat"
+              ? 10
+              : d[0] == 0 || d[1] == 0
+              ? 1
+              : 3
           edges.push({
             a: f(a),
             b: f({ x, y }),
-            cost: d[0] == 0 || d[1] == 0 ? 1 : 3,
+            cost,
           })
           edges.push({
             a: f({ x, y }),
             b: f(a),
-            cost: d[0] == 0 || d[1] == 0 ? 1 : 3,
+            cost,
           })
         })
       }

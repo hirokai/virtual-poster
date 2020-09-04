@@ -13,20 +13,16 @@ import * as PosterModule from "./posters"
 export const posters = PosterModule
 export { MapModel } from "./map"
 import _ from "lodash"
+import { config } from "../config"
 
 import cluster from "cluster"
 import { join as joinPath } from "path"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
-const DEBUG_LOG = !!process.env.DEBUG_LOG || !PRODUCTION
-const LOG_LEVEL = process.env.LOG_LEVEL
-  ? parseInt(process.env.LOG_LEVEL)
-  : undefined
 
-export const POSTGRES_CONNECTION_STRING = process.env.NODE_TEST
-  ? "postgres://postgres@localhost/virtual_poster_test"
-  : process.env.POSTGRES_CONNECTION_STRING ||
-    "postgres://postgres@localhost/virtual_poster"
+const DEBUG_LOG = config.api_server.debug_log
+
+export const POSTGRES_CONNECTION_STRING = config.postgresql
 
 import pg from "pg-promise"
 import pgt from "pg-promise/typescript/pg-subset"
@@ -57,7 +53,7 @@ import * as bunyan from "bunyan"
 export const log = bunyan.createLogger({
   name: "model",
   src: !PRODUCTION,
-  level: LOG_LEVEL || (DEBUG_LOG ? 1 : "info"),
+  level: DEBUG_LOG ? 1 : bunyan.FATAL + 1,
 })
 
 const user_log = bunyan.createLogger({

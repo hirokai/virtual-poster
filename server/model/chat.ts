@@ -17,17 +17,16 @@ import { db, pgp } from "../model"
 import * as model from "../model"
 import shortid from "shortid"
 import { allPointsConnected } from "../../common/util"
+import { config } from "../config"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
-const DEBUG_LOG = !!process.env.DEBUG_LOG || !PRODUCTION
-const LOG_LEVEL = process.env.LOG_LEVEL
-  ? parseInt(process.env.LOG_LEVEL)
-  : undefined
+
+const DEBUG_LOG = config.api_server.debug_log
 
 const log = bunyan.createLogger({
   name: "chat",
   src: !PRODUCTION,
-  level: LOG_LEVEL || (DEBUG_LOG ? 1 : "info"),
+  level: DEBUG_LOG ? 1 : bunyan.FATAL + 1,
 })
 
 // Handling chat groups and comments

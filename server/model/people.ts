@@ -16,7 +16,10 @@ import {
   RoomId,
   PosDir,
 } from "@/@types/types"
-import { redis, log, dbWith, db, pgp, maps } from "./index"
+import { redis, log, db, pgp, maps } from "./index"
+
+import { config } from "../config"
+const DEBUG_TOKEN = config.debug_token
 
 let initialized = false
 
@@ -552,7 +555,7 @@ export async function authSocket(
     }
   }
   if (debug_as) {
-    if (debug_as == user && token == process.env.DEBUG_TOKEN) {
+    if (debug_as == user && token == DEBUG_TOKEN) {
       return true
     } else {
       const is_admin = (await getUserType(debug_as)) == "admin"

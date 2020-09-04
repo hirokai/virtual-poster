@@ -2,17 +2,7 @@
   <div id="app" v-if="myself">
     <div>
       <div id="top-tools">
-        <a
-          style="margin-right: 10px;"
-          :href="
-            '/room?room_id=' +
-              page_from +
-              (debug_as
-                ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
-                : '')
-          "
-          >マップに戻る</a
-        >
+        <a style="margin-right: 10px;" :href="goback_path">マップに戻る</a>
         <button @click="signOut">ログアウト</button>
       </div>
 
@@ -84,7 +74,31 @@
           ポスターが見つかりません。
         </div>
         <div v-for="poster in posters" :key="poster.id" class="poster-entry">
-          <div class="poster_title">{{ poster.title }}</div>
+          <div class="poster_title">
+            <span>#{{ poster.poster_number }}: </span>
+            <input
+              v-if="editingTitle == poster.id"
+              v-model="editingTitleText"
+            />
+            <span v-else>{{ poster.title }}</span>
+            <div>
+              <button
+                v-if="editingTitle != poster.id"
+                @click="
+                  editingTitleText = poster.title
+                  editingTitle = poster.id
+                "
+              >
+                タイトルを変更
+              </button>
+              <button
+                v-if="editingTitle == poster.id"
+                @click="setTitle(poster.id)"
+              >
+                完了
+              </button>
+            </div>
+          </div>
           <div
             v-if="!!poster"
             class="poster"
@@ -199,6 +213,34 @@
           >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
         </div>
       </div>
+      <div v-if="tab == 'help'">
+        <h2>簡単な使い方</h2>
+        <p style="font-size: 14px; line-height: 1; margin: 0px;">
+          ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
+        </p>
+        <ul>
+          <li>移動： カーソルキーあるいは画面上の矢印ボタンで移動。</li>
+          <li>
+            会話：
+            人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
+          </li>
+          <li>
+            ポスター：
+            隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
+          </li>
+          <li>
+            ポスター板の確保：
+            空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
+          </li>
+          <li>
+            ポスターの掲示：
+            自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
+          </li>
+          <li>
+            ポスターの撤去： マイページで「ポスター画像を削除」をクリック
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
@@ -260,6 +302,15 @@ export default defineComponent({
     if (!(name && user_id && email)) {
       location.href = "/login"
     }
+    const goback_path =
+      (page_from ? "/room?room_id=" + page_from : "/") +
+      (debug_as
+        ? (page_from ? "&" : "?") +
+          "debug_as=" +
+          debug_as +
+          "&debug_token=" +
+          debug_token
+        : "")
     const state = reactive({
       tab,
       user: { name, user_id, email } as {
@@ -278,6 +329,9 @@ export default defineComponent({
       files: {} as { [index: string]: File },
       lastLoaded: -1,
 
+      editingTitle: null as PosterId | null,
+      editingTitleText: "",
+
       editing: { name: null } as { name: string | null },
 
       dataURI: {} as { [poster_id: string]: string },
@@ -288,6 +342,7 @@ export default defineComponent({
         { id: "poster", name: "ポスター" },
         { id: "vote", name: "投票" },
         { id: "account", name: "アカウント" },
+        { id: "help", name: "使い方" },
       ],
 
       bgPosition: bgPositions[0],
@@ -540,6 +595,18 @@ export default defineComponent({
         .catch(err => {
           console.error(err)
         })
+    }
+    const setTitle = async (pid: PosterId) => {
+      const title = state.editingTitleText
+      const { data } = await axios.patch("/posters/" + pid, { title })
+      if (data.ok) {
+        Vue.nextTick(() => {
+          Vue.set(state.posters[pid], "title", title)
+        })
+        Vue.nextTick(() => {
+          state.editingTitle = null
+        })
+      }
     }
     const onDrop = (event: any, poster_id: PosterId) => {
       state.dragover[poster_id] = false
@@ -954,10 +1021,12 @@ export default defineComponent({
       bgImage,
       signOut,
       reload,
+      setTitle,
       clickAvatar,
       saveName,
       onDrop,
       removePoster,
+      goback_path,
       avatars: difference(range(1, 31), [20]).map(n => {
         return n.toString().padStart(3, "0")
       }),

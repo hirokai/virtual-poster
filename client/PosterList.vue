@@ -55,18 +55,15 @@ import { AxiosResponse } from "axios"
 import _ from "lodash-es"
 import io from "socket.io-client"
 
-const PRODUCTION = process.env.NODE_ENV == "production"
 const API_ROOT = "/api"
-const SOCKET_URL = PRODUCTION
-  ? "https://posters.coi-conference.org" + ":5000"
-  : "http://localhost:5000"
+
 axios.defaults.baseURL = API_ROOT
 
 const url = new URL(location.href)
 const room_id: RoomId | null = url.searchParams.get("room_id")
 if (!room_id) {
   alert("Room IDが不正です。")
-  location.href = "/home"
+  location.href = "/"
 }
 
 export default defineComponent({

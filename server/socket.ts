@@ -32,10 +32,10 @@ import {
 import * as model from "./model"
 import { userLog } from "./model"
 import { encodeMoved } from "../common/util"
+import { config } from "./config"
 
-// Setting mode (production/development) and port
 const PRODUCTION = process.env.NODE_ENV == "production"
-const DEBUG_LOG = !!process.env.DEBUG_LOG || !PRODUCTION
+const DEBUG_LOG = config.api_server.debug_log
 
 const bunyanLogger = bunyan.createLogger({
   name: "index",

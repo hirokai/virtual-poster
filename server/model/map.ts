@@ -19,8 +19,12 @@ import _ from "lodash"
 import { mkKey, calcDirection } from "../../common/util"
 import cluster from "cluster"
 import * as Posters from "./posters"
+import { config } from "../config"
 
-const USE_S3_CDN = process.env.USE_S3_CDN == "YES"
+const USE_S3_CDN = config.aws.s3.via_cdn
+const S3_BUCKET = config.aws.s3.bucket
+const CDN_DOMAIN = config.aws.cloud_front.domain
+const DEFAULT_ROOMS = config.default_rooms
 
 function adjacentCells(
   cells: Cell[][],
@@ -465,24 +469,25 @@ export class MapModel {
       return { ok: false, error: "Cannot find the poster cell" }
     }
     let res: any[] = []
+    const location = cells[0].id
     if (overwrite) {
       res = await db.query(
         `INSERT INTO poster (id,last_updated,title,author,location) VALUES ($1,$2,$3,$4,$5) ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
-        [poster_id, last_updated, title, author, cells[0].id]
+        [poster_id, last_updated, title, author, location]
       )
       log.debug("poster overwrite", res)
     } else {
       res = await db.query(
         `INSERT INTO poster (id,last_updated,title,author,location) VALUES ($1,$2,$3,$4,$5) RETURNING id;`,
-        [poster_id, last_updated, title, author, cells[0].id]
+        [poster_id, last_updated, title, author, location]
       )
     }
     if (res.length == 0 || res[0].id != poster_id) {
       return { ok: false, error: "DB error" }
     }
     const domain = USE_S3_CDN
-      ? (process.env.CDN_DOMAIN as string)
-      : "https://" + (process.env.S3_BUCKET as string) + ".s3.amazonaws.com/"
+      ? (CDN_DOMAIN as string)
+      : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com/"
     return {
       ok: true,
       poster: {
@@ -491,7 +496,8 @@ export class MapModel {
         author: author,
         last_updated,
         room: this.room_id,
-        location: res[0].location,
+        location,
+        poster_number,
         x: cells[0].x,
         y: cells[0].y,
         file_url: domain + "files/" + poster_id + ".png",
@@ -609,8 +615,10 @@ export class MapModel {
       }
     }
   }
-  static async getAllowedRoomsFromCode(code: string): Promise<RoomId[]> {
+  static async getAllowedRoomsFromCode(
+    code: string | undefined
+  ): Promise<RoomId[]> {
     // Stub
-    return code.split(":")
+    return (code || "").split(":").concat(DEFAULT_ROOMS)
   }
 }

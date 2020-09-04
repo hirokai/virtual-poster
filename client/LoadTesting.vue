@@ -89,15 +89,6 @@ import "firebase/auth"
 import jsSHA from "jssha"
 import firebaseConfig from "../firebaseConfig"
 
-const PRODUCTION = process.env.NODE_ENV == "production"
-const API_ROOT = "/api"
-axios.defaults.baseURL = API_ROOT
-
-const SOCKET_URL = PRODUCTION
-  ? "https://posters.coi-conference.org" + ":5000"
-  : "http://localhost:5000"
-const socket = io(SOCKET_URL, { path: "/socket.io" })
-
 const unionSet = function<T>(setA: Set<T>, setB: Set<T>) {
   const union = new Set(setA)
   for (const elem of setB) {
@@ -115,6 +106,8 @@ const diffSet = function<T>(setA: Set<T>, setB: Set<T>) {
 }
 
 export default class App extends Vue {
+  socketURL: string | null = null
+  socket: SocketIO.Socket | null = null
   people: { [index: string]: Person } = {}
   idToken: string | null = null
   jwt_hash = ""
@@ -160,6 +153,28 @@ export default class App extends Vue {
           axios.defaults.headers.common = {
             Authorization: `Bearer ${idToken}`,
           }
+
+          this.socketURL = (await axios.get("/socket_url")).data.socket_url
+
+          this.socket = io(this.socketURL, { path: "/socket.io" })
+          if (!this.socket) {
+            console.error("Socket IO init error")
+            return
+          }
+          this.socket.on("person", d => {
+            console.log("socket person", d)
+            this.$set(this.people, d.id, d)
+          })
+          this.socket.on("moved", (s: string) => {
+            this.on_socket_move(s)
+          })
+          this.socket.on("moved_multi", (s: string) => {
+            const ss = s.split(";")
+            for (const s of ss) {
+              this.on_socket_move(s)
+            }
+          })
+
           const { data } = await axios.post("/id_token", {
             token: idToken,
             debug_from: "LoadTesting",
@@ -177,20 +192,6 @@ export default class App extends Vue {
       })().catch(err => {
         console.error(err)
       })
-    })
-
-    socket.on("person", d => {
-      console.log("socket person", d)
-      this.$set(this.people, d.id, d)
-    })
-    socket.on("moved", (s: string) => {
-      this.on_socket_move(s)
-    })
-    socket.on("moved_multi", (s: string) => {
-      const ss = s.split(";")
-      for (const s of ss) {
-        this.on_socket_move(s)
-      }
     })
   }
   checkUser(uid: UserId, start: boolean, kind: "batch" | "step"): void {
@@ -274,7 +275,11 @@ export default class App extends Vue {
     }
     delete this.timers[user_id]
     if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
-      socket.emit("move", { ...to, user: person.id, token: this.jwt_hash })
+      this.socket!.emit("move", {
+        ...to,
+        user: person.id,
+        token: this.jwt_hash,
+      })
       this.$set(this.people[user_id], "moving", false)
     } else {
       const ti = Date.now()
@@ -329,7 +334,7 @@ export default class App extends Vue {
           delete this.timers[user_id]
           return
         }
-        socket.emit("move", {
+        this.socket!.emit("move", {
           ...to_step,
           user: user_id,
           token: this.jwt_hash,

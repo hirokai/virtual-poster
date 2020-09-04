@@ -1,18 +1,18 @@
 import axios from "axios"
 import _ from "lodash"
-
+import { config } from "../config"
 jest.setTimeout(10000)
 
 axios.defaults.baseURL = "http://localhost:3000/api/"
 
-axios.interceptors.request.use(config => {
-  config.params = config.params || {}
-  config.params["debug_token"] = process.env.DEBUG_TOKEN
-  config.params["debug_as"] = process.env.DEBUG_AS
-  return config
+axios.interceptors.request.use(cfg => {
+  cfg.params = cfg.params || {}
+  cfg.params["debug_token"] = config.debug_token
+  cfg.params["debug_as"] = process.env.DEBUG_AS
+  return cfg
 })
 
-if (!process.env.DEBUG_TOKEN || !process.env.DEBUG_AS) {
+if (!config.debug_token || !process.env.DEBUG_AS) {
   throw "Debug token not specified."
 }
 

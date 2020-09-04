@@ -32,6 +32,9 @@
           {{
             people[poster.author] ? people[poster.author].name : "（不明）"
           }}さんのポスター（未アップロード）
+          <div class="note" v-if="poster.author == myself.id">
+            アップロードするには，マップ中の木札のアイコンにPNGまたはPDFを<br />ドラッグ＆ドロップするか，マイページ（人型のアイコン）を開きます。
+          </div>
         </div>
         <div
           id="poster-notfound"
@@ -201,8 +204,9 @@ export default defineComponent({
       }
     )
     watch(
-      () => props.poster,
+      () => [props.poster, props.poster?.last_updated],
       () => {
+        console.log("watch poster invoked", props.poster)
         state.posterStatus = "checking"
         if (props.poster) {
           axiosDefault({
@@ -224,6 +228,7 @@ export default defineComponent({
               }
             })
             .catch(() => {
+              console.log("not found poster")
               state.posterStatus = "not_found"
               state.posterDataURI = ""
             })
@@ -301,6 +306,11 @@ export default defineComponent({
   padding-top: 300px;
   text-align: center;
 }
+
+#poster-notfound .note {
+  font-size: 14px;
+}
+
 #poster-inactive {
   padding-top: 300px;
   text-align: center;

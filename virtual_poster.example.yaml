@@ -1,0 +1,31 @@
+domain: localhost
+api_server:
+  port: 3000
+  tls: false
+  http2: false
+  cluster: 0
+  debug_log: true
+socket_server:
+  port: 5000
+  tls: false
+  http2: false
+  cluster: 0
+  debug_log: true
+default_rooms:
+  - hoge
+certificate_folder: /etc/letsencrypt/live/YOUR_DOMAIN.com
+postgresql: postgres://postgres@localhost/virtual_poster
+aws:
+  access_key_id: BUCKET_NAME
+  secret_access_key: xxxxx
+  region: ap-northeast-1
+  s3:
+    upload: true
+    bucket: BUCKET_NAME
+    via_cdn: true
+  cloud_front:
+    id: DISTRIBUTION_ID
+    domain: cdn.example.com
+firebase_auth_credential: xxxxx.json
+user_registration: true
+debug_token: xxxxx

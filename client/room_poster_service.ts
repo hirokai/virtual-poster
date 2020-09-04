@@ -126,7 +126,10 @@ export const doUploadPoster = (
   console.log(fd)
 
   axios
-    .post("/posters/" + poster_id + "/file", fd)
+    .post<{ ok: boolean; poster?: Poster }>(
+      "/posters/" + poster_id + "/file",
+      fd
+    )
     .then(({ data }) => {
       console.log(data)
     })
@@ -142,12 +145,16 @@ export const initPosterService = async (
   state: RoomAppState,
   activePoster: ComputedRef<Poster | undefined>
 ): Promise<boolean> => {
-  socket.on("poster", (d: Poster) => {
-    console.log("socket poster", d)
+  socket.on("Poster", (d: Poster) => {
+    console.log("socket Poster", d)
     Vue.set(state.posters, d.id, d)
+    Vue.set(state.hallMap[d.y], d.x, {
+      ...state.hallMap[d.y][d.x],
+      poster_number: d.poster_number,
+    })
   })
-  socket.on("poster.comment", (d: ChatComment) => {
-    console.log("poster.comment", d)
+  socket.on("PosterComment", (d: ChatComment) => {
+    console.log("PosterComment", d)
     const pid = activePoster.value?.id
     const to_s = d.texts.map(t => t.to)
     if (pid && to_s.indexOf(pid) != -1) {

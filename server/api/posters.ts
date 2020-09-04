@@ -12,15 +12,24 @@ import { spawn } from "child_process"
 import shortid from "shortid"
 import path from "path"
 import AWS from "aws-sdk"
+import { config } from "../config"
 
 const writeFile = promisify(fs.writeFile)
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
 const existsAsync = promisify(fs.exists)
 
-const UPLOAD_TO_S3 = process.env.UPLOAD_TO_S3 == "YES"
+const CLOUDFRONT_ID = config.aws.cloud_front.id
+const AWS_REGION = config.aws.region
+const AWS_ACCESS_KEY_ID = config.aws.access_key_id
+const AWS_SECRET_ACCESS_KEY = config.aws.secret_access_key
+const S3_BUCKET = config.aws.s3.bucket
 
-AWS.config.update({ region: process.env.AWS_REGION as string })
+AWS.config.update({
+  accessKeyId: AWS_ACCESS_KEY_ID,
+  secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  region: AWS_REGION,
+})
 const s3 = new AWS.S3({ apiVersion: "2006-03-01", signatureVersion: "v4" })
 
 const cloudfront = new AWS.CloudFront({
@@ -28,22 +37,26 @@ const cloudfront = new AWS.CloudFront({
 })
 
 async function uploadFileToS3(file_path: string): Promise<string> {
+  if (!S3_BUCKET) {
+    throw "S3 bucket not set"
+  }
   const key = "files/" + path.basename(file_path)
   const invalidate_items = ["/" + key]
 
-  const params = {
-    DistributionId: "E38Y8MK1L65IXG",
-    InvalidationBatch: {
-      CallerReference: String(new Date().getTime()),
-      Paths: {
-        Quantity: invalidate_items.length,
-        Items: invalidate_items,
+  if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
+    const params = {
+      DistributionId: CLOUDFRONT_ID,
+      InvalidationBatch: {
+        CallerReference: String(new Date().getTime()),
+        Paths: {
+          Quantity: invalidate_items.length,
+          Items: invalidate_items,
+        },
       },
-    },
+    }
+    const data1 = await cloudfront.createInvalidation(params).promise()
+    console.log(data1)
   }
-
-  const data1 = await cloudfront.createInvalidation(params).promise()
-  console.log(data1)
 
   // call S3 to retrieve upload file to specified bucket
 
@@ -54,7 +67,7 @@ async function uploadFileToS3(file_path: string): Promise<string> {
   })
 
   const uploadParams = {
-    Bucket: process.env.S3_BUCKET as string,
+    Bucket: S3_BUCKET,
     Key: key,
     Body: fileStream,
     ACL: "public-read",
@@ -95,6 +108,39 @@ async function routes(
     return { ok: !!posters, posters: posters || undefined }
   })
 
+  fastify.post<any>("/maps/:roomId/take_slot/:posterNumber", async req => {
+    const { roomId, posterNumber } = req.params as Record<string, string>
+    const num = parseInt(posterNumber)
+    if (isNaN(num)) {
+      return { ok: false }
+    } else {
+      const r = await model.maps[roomId].assignPosterLocation(
+        num,
+        req["requester"],
+        false
+      )
+      if (r.ok && r.poster) {
+        emit.poster(r.poster)
+      }
+      return r
+    }
+  })
+
+  fastify.patch<any>("/posters/:posterId", async req => {
+    const poster_id = req.params.posterId as string
+    const title = req.body.title as string
+    const p = await model.posters.get(poster_id)
+    if (p) {
+      p.title = title
+      p.last_updated = Date.now()
+      const r = await model.posters.set(p)
+      emit.poster(p)
+      return { ok: r }
+    } else {
+      return { ok: false }
+    }
+  })
+
   async function updatePosterFile(
     poster: Poster,
     file: any
@@ -104,7 +150,7 @@ async function routes(
       const out_path = "db/posters/" + poster.id + ".png"
       await writeFile(out_path, data)
       await model.posters.set(poster)
-      if (UPLOAD_TO_S3) {
+      if (S3_BUCKET) {
         const s3_url = await uploadFileToS3(out_path)
         await deleteFile(out_path)
       }
@@ -136,12 +182,22 @@ async function routes(
             //
           })
           if (code == 0) {
-            if (UPLOAD_TO_S3) {
-              uploadFileToS3(out_path).then(() => {
-                deleteFile(out_path).then(() => {
-                  console.log("Uploaded PDF to S3 and deleted a local file.")
+            if (S3_BUCKET) {
+              uploadFileToS3(out_path)
+                .then(() => {
+                  deleteFile(out_path)
+                    .then(() => {
+                      console.log(
+                        "Uploaded PDF to S3 and deleted a local file."
+                      )
+                    })
+                    .catch(err => {
+                      console.error(err)
+                    })
                 })
-              })
+                .catch(err => {
+                  console.error(err)
+                })
             }
             resolve({ ok: true })
           } else {
@@ -243,7 +299,16 @@ async function routes(
         return { ok: false, error: "Poster not found" }
       } else {
         poster.last_updated = Date.now()
-        await deleteFile("db/posters/" + poster.id + ".png")
+        if (S3_BUCKET) {
+          await s3
+            .deleteObject({
+              Bucket: S3_BUCKET as string,
+              Key: "files/" + posterId + ".png",
+            })
+            .promise()
+        } else {
+          await deleteFile("db/posters/" + poster.id + ".png")
+        }
         emit.poster(poster)
         return { ok: true, poster }
       }

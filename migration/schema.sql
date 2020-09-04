@@ -117,9 +117,10 @@ CREATE TABLE comment (
 );
 
 CREATE TABLE comment_to_person (
-	comment text references comment(id),
-	person text references person(id),
-	comment_encrypted text,
+	comment text references comment(id) not null,
+	person text references person(id) not null,
+	comment_encrypted text not null,
+	"encrypted" boolean not null,
 	primary key(comment, person)
 );
 

@@ -48,7 +48,37 @@
             >{{ prv_mnemonic_formatted }}
 </pre
           >
-          <a href="/" id="go-to-home">ホーム画面に移動して利用開始</a>
+          <div>
+            <h2>簡単な使い方</h2>
+            <p style="font-size: 14px; line-height: 1; margin: 0px;">
+              ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
+            </p>
+            <ul>
+              <li>移動： カーソルキーあるいは画面上の矢印ボタンで移動。</li>
+              <li>
+                会話：
+                人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
+              </li>
+              <li>
+                ポスター：
+                隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
+              </li>
+              <li>
+                ポスター板の確保：
+                空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
+              </li>
+              <li>
+                ポスターの掲示：
+                自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
+              </li>
+              <li>
+                ポスターの撤去： マイページで「ポスター画像を削除」をクリック
+              </li>
+            </ul>
+          </div>
+          <a href="/" id="go-to-home" class="btn"
+            >ホーム画面に移動して利用開始</a
+          >
         </div>
       </transition>
 
@@ -228,10 +258,52 @@ export default defineComponent({
 </script>
 
 <style>
+*,
+*:before,
+*:after {
+  -webkit-box-sizing: inherit;
+  box-sizing: inherit;
+}
+
+html {
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+.btn,
+a.btn,
+button.btn {
+  font-size: 1.6rem;
+  /* font-weight: 700; */
+  line-height: 1.5;
+  position: relative;
+  display: inline-block;
+  padding: 0.1rem 1rem;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-transition: all 0.3s;
+  transition: all 0.3s;
+  text-align: center;
+  vertical-align: middle;
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  color: #212529;
+  border-radius: 0.5rem;
+
+  background-color: #ccc;
+  border: 1px #777 solid;
+}
+
 h1 {
   display: block;
   /* margin: auto; */
   /* text-align: center; */
+}
+h2 {
+  margin: 10px 0px 5px 0px;
 }
 body {
   font-family: Loto, "YuGothic", sans-serif;
@@ -278,11 +350,18 @@ label {
 }
 
 #go-to-home {
+  margin-top: 25px;
   display: block;
-  width: 400px;
-  height: 30px;
+  font-weight: bold;
+  font-size: 21px;
+  width: 700px;
+  /* height: 30px; */
   background: #cfc;
   text-align: center;
+}
+
+#go-to-home:hover {
+  background: rgb(80, 240, 80);
 }
 
 #explain-key {

@@ -142,7 +142,7 @@ export default defineComponent({
         }
         if (!state.user) {
           state.loggedIn = "No"
-          // location.href = "/login"
+          location.href = "/login"
         } else {
           state.loggedIn = "Yes"
           console.log("Already registered", state.user)
@@ -152,7 +152,9 @@ export default defineComponent({
           }
           const r = await axios.get("/maps").catch(err => {
             console.log(err)
-            // location.href = "/login"
+            if (err.response.status == 403) {
+              location.href = "/login"
+            }
             return { data: [] }
           })
           state.rooms = r.data

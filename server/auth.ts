@@ -4,6 +4,9 @@ import * as model from "./model"
 import * as admin from "firebase-admin"
 import * as jwt from "jsonwebtoken"
 import axios from "axios"
+import { config } from "./config"
+
+const DEBUG_TOKEN = config.debug_token
 
 let google_keys: { [key: string]: string } = {}
 
@@ -127,8 +130,8 @@ export async function protectedRoute(
   // }
   req.log.info("Token: ", token || "(Not found)")
   if (
-    process.env.DEBUG_TOKEN &&
-    req.query.debug_token == process.env.DEBUG_TOKEN &&
+    DEBUG_TOKEN &&
+    req.query.debug_token == DEBUG_TOKEN &&
     req.query.debug_as
   ) {
     const user_id = req.query.debug_as as string

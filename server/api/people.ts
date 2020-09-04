@@ -143,9 +143,8 @@ async function routes(
     const name = req.body.name as string
     const access_code = req.body.access_code as string | undefined
     console.log(name, access_code)
-    const rooms = access_code
-      ? await model.MapModel.getAllowedRoomsFromCode(access_code)
-      : []
+    const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
+
     const avatar = model.people.randomAvatar()
     const r = await model.people.create(
       email,

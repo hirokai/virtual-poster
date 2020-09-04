@@ -408,7 +408,7 @@ export default defineComponent({
             console.log(data)
             if (!data.admin) {
               alert("管理者専用ページです")
-              location.href = "/home"
+              location.href = "/"
             }
             state.debug_token = data.debug_token
             state.myUserId = data.user_id

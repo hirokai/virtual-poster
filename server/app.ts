@@ -4,12 +4,11 @@ import _ from "lodash"
 import * as bunyan from "bunyan"
 import { protectedRoute } from "./auth"
 import { emit } from "./socket"
-import fs from "fs"
 import jsbn from "jsbn"
-const PRODUCTION = process.env.NODE_ENV == "production"
 
-const DEBUG_LOG =
-  process.env.DEBUG_LOG && process.env.DEBUG_LOG != "0" ? false : !PRODUCTION
+import { config } from "./config"
+
+const DEBUG_LOG = config.api_server.debug_log
 
 const latency_log = bunyan.createLogger({
   name: "latency_log",

@@ -28,22 +28,19 @@ import _ from "lodash"
 import multer from "fastify-multer"
 import swaggerValidation from "openapi-validator-middleware"
 import fastifyCookie from "fastify-cookie"
+import { config } from "./config"
 
-// Setting by env vars.
-const RUN_CLUSTER: number | false = process.env.RUN_CLUSTER
-  ? parseInt(process.env.RUN_CLUSTER) || false
-  : false
-const PRODUCTION = process.env.NODE_ENV == "production"
-const PORT =
-  (process.env.PORT && parseInt(process.env.PORT)) || (PRODUCTION ? 443 : 3000)
-const HTTP2 = !!process.env.HTTP2 || PRODUCTION
-const TLS = process.env.NO_TLS ? false : !!process.env.TLS || PRODUCTION
-const DEBUG_LOG = !!process.env.DEBUG_LOG
-const CERTIFICATE_FOLDER = process.env.CERTIFICATE_FOLDER
-const POSTGRES_CONNECTION_STRING = process.env.NODE_TEST
-  ? "postgres://postgres@localhost/virtual_poster_test"
-  : process.env.POSTGRES_CONNECTION_STRING ||
-    "postgres://postgres@localhost/virtual_poster"
+const PRODUCTION: boolean = process.env.NODE_ENV == "production"
+
+const RUN_CLUSTER: number = config.api_server.cluster
+const PORT: number = config.api_server.port || (PRODUCTION ? 443 : 3000)
+const HTTP2: boolean = config.api_server.http2
+const TLS: boolean = config.api_server.tls
+const DEBUG_LOG = config.api_server.debug_log
+const DEBUG_TOKEN = config.debug_token
+const CERTIFICATE_FOLDER = config.certificate_folder
+const POSTGRES_CONNECTION_STRING = config.postgresql
+const GOOGLE_APPLICATION_CREDENTIALS = config.firebase_auth_credential
 
 console.log("Settings:")
 console.log({
@@ -55,11 +52,11 @@ console.log({
   RUN_CLUSTER,
   CERTIFICATE_FOLDER,
   POSTGRES_CONNECTION_STRING,
-  GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  GOOGLE_APPLICATION_CREDENTIALS,
 })
 
 async function workerInitData(): Promise<RoomId[]> {
-  if (!RUN_CLUSTER || cluster.worker?.id) {
+  if (!(RUN_CLUSTER > 0) || cluster.worker?.id) {
     const rooms = await model.initData(POSTGRES_CONNECTION_STRING)
     return rooms
   } else {
@@ -71,8 +68,8 @@ async function workerInitData(): Promise<RoomId[]> {
 
 workerInitData()
   .then(() => {
-    if (RUN_CLUSTER && cluster.isMaster) {
-      const workers: number = parseInt(process.env.RUN_CLUSTER || "1") // require('os').cpus().length
+    if (RUN_CLUSTER > 0 && cluster.isMaster) {
+      const workers: number = RUN_CLUSTER // require('os').cpus().length
       console.log("Master node run")
       _.range(workers).forEach(() => {
         const worker = cluster.fork()
@@ -124,7 +121,7 @@ workerInitData()
       ;(async () => {
         try {
           await server.register(fastifyCookie, {
-            secret: process.env.DEBUG_TOKEN || "",
+            secret: DEBUG_TOKEN || "",
           })
 
           swaggerValidation.init(`${__dirname}/virtual-poster.v1.yaml`, {
@@ -160,7 +157,7 @@ workerInitData()
           await server.register(public_api_routes, { prefix: "/api" })
 
           await server.register(fastify_static, {
-            root: path.join(__dirname, "..", PRODUCTION ? "dist" : "public"),
+            root: path.join(process.cwd(), PRODUCTION ? "dist" : "public"),
             extensions: ["html"],
             maxAge: 1000 * 60 * 60 * 24,
           })

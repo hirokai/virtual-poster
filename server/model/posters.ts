@@ -2,8 +2,10 @@ import _ from "lodash"
 import shortid from "shortid"
 import { Poster, RoomId, UserId, PosterId } from "@/@types/types"
 import { log, db } from "./index"
+import { config } from "../config"
 
-const USE_S3_CDN = process.env.USE_S3_CDN == "YES"
+const CDN_DOMAIN = config.aws.cloud_front.domain
+const S3_BUCKET = config.aws.s3.bucket
 
 export async function get(poster_id: string): Promise<Poster | null> {
   log.debug(poster_id)
@@ -12,6 +14,11 @@ export async function get(poster_id: string): Promise<Poster | null> {
     [poster_id]
   )
   const d = rows[0]
+  d.last_updated = parseInt(d.last_updated)
+  const domain = S3_BUCKET
+    ? "https://" + CDN_DOMAIN
+    : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
+  d["file_url"] = domain + "/files/" + d["id"] + ".png"
   return d as Poster
 }
 
@@ -56,12 +63,12 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
     : db.query(
         `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
       ))
-  const domain = USE_S3_CDN
-    ? (process.env.CDN_DOMAIN as string)
-    : "https://" + (process.env.S3_BUCKET as string) + ".s3.amazonaws.com/"
+  const domain = S3_BUCKET
+    ? "https://" + CDN_DOMAIN
+    : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
   return rows.map(d => {
     // d["room"] = room_id
-    d["file_url"] = domain + "files/" + d["id"] + ".png"
+    d["file_url"] = domain + "/files/" + d["id"] + ".png"
     return d
   })
 }

@@ -17,23 +17,18 @@ import redis, { RedisAdapter } from "socket.io-redis"
 import * as model from "./model"
 import { RoomId } from "@/@types/types"
 import dotenv from "dotenv"
+import { config } from "./config"
 
 dotenv.config()
 
-// Setting by env vars.
-const RUN_CLUSTER: number | false = process.env.RUN_CLUSTER
-  ? parseInt(process.env.RUN_CLUSTER) || false
-  : false
 const PRODUCTION = process.env.NODE_ENV == "production"
-const PORT =
-  (process.env.PORT && parseInt(process.env.PORT)) || (PRODUCTION ? 80 : 5000)
-const TLS = process.env.NO_TLS ? false : !!process.env.TLS || PRODUCTION
-const DEBUG_LOG = !!process.env.DEBUG_LOG || !PRODUCTION
-const CERTIFICATE_FOLDER = process.env.CERTIFICATE_FOLDER
-const POSTGRES_CONNECTION_STRING = process.env.NODE_TEST
-  ? "postgres://postgres@localhost/virtual_poster_test"
-  : process.env.POSTGRES_CONNECTION_STRING ||
-    "postgres://postgres@localhost/virtual_poster"
+
+const RUN_CLUSTER: number = config.socket_server.cluster
+const PORT: number = config.socket_server.port || (PRODUCTION ? 443 : 3000)
+const TLS: boolean = config.socket_server.tls
+const DEBUG_LOG = config.socket_server.debug_log
+const CERTIFICATE_FOLDER = config.certificate_folder
+const POSTGRES_CONNECTION_STRING = config.postgresql
 
 const log = bunyan.createLogger({
   name: "index",
@@ -90,7 +85,7 @@ function run() {
     log.info("HTTP Socket.IO server started")
   }
   if (RUN_CLUSTER) {
-    const workers: number = parseInt(process.env.RUN_CLUSTER || "1") // require('os').cpus().length
+    const workers: number = config.socket_server.cluster // require('os').cpus().length
     if (!sticky.listen(server, PORT, { workers })) {
       log.info("Socket.IO Master node run")
       server.once("listening", () => {

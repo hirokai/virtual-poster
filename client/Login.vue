@@ -109,7 +109,10 @@ export default defineComponent({
                         localStorage["virtual-poster:name"] = data.name
                         location.href = "/"
                       } else {
-                        console.warn("Something is wrong", data)
+                        console.warn("Cannot register by user", data)
+                        alert(
+                          "登録されていません。管理者に登録を依頼してください"
+                        )
                       }
                     })
                     .catch(err => {

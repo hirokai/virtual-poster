@@ -3,9 +3,12 @@ import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { UserId, PostIdTokenResponse } from "@/@types/types"
 import { verifyIdToken } from "../auth"
+import { config } from "../config"
 
-const USER_REGISTRATION = process.env.USER_REGISTRATION == "YES"
-const PRODUCTION = process.env.NODE_ENV == "production"
+const USER_REGISTRATION = config.user_registration
+const DOMAIN = config.domain
+const SOCKET_URL = config.socket_url
+const DEBUG_TOKEN = config.debug_token
 
 async function public_api_routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -51,8 +54,8 @@ async function public_api_routes(
         return { ok: false, updated: false }
       }
       if (
-        process.env.DEBUG_TOKEN &&
-        req.query.debug_token == process.env.DEBUG_TOKEN &&
+        DEBUG_TOKEN &&
+        req.query.debug_token == DEBUG_TOKEN &&
         req.query.debug_as
       ) {
         // log.debug("Debug as ", req.query.debug_as)
@@ -127,8 +130,7 @@ async function public_api_routes(
                   admin: typ == "admin",
                   public_key,
                   token_actual: token,
-                  debug_token:
-                    typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
+                  debug_token: typ == "admin" ? DEBUG_TOKEN : undefined,
                   registered: "registered",
                 })
             } else {
@@ -141,8 +143,7 @@ async function public_api_routes(
                 name: user.name,
                 admin: typ == "admin",
                 public_key,
-                debug_token:
-                  typ == "admin" ? process.env.DEBUG_TOKEN : undefined,
+                debug_token: typ == "admin" ? DEBUG_TOKEN : undefined,
                 registered: "registered",
               })
             }
@@ -187,7 +188,14 @@ async function public_api_routes(
   )
   fastify.get("/socket_url", async () => {
     return {
-      socket_url: PRODUCTION ? "/" : "http://localhost:5000/socket.io",
+      socket_url: SOCKET_URL
+        ? SOCKET_URL
+        : (config.socket_server.tls ? "https" : "http") +
+          "://" +
+          DOMAIN +
+          ":" +
+          config.socket_server.port +
+          "/socket.io",
     }
   })
 }

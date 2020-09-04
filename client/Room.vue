@@ -886,14 +886,15 @@ export default defineComponent({
       state.message.hide = true
     }
 
-    const dblClick = (p: Point) => {
-      if (!myself.value) {
+    const dblClick = async (p: Point) => {
+      const me = myself.value
+      if (!me) {
         return
       }
       const poster = posterAt(state.posters, p)
       const person = poster ? undefined : personAt(state.people, p)
       if (myChatGroup.value) {
-        if (person && isAdjacent(myself.value, person)) {
+        if (person && isAdjacent(me, person)) {
           inviteToChat(axios, props, state, person)
             .then(group => {
               if (group) {
@@ -914,10 +915,13 @@ export default defineComponent({
         }
         return
       }
+      const poster_location = state.hallMap[p.y][p.x].poster_number
+
+      console.log("dblCliked", person, poster, poster_location)
 
       if (state.people_typing[props.myUserId]) {
         const d: TypingSocketSendData = {
-          user: myself.value.id,
+          user: me.id,
           room: props.room_id,
           typing: false,
           token: props.jwt_hash_initial,
@@ -926,8 +930,18 @@ export default defineComponent({
         state.socket?.emit("ChatTyping", d)
       }
 
-      const me = myself.value
-      if (me && (person || poster)) {
+      if (!poster && poster_location != undefined) {
+        const r = confirm("このポスター板を確保しますか？")
+        if (!r) {
+          return
+        }
+        const { data } = await axios.post(
+          `/maps/${props.room_id}/take_slot/${poster_location}`
+        )
+        console.log("take poster result", data)
+      }
+
+      if (person || poster) {
         if (Math.abs(p.x - me.x) <= 1 && Math.abs(p.y - me.y) <= 1) {
           if (person) {
             state.selectedUsers.add(person.id)

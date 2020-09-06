@@ -276,50 +276,35 @@ export async function getPosterComments(
   })
   return ds
 }
-export async function addComment(c: ChatComment): Promise<boolean> {
+export async function addPosterComment(
+  c: ChatCommentDecrypted
+): Promise<boolean> {
   log.debug(c)
+  if (c.kind != "poster") {
+    return false
+  }
   try {
     await db.query("BEGIN")
-    await db.query(
-      pgp.helpers.insert(
-        _.pick(c, [
-          "id",
-          "person",
-          "text",
-          "room",
-          "x",
-          "y",
-          "timestamp",
-          "last_updated",
-          "kind",
-        ]),
-        null,
-        "comment"
-      )
-    )
-    if (c.kind == "person") {
-      const s = pgp.helpers.insert(
-        c.texts.map(t => {
-          return {
-            comment: c.id,
-            person: t,
-            comment_encrypted: null,
-          }
-        }),
-        ["comment", "person", "comment_encrypted"],
-        "comment_to_person"
-      )
-      await db.query(s)
-    } else if (c.kind == "poster") {
-      const s = pgp.helpers.insert(
-        c.texts.map(t => {
-          return { comment: c.id, poster: t }
-        }),
-        ["comment", "poster"],
-        "comment_to_poster"
-      )
-      await db.query(s)
+    const obj = {
+      id: c.id,
+      person: c.person,
+      text: c.text_decrypted,
+      room: c.room,
+      x: c.x,
+      y: c.y,
+      timestamp: c.timestamp,
+      last_updated: c.last_updated,
+      kind: c.kind,
     }
+    await db.query(pgp.helpers.insert(obj, null, "comment"))
+    const s = pgp.helpers.insert(
+      c.texts.map(t => {
+        return { comment: c.id, poster: t.to }
+      }),
+      ["comment", "poster"],
+      "comment_to_poster"
+    )
+    await db.query(s)
 
     const p = await model.people.get(c.person)
     if (p) {

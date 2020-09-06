@@ -300,12 +300,28 @@ async function routes(
       } else {
         poster.last_updated = Date.now()
         if (S3_BUCKET) {
+          const key = "files/" + posterId + ".png"
           await s3
             .deleteObject({
               Bucket: S3_BUCKET as string,
-              Key: "files/" + posterId + ".png",
+              Key: key,
             })
             .promise()
+          if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
+            const invalidate_items = ["/" + key]
+            const params = {
+              DistributionId: CLOUDFRONT_ID,
+              InvalidationBatch: {
+                CallerReference: String(new Date().getTime()),
+                Paths: {
+                  Quantity: invalidate_items.length,
+                  Items: invalidate_items,
+                },
+              },
+            }
+            const data1 = await cloudfront.createInvalidation(params).promise()
+            console.log(data1)
+          }
         } else {
           await deleteFile("db/posters/" + poster.id + ".png")
         }
@@ -369,34 +385,25 @@ async function routes(
       }
 
       fastify.log.debug("Ajacent posters", posters)
-      const e: ChatComment = {
+      const e: ChatCommentDecrypted = {
         id: model.chat.genCommentId(),
         person: user_id,
         room: roomId,
         x: pos.x,
         y: pos.y,
-        texts: [{ to: posterId, encrypted: false, text: comment }],
+        text_decrypted: comment,
+        texts: [{ to: posterId, encrypted: false }],
         timestamp: timestamp,
         last_updated: timestamp,
         kind: "poster",
       }
-      const r = await model.chat.addComment(e)
+      const r = await model.chat.addPosterComment(e)
       if (r) {
-        const e2: ChatCommentDecrypted = {
-          id: model.chat.genCommentId(),
-          person: user_id,
-          room: roomId,
-          x: pos.x,
-          y: pos.y,
-          text_decrypted: comment,
-          texts: [{ to: posterId, encrypted: false }],
-          timestamp: timestamp,
-          last_updated: timestamp,
-          kind: "poster",
-        }
-        emit.posterComment(e2)
+        emit.posterComment(e)
+        return { ok: true }
+      } else {
+        return { ok: false }
       }
-      return { ok: true }
     }
   )
 

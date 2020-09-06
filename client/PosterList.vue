@@ -52,7 +52,7 @@ import {
 
 import axios from "axios"
 import { AxiosResponse } from "axios"
-import _ from "lodash-es"
+import { filter, keyBy, sortBy } from "lodash-es"
 import io from "socket.io-client"
 
 const API_ROOT = "/api"
@@ -106,15 +106,15 @@ export default defineComponent({
             AxiosResponse<Person[]>,
             AxiosResponse<PosterTyp[]>
           ]) => {
-            state.people = _.keyBy(
-              _.filter(r_people, p => {
+            state.people = keyBy(
+              filter(r_people, p => {
                 return p.x != undefined && p.y != undefined
               }),
               "id"
             )
             console.log("posters", r_posters)
-            state.posters = _.keyBy(r_posters, "id")
-            state.rooms = _.keyBy(r_rooms, "id")
+            state.posters = keyBy(r_posters, "id")
+            state.rooms = keyBy(r_rooms, "id")
           }
         )
         .catch(err => {
@@ -123,7 +123,7 @@ export default defineComponent({
         })
     }
     const postersSorted = computed(() => {
-      return _.sortBy(Object.values(state.posters), p => p.poster_number)
+      return sortBy(Object.values(state.posters), p => p.poster_number)
     })
 
     const setPerson = (d: PersonUpdate) => {

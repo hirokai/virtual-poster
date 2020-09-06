@@ -1,4 +1,3 @@
-import _ from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
 
 let latency_log: {

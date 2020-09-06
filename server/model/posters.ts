@@ -15,10 +15,10 @@ export async function get(poster_id: string): Promise<Poster | null> {
   )
   const d = rows[0]
   d.last_updated = parseInt(d.last_updated)
-  const domain = S3_BUCKET
+  const poster_file_domain = S3_BUCKET
     ? "https://" + CDN_DOMAIN
     : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
-  d["file_url"] = domain + "/files/" + d["id"] + ".png"
+  d["file_url"] = poster_file_domain + "/files/" + d["id"] + ".png"
   return d as Poster
 }
 
@@ -63,12 +63,12 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
     : db.query(
         `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
       ))
-  const domain = S3_BUCKET
+  const poster_file_domain = S3_BUCKET
     ? "https://" + CDN_DOMAIN
     : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
   return rows.map(d => {
     // d["room"] = room_id
-    d["file_url"] = domain + "/files/" + d["id"] + ".png"
+    d["file_url"] = poster_file_domain + "/files/" + d["id"] + ".png"
     return d
   })
 }

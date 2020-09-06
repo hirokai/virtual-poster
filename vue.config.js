@@ -1,5 +1,9 @@
 const webpack = require("webpack")
 
+const BundleAnalyzerPlugin = require("webpack-bundle-analyzer")
+  .BundleAnalyzerPlugin
+const path = require("path")
+
 module.exports = {
   pages: {
     login: {
@@ -68,6 +72,18 @@ module.exports = {
   configureWebpack: {
     plugins: [
       new webpack.IgnorePlugin(/^\.\/wordlists\/(?!english)/, /bip39\/src$/),
+      /*
+      new BundleAnalyzerPlugin({
+        analyzerMode: "static",
+        reportFilename: path.join(__dirname, "./stats_app.html"),
+        defaultSizes: "gzip",
+        openAnalyzer: false,
+        generateStatsFile: true,
+        statsFilename: path.join(__dirname, "./stats_app.json"),
+        statsOptions: null,
+        logLevel: "info",
+      }),
+      */
     ],
   },
   devServer: {

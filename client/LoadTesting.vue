@@ -82,7 +82,7 @@ import {
 import { findRoute, decodeMoved } from "../common/util"
 
 import axios from "axios"
-import _ from "lodash-es"
+import { difference, keyBy, random } from "lodash-es"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
@@ -202,7 +202,7 @@ export default class App extends Vue {
     }
   }
   startRandomMoveForAll(kind: "batch" | "step"): void {
-    const uids = _.difference(
+    const uids = difference(
       Object.keys(this.people),
       this.myUserId ? [this.myUserId] : []
     )
@@ -249,10 +249,10 @@ export default class App extends Vue {
         axios.get<MapRoomResponse>("/maps/" + this.room_id),
         axios.get<Poster[]>("/posters"),
       ])
-      this.people = _.keyBy(data_p, "id")
+      this.people = keyBy(data_p, "id")
       this.chatGroups = data_g
       this.hallMap = data_m
-      this.posters = _.keyBy(data_posters, "id")
+      this.posters = keyBy(data_posters, "id")
     })().catch(err => {
       console.error(err)
     })
@@ -389,8 +389,8 @@ export default class App extends Vue {
       let count = 0
       if (kind == "batch") {
         while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = _.random(0, this.hallMap.numCols)
-          ny = _.random(0, this.hallMap.numRows)
+          nx = random(0, this.hallMap.numCols)
+          ny = random(0, this.hallMap.numRows)
           count += 1
           if (count >= 100) {
             throw "Move failed 100 times."
@@ -398,8 +398,8 @@ export default class App extends Vue {
         }
       } else {
         while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = p.x + _.random(-1, 1)
-          ny = p.y + _.random(-1, 1)
+          nx = p.x + random(-1, 1)
+          ny = p.y + random(-1, 1)
           count += 1
           if (count >= 100) {
             throw "Move failed 100 times."

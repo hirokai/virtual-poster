@@ -124,7 +124,7 @@ workerInitData()
             secret: DEBUG_TOKEN || "",
           })
 
-          swaggerValidation.init(`${__dirname}/virtual-poster.v1.yaml`, {
+          swaggerValidation.init(`./server/virtual-poster.v1.yaml`, {
             framework: "fastify",
             beautifyErrors: true,
           })

@@ -36,14 +36,14 @@ import {
 } from "../@types/types"
 
 const BATCH_MOVE_INTERVAL = 400
-import _ from "lodash-es"
+import { find, map, range } from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
 
 export const personAt = (
   people: { [user_id: string]: Person },
   pos: Point
 ): Person | undefined => {
-  return _.find<Person>(Object.values(people), p => {
+  return find<Person>(Object.values(people), p => {
     return p.x == pos.x && p.y == pos.y
   })
 }
@@ -51,7 +51,7 @@ export const posterAt = (
   posters: { [id: string]: Poster },
   pos: Point
 ): Poster | undefined => {
-  return _.find<Poster>(Object.values(posters), p => {
+  return find<Poster>(Object.values(posters), p => {
     return p.x == pos.x && p.y == pos.y
   })
 }
@@ -161,7 +161,7 @@ export const moveTo = (
       //     console.log(
       //       "Target moved",
       //       target,
-      //       _.pick(state.people[target], ["x", "y"]),
+      //       pick(state.people[target], ["x", "y"]),
       //       to
       //     )
       //     state.moveTo(
@@ -250,7 +250,7 @@ moveOneStep = (
         // state.enteredMyPoster()
       }
     }
-    if (p.id != props.myUserId && _.find(state.batchMovePoints, to)) {
+    if (p.id != props.myUserId && find(state.batchMovePoints, to)) {
       console.log("Recalculate paths")
       moveTo(
         axios,
@@ -358,7 +358,7 @@ export const cellsMag = (state: RoomAppState): ComputedRef<Cell[][]> =>
     const max_x = Math.min(state.hallMap[0].length - 1, state.center.x + 5)
     const max_y = Math.min(state.hallMap.length - 1, state.center.y + 5)
 
-    return _.map(_.range(min_y, max_y + 1), y => {
+    return map(range(min_y, max_y + 1), y => {
       return state.hallMap[y].slice(min_x, max_x + 1)
     })
   })

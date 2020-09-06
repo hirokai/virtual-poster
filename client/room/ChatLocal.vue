@@ -119,7 +119,7 @@ import {
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
-import _ from "lodash-es"
+import { filter, orderBy } from "lodash-es"
 
 import Vue from "vue"
 import {
@@ -223,8 +223,8 @@ export default defineComponent({
       }
     )
     const localCommentHistory = computed((): ChatCommentDecrypted[] => {
-      return _.orderBy(
-        _.filter(Object.values(props.comments), c => {
+      return orderBy(
+        filter(Object.values(props.comments), c => {
           return c.kind == "person"
         }),
         "timestamp",

@@ -183,7 +183,7 @@ export default defineComponent({
       return sortBy(Object.values(props.comments), "timestamp")
     })
     const startUpdateComment = (cid: string) => {
-      context.emit("setEditingOld", cid)
+      context.emit("set-editing-old", cid)
       state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#poster-chat-input"

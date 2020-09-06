@@ -351,8 +351,17 @@ export const initChatService = async (
     }
   })
   socket.on("CommentRemove", (comment_id: string) => {
-    console.log("CommentRemove", comment_id)
+    console.log("CommentRemove", comment_id, state.comments[comment_id])
     Vue.delete(state.comments, comment_id)
+  })
+
+  socket.on("PosterCommentRemove", (comment_id: string) => {
+    console.log(
+      "PosterCommentRemove",
+      comment_id,
+      state.posterComments[comment_id]
+    )
+    Vue.delete(state.posterComments, comment_id)
   })
 
   socket.on("Group", d => {

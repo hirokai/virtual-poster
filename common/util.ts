@@ -9,7 +9,13 @@ import {
   RoomId,
   PersonPos,
 } from "@/@types/types"
-import { fromPairs, minBy, groupBy, find, mapValues, sortBy } from "lodash"
+// import { fromPairs, minBy, groupBy, find, mapValues, sortBy } from "lodash"
+import fromPairs from "lodash/fromPairs"
+import minBy from "lodash/minBy"
+import groupBy from "lodash/groupBy"
+import find from "lodash/find"
+import mapValues from "lodash/mapValues"
+import sortBy from "lodash/sortBy"
 
 import * as bunyan from "bunyan"
 const log = bunyan.createLogger({ name: "util", src: true, level: 1 })

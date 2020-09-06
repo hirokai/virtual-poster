@@ -8,7 +8,7 @@ import {
   ChatComment,
   MySocketObject,
 } from "../@types/types"
-import _ from "lodash-es"
+import { keyBy } from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { SocketIO } from "socket.io-client"
 
@@ -48,6 +48,7 @@ export const updatePosterComment = (
   comment_id: string,
   text: string
 ): void => {
+  console.log("updatePosterComment")
   state.posterInputComment = text
   state.editingOld = null
   axios
@@ -168,6 +169,6 @@ export const initPosterService = async (
   const { data: posters } = await axios.get<Poster[]>(
     "/maps/" + props.room_id + "/posters"
   )
-  state.posters = _.keyBy(posters, "id")
+  state.posters = keyBy(posters, "id")
   return true
 }

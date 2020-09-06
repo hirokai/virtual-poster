@@ -10,7 +10,7 @@ import {
   MySocketObject,
   UserId,
 } from "../@types/types"
-import _ from "lodash-es"
+import { keyBy, filter, map } from "lodash-es"
 import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
 import { moveOneStep } from "./room_map_service"
 import { SocketIO } from "socket.io-client"
@@ -107,8 +107,8 @@ export const initPeopleService = async (
       url: "/img/avatars_base64.json",
     }),
   ])
-  state.people = _.keyBy(
-    _.filter(r_people, p => {
+  state.people = keyBy(
+    filter(r_people, p => {
       return p.x != undefined && p.y != undefined
     }),
     "id"
@@ -120,7 +120,7 @@ export const initPeopleService = async (
   })
 
   // console.log("posters", r_posters)
-  state.connectedUsers = _.map(
+  state.connectedUsers = map(
     Object.values(state.people).filter(p => p.connected),
     "name"
   )

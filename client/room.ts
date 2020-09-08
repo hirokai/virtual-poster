@@ -66,21 +66,10 @@ declare module "vue/types/vue" {
   } else {
     if (!user.emailVerified) {
       firebase.auth().languageCode = "ja"
-      // await user.sendEmailVerification().catch(function(error) {
-      //   console.error(error)
-      // })
+
       console.log("Verification email sent")
       location.href = "/"
     } else {
-      // console.log("Already registered")
-      // axios.defaults.headers.common = {
-      //   Authorization: `Bearer ${idToken}`,
-      // }
-      // const idToken = await user.getIdToken()
-      // const { data } = await axios.post("/id_token", {
-      //   token: idToken,
-      //   debug_from: "room",
-      // })
       const user_id: string | undefined = localStorage["virtual-poster:user_id"]
       const jwt_hash_initial: string | undefined =
         localStorage["virtual-poster:jwt_hash"]

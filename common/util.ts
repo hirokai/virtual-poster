@@ -2,6 +2,7 @@ import {
   Cell,
   Point,
   Person,
+  PersonInMap,
   ChatGroup,
   UserId,
   ChatGroupId,
@@ -194,7 +195,7 @@ export function findGroups(pairs: string[][]): string[][] {
 export function mkRouteGraph(
   user_id: string,
   staticMap: Cell[][],
-  people: Person[],
+  people: PersonInMap[],
   range_?: { xmin: number; xmax: number; ymin: number; ymax: number }
 ): { vertices: string[]; edges: { a: string; b: string; cost: number }[] } {
   const rows = staticMap.length
@@ -290,7 +291,7 @@ export function mkRouteGraph(
 export function findRoute(
   user_id: string,
   staticMap: Cell[][],
-  people: Person[],
+  people: PersonInMap[],
   from: Point,
   to: Point,
   searchMargin?: number
@@ -374,7 +375,10 @@ export function findRoute(
   }
 }
 
-export function lookingAt(people_in_room: Person[], me: Person): UserId | null {
+export function lookingAt(
+  people_in_room: PersonInMap[],
+  me: PersonInMap
+): UserId | null {
   let [x, y] = [0, 0]
   if (me.x == undefined || me.y == undefined || me.direction == undefined) {
     return null
@@ -407,9 +411,9 @@ export function getGroupIdOfUser(
 }
 
 export function findAdjacentChatGroup(
-  people: Person[],
+  people: PersonInMap[],
   groups: { [index: string]: ChatGroup },
-  me: Person
+  me: PersonInMap
 ): { id: UserId; kind: "person" }[] {
   const la = lookingAt(people, me)
   if (la) {

@@ -88,7 +88,7 @@
 </template>
 
 <script lang="ts">
-import { Person } from "../../@types/types"
+import { PersonInMap } from "../../@types/types"
 import Vue from "vue"
 import {
   defineComponent,
@@ -111,7 +111,7 @@ export default defineComponent({
       required: true,
     },
     person: {
-      type: Object as PropType<Person>,
+      type: Object as PropType<PersonInMap>,
       required: true,
     },
     avatarImages: {

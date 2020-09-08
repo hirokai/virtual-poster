@@ -259,7 +259,17 @@ import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
 import axiosDefault from "axios"
-import { Person, PersonUpdate, Poster, PosterId, UserId } from "../@types/types"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
+import {
+  Person,
+  PersonUpdate,
+  Poster,
+  PosterId,
+  UserId,
+  PersonWithEmail,
+} from "../@types/types"
 import { keyBy, difference, range, chunk } from "lodash-es"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
@@ -275,6 +285,19 @@ const BigInteger = jsbn.BigInteger
 const API_ROOT = "/api"
 const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
+const client = api(axiosClient(axios))
+
+axios.interceptors.response.use(
+  response => {
+    return response
+  },
+  error => {
+    if (403 === error.response.status) {
+      deleteUserInfoOnLogout()
+      location.href = "/login"
+    }
+  }
+)
 
 const url = new URL(location.href)
 const tab = url.hash.slice(1) || "avatar"
@@ -324,7 +347,7 @@ export default defineComponent({
       debug_token,
       jwt_hash: "",
 
-      people: {} as { [index: string]: Person },
+      people: {} as { [index: string]: PersonWithEmail },
       posters: {} as { [index: string]: Poster },
       files: {} as { [index: string]: File },
       lastLoaded: -1,
@@ -361,8 +384,8 @@ export default defineComponent({
 
       Alice: {
         message: "1",
-        N: null,
-        E: null,
+        N: null as string | null,
+        E: null as string | null,
         r: null,
         signed: null,
         unblinded: null,
@@ -432,8 +455,10 @@ export default defineComponent({
             "Public key does NOT exist on server, but found in localStorage."
           )
           console.log("Public key found in localStorage")
-          const { data } = await axios.post("/public_key", {
-            key: pub_str_local,
+          const data = await client.public_key.$post({
+            body: {
+              key: pub_str_local,
+            },
           })
           console.log("/public_key", data)
           state.publicKeyString = pub_str_local
@@ -492,23 +517,13 @@ export default defineComponent({
       state.lastUpdated = Date.now()
       ;(async () => {
         const [
-          { data: data_p },
-          { data: data_poster },
-          {
-            data: { public_key: pub_str_from_server },
-          },
+          data_p,
+          data_poster,
+          { public_key: pub_str_from_server },
         ] = await Promise.all([
-          axios.get<{ [index: string]: Person }>("/people").catch(err => {
-            if (err.response.status == 403) {
-              deleteUserInfoOnLogout()
-              location.href = "/login"
-            }
-            return { data: {} as { [index: string]: Person } }
-          }),
-          axios.get<{ posters: Poster[] | null }>(
-            "/people/" + state.myUserId + "/posters"
-          ),
-          axios.get<{ public_key: string }>("/encryption_keys"),
+          client.people.$get(),
+          client.people._userId(state.myUserId).posters.$get(),
+          client.public_key.$get(),
         ])
         state.people = keyBy(data_p, "id")
         state.posters = keyBy(data_poster.posters, "id")
@@ -516,7 +531,7 @@ export default defineComponent({
           localStorage[
             "virtual-poster:" + state.myUserId + ":private_key_jwk"
           ] || localStorage["virtual-poster:private_key:" + state.myUserId]
-        await setupEncryption(pub_str_from_server)
+        await setupEncryption(pub_str_from_server || null)
       })().catch(err => {
         console.error(err)
       })
@@ -541,11 +556,6 @@ export default defineComponent({
         name: d.name || p.name,
         last_updated: d.last_updated,
         avatar: d.avatar || p.avatar,
-        room: d.room || p.room,
-        x: d.x == undefined ? p.x : d.x,
-        y: d.y == undefined ? p.y : d.y,
-        moving: d.moving || p.moving,
-        direction: d.direction || p.direction,
         stats: d.stats || p.stats,
       }
       set(state.people, d.id, person)
@@ -579,8 +589,8 @@ export default defineComponent({
         .signOut()
         .then(() => {
           console.log("Firebase signed out")
-          axios
-            .post("/logout")
+          client.logout
+            .$post()
             .then(() => {
               console.log("App signed out")
               localStorage.removeItem("virtual-poster:user_id")
@@ -663,9 +673,9 @@ export default defineComponent({
     }
 
     onMounted(() => {
-      axios
-        .get("/socket_url")
-        .then(({ data }) => {
+      client.socket_url
+        .$get()
+        .then(data => {
           const url = data.socket_url as string
           socket = io(url)
           if (!socket) {
@@ -891,7 +901,7 @@ export default defineComponent({
       console.log("Signing")
       console.log("Message:", state.Alice.message)
 
-      const { data } = await axios.get("/blind_pair")
+      const data = await client.blind_sign.key_pair.$get()
       console.log("blind key pair", data)
       state.Alice.N = data.N
       state.Alice.E = data.E
@@ -903,8 +913,10 @@ export default defineComponent({
       state.Alice.r = r
       console.log("blinded", blinded, blinded.toString())
       console.log(blinded.compareTo(new BigInteger(blinded.toString())))
-      const { data: data2 } = await axios.post("/blindsign_message", {
-        blinded: blinded.toString(),
+      const data2 = await client.blind_sign.sign.$post({
+        body: {
+          blinded: blinded.toString(),
+        },
       })
       if (!data2.ok) {
         alert("投票コード取得済みです")
@@ -964,10 +976,9 @@ export default defineComponent({
         state.vote.message
 
       // Alice sends Bob unblinded signature and original message
-      const { data: data3 } = await axios.get("/blindsign_verify", {
-        params: {
+      const data3 = await client.blind_sign.verify.$get({
+        query: {
           unblinded: unblinded.toString(),
-          blinded: blinded.toString(),
           message: state.vote.message,
         },
       })

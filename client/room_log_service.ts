@@ -1,24 +1,33 @@
+import { HttpMethod } from "../@types/types"
 import { AxiosStatic, AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
 
 let latency_log: {
   url: string
-  method?: string
+  method?: HttpMethod
   latency: number
   timestamp: number
 }[] = []
 
 export async function submitLatencyReport(
   axios: AxiosStatic | AxiosInstance | AxiosInstance,
-  logs: { url: string; method?: string; latency: number; timestamp: number }[]
+  logs: {
+    url: string
+    method?: HttpMethod
+    latency: number
+    timestamp: number
+  }[]
 ): Promise<void> {
-  await axios.post("/latency_report", logs)
+  const client = api(axiosClient(axios))
+  await client.latency_report.$post({ body: logs })
 }
 
 export function addLatencyLog(
   axios: AxiosStatic | AxiosInstance | AxiosInstance,
   d: {
     url: string
-    method?: string
+    method?: HttpMethod
     latency: number
     timestamp: number
   }

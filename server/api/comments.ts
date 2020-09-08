@@ -28,8 +28,7 @@ async function routes(
   })
 
   fastify.post<any>("/maps/:roomId/comments", async req => {
-    const comments_encrypted: CommentEncryptedEntry[] | undefined =
-      req.body.comments_encrypted
+    const comments_encrypted: CommentEncryptedEntry[] | undefined = req.body
     const roomId: string = req.params.roomId
     const requester: string = req["requester"]
     if (!comments_encrypted) {

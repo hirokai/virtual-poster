@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2018",
-    "module": "esnext",
+    "module": "commonjs",
     "strict": true,
     "jsx": "preserve",
     "importHelpers": true,
@@ -25,6 +25,8 @@
     "server/*.ts",
     "**/*.ts",
     "**/*.tsx",
+    "*.vue",
+    "*/*.vue",
     "**/*.vue",
     "tests/**/*.ts",
     "tests/*.js",

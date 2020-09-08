@@ -23,23 +23,24 @@ async function public_api_routes(
     if (email) {
       const existing = (await model.people.getAdmin()) != null
       if (existing) {
-        return "Admin already exists.\n"
+        return { ok: false, error: "Admin already exists" }
       } else {
         const r = await model.people.create(
           email,
           "Admin",
           "admin",
           model.people.randomAvatar(),
-          ["default"]
+          []
         )
+        console.log("model.people.create", r)
         if (r.user) {
-          return "Admin account was made: " + r.user.id + "\n"
+          return { ok: true, user_id: r.user.id }
         } else {
-          return r.error + "\n"
+          return { ok: false, error: r.error }
         }
       }
     } else {
-      return "No email specified\n"
+      return { ok: false, error: "No email specified" }
     }
   })
 
@@ -198,6 +199,15 @@ async function public_api_routes(
           "/socket.io",
     }
   })
+  if (process.env.NODE_TEST) {
+    fastify.get("/is_test", async () => {
+      return { ok: true }
+    })
+    fastify.post("/reload_data", async () => {
+      await model.initData(config.postgresql)
+      return { ok: true }
+    })
+  }
 }
 
 export default public_api_routes

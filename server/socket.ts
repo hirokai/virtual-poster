@@ -107,7 +107,7 @@ export class Emit {
         this.socketQueue[msg][d.room] = []
       }
       this.socketQueue[msg][d.room].push(s)
-      this.emitter.to(d.user).emit("Moved", s)
+      this.emitter.to(d.room + ":" + d.user).emit("Moved", s)
     } else if (msg == "person") {
       const rooms: RoomId[] = Object.keys(this.socketQueue[msg])
       for (const room of rooms) {
@@ -363,6 +363,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         await model.redis.sockets.sadd("room:" + room + ":" + user, socket.id)
         socket.join(room)
         socket.join(user)
+        socket.join(room + ":" + user)
 
         const ds: ActiveUsersSocketData = [{ room, user, active: true }]
         io.to(room).emit("ActiveUsers", ds)

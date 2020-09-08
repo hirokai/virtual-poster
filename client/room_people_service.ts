@@ -4,6 +4,7 @@ import {
   RoomAppState,
   RoomAppProps,
   Person,
+  PersonInMap,
   PersonUpdate,
   ActiveUsersSocketData,
   TypingSocketData,
@@ -12,6 +13,9 @@ import {
 } from "../@types/types"
 import { keyBy, filter, map } from "lodash-es"
 import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 import { moveOneStep } from "./room_map_service"
 import { SocketIO } from "socket.io-client"
 
@@ -33,7 +37,7 @@ const updatePerson = (
       state.liveMapChangedAfterMove = true
     }
   }
-  const person: Person = {
+  const person: PersonInMap = {
     id: d.id,
     name: d.name || p.name,
     last_updated: d.last_updated,
@@ -97,15 +101,14 @@ export const initPeopleService = async (
     console.log("chat_typing", state.people_typing)
   })
 
-  const [{ data: r_people }, { data: r_avatars }]: [
-    AxiosResponse<Person[]>,
+  const [r_people, { data: r_avatars }]: [
+    PersonInMap[],
     AxiosResponse<{ [index: string]: string }>
   ] = await Promise.all([
-    axios.get<Person[]>("/maps/" + props.room_id + "/people"),
-    axiosDefault({
-      method: "GET",
-      url: "/img/avatars_base64.json",
-    }),
+    api(axiosClient(axios))
+      .maps._roomId(props.room_id)
+      .people.$get(),
+    axiosDefault.get<{ [index: string]: string }>("/img/avatars_base64.json"),
   ])
   state.people = keyBy(
     filter(r_people, p => {

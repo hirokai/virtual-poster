@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "init_data": "ts-node -O '{\"module\": \"commonjs\"}' server/initialize_data.ts",
-    "test": "jest --runInBand --forceExit",
+    "test": "NODE_TEST=1 jest --runInBand --forceExit",
     "prod": "NODE_ENV=production ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "prod:log": "NODE_ENV=production DEBUG_LOG=1 ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "nohup": "sudo NODE_ENV=production nohup node dist_server/server/index.js &",
@@ -23,6 +23,7 @@
     "hooks": {}
   },
   "dependencies": {
+    "@aspida/axios": "^0.11.2",
     "@types/jest": "^26.0.10",
     "@types/js-yaml": "^3.12.5",
     "@types/jsonwebtoken": "^8.5.0",
@@ -95,6 +96,7 @@
     "husky": "^4.2.5",
     "jest": "^26.4.2",
     "nodemon": "^2.0.3",
+    "openapi2aspida": "^0.11.0",
     "prettier": "^1.19.1",
     "prettier-eslint": "^9.0.1",
     "ts-jest": "^26.1.3",

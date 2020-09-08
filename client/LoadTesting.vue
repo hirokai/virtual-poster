@@ -68,26 +68,33 @@
 <script lang="ts">
 import Vue from "vue"
 import {
-  Person,
+  PersonInMap,
   Point,
   ChatComment,
   ArrowKey,
-  MapRoomResponse,
+  Cell,
   UserId,
+  RoomId,
   ChatGroup,
-  PersonWithEmail,
   Poster,
 } from "../@types/types"
 
 import { findRoute, decodeMoved } from "../common/util"
 
 import axios from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+const client = api(axiosClient(axios))
+
 import { difference, keyBy, random } from "lodash-es"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import jsSHA from "jssha"
 import firebaseConfig from "../firebaseConfig"
+
+const url = new URL(location.href)
+const room_id: RoomId | undefined = url.searchParams.get("room_id") || undefined
 
 const unionSet = function<T>(setA: Set<T>, setB: Set<T>) {
   const union = new Set(setA)
@@ -108,13 +115,13 @@ const diffSet = function<T>(setA: Set<T>, setB: Set<T>) {
 export default class App extends Vue {
   socketURL: string | null = null
   socket: SocketIO.Socket | null = null
-  people: { [index: string]: Person } = {}
+  people: { [index: string]: PersonInMap } = {}
   idToken: string | null = null
   jwt_hash = ""
-  room_id = "default"
+  room_id = room_id
   lastUpdated: number | null = null
   user: firebase.User | null = null
-  hallMap: MapRoomResponse = { cells: [], numCols: 0, numRows: 0 }
+  hallMap = { cells: [] as Cell[][], numCols: 0, numRows: 0 }
   posters: { [index: string]: Poster } = {}
   connectedUsers: string[] = []
   hidden = true
@@ -154,7 +161,7 @@ export default class App extends Vue {
             Authorization: `Bearer ${idToken}`,
           }
 
-          this.socketURL = (await axios.get("/socket_url")).data.socket_url
+          this.socketURL = (await client.socket_url.$get()).socket_url || null
 
           this.socket = io(this.socketURL, { path: "/socket.io" })
           if (!this.socket) {
@@ -175,9 +182,11 @@ export default class App extends Vue {
             }
           })
 
-          const { data } = await axios.post("/id_token", {
-            token: idToken,
-            debug_from: "LoadTesting",
+          const data = await client.id_token.$post({
+            body: {
+              token: idToken,
+              debug_from: "LoadTesting",
+            },
           })
           console.log(data)
           if (!data.ok) {
@@ -186,7 +195,7 @@ export default class App extends Vue {
           if (!data.admin) {
             location.href = "/"
           }
-          this.myUserId = data.user_id
+          this.myUserId = data.user_id || null
           this.reload()
         }
       })().catch(err => {
@@ -237,20 +246,19 @@ export default class App extends Vue {
 
   reload(): void {
     this.lastUpdated = Date.now()
+    if (!this.room_id) {
+      alert("部屋IDが指定されていません")
+      return
+    }
     ;(async () => {
-      const [
-        { data: data_p },
-        { data: data_g },
-        { data: data_m },
-        { data: data_posters },
-      ] = await Promise.all([
-        axios.get<{ [index: string]: PersonWithEmail }>("/people?email=true"),
-        axios.get<{ [index: string]: ChatGroup }>("/groups"),
-        axios.get<MapRoomResponse>("/maps/" + this.room_id),
-        axios.get<Poster[]>("/posters"),
+      const [data_p, data_g, data_m, data_posters] = await Promise.all([
+        client.maps._roomId(this.room_id!).people.$get(),
+        client.groups.$get(),
+        client.maps._roomId(this.room_id!).$get(),
+        client.posters.$get(),
       ])
       this.people = keyBy(data_p, "id")
-      this.chatGroups = data_g
+      this.chatGroups = keyBy(data_g, "id")
       this.hallMap = data_m
       this.posters = keyBy(data_posters, "id")
     })().catch(err => {

@@ -33,6 +33,9 @@ import firebaseConfig from "../firebaseConfig"
 import VueCompositionApi from "@vue/composition-api"
 import { setUserInfo, deleteUserInfoOnLogout } from "./util"
 
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 Vue.use(VueCompositionApi)
 
 const API_ROOT = "/api"
@@ -78,12 +81,10 @@ export default defineComponent({
                   axios.defaults.headers.common = {
                     Authorization: `Bearer ${idToken}`,
                   }
-                  axios
-                    .post<PostIdTokenResponse>("/id_token", {
-                      token: idToken,
-                      force: true,
-                    })
-                    .then(({ data }) => {
+                  const client = api(axiosClient(axios))
+                  client.id_token
+                    .$post({ body: { token: idToken, force: true } })
+                    .then(data => {
                       const email = state.user?.email
                       if (!email) {
                         return

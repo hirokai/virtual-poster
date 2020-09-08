@@ -23,6 +23,9 @@ import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
 import { SocketIO } from "socket.io-client"
 
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 export async function doSendOrUpdateComment(
   axios: AxiosStatic | AxiosInstance,
   skywayRoom: MeshRoom | SfuRoom | null,
@@ -35,6 +38,7 @@ export async function doSendOrUpdateComment(
   editingOld?: CommentId
 ): Promise<{ ok: boolean; data?: any }> {
   const comments_encrypted: CommentEncryptedEntry[] = []
+  const client = api(axiosClient(axios))
   if (encrypting && !privateKey) {
     console.log("Private key import failed")
     return { ok: false }
@@ -65,9 +69,8 @@ export async function doSendOrUpdateComment(
   }
   console.log(comments_encrypted)
   if (!editingOld) {
-    const { data } = await axios.post("/maps/" + room_id + "/comments", {
-      comments_encrypted,
-      room_id: room_id,
+    const data = await client.maps._roomId(room_id).comments.$post({
+      body: comments_encrypted,
     })
     console.log(data)
     if (skywayRoom) {
@@ -78,9 +81,10 @@ export async function doSendOrUpdateComment(
     }
     return { ok: true, data }
   } else {
-    const { data } = await axios.patch("/comments/" + editingOld, {
-      comments: comments_encrypted,
-      room_id: room_id,
+    const data = await client.comments._commentId(editingOld).$patch({
+      body: {
+        comments: comments_encrypted,
+      },
     })
     return { ok: true, data }
   }
@@ -89,11 +93,12 @@ export async function doSendOrUpdateComment(
 export const deleteComment = (axios: AxiosStatic | AxiosInstance) => (
   comment_id: string
 ): void => {
-  console.log(comment_id)
-  axios
-    .delete("/comments/" + comment_id)
+  const client = api(axiosClient(axios))
+  client.comments
+    ._commentId(comment_id)
+    .$delete()
     .then(r => {
-      console.log(r.data)
+      console.log(r)
     })
     .catch(e => {
       console.error(e)
@@ -228,6 +233,7 @@ export const startChat = async (
   state: RoomAppState,
   axios: AxiosStatic | AxiosInstance
 ): Promise<{ group: ChatGroup; encryption_possible: boolean } | undefined> => {
+  const client = api(axiosClient(axios))
   const to_users: UserId[] = Array.from(state.selectedUsers)
   if (to_users.length == 0) {
     return undefined
@@ -244,22 +250,31 @@ export const startChat = async (
     clearInterval(state.batchMoveTimer)
   }
   if (to_groups.length == 1) {
-    const { data } = await axios.post(
-      "/maps/" + props.room_id + "/groups/" + to_groups[0] + "/join"
-    )
-    const group: ChatGroup = data.joinedGroup
+    const data = await client.maps
+      ._roomId(props.room_id)
+      .groups._groupId(to_groups[0])
+      .join.$post()
+    const group: ChatGroup | undefined = data.joinedGroup
+    if (!group) {
+      return undefined
+    }
     const encryption_possible = every(
       group.users.map(uid => !!state.people[uid]?.public_key)
     )
     console.log("join result", data)
     return { group, encryption_possible }
   } else {
-    const { data } = await axios.post("/maps/" + props.room_id + "/groups", {
-      fromUser: props.myUserId,
-      toUsers: to_users,
+    const data = await client.maps._roomId(props.room_id).groups.$post({
+      body: {
+        fromUser: props.myUserId,
+        toUsers: to_users,
+      },
     })
     console.log(data)
-    const group: ChatGroup = data.group
+    const group: ChatGroup | undefined = data.group
+    if (!group) {
+      return undefined
+    }
     const encryption_possible = every(
       group.users.map(uid => !!state.people[uid]?.public_key)
     )
@@ -284,18 +299,19 @@ export const inviteToChat = async (
   state: RoomAppState,
   p: Person
 ): Promise<ChatGroup | undefined> => {
-  const { data } = await axios.post(
-    "/maps/" +
-      props.room_id +
-      "/groups/" +
-      myChatGroup(props, state).value +
-      "/people",
-    { user_id: p.id }
-  )
+  const client = api(axiosClient(axios))
+  const group_id = myChatGroup(props, state).value
+  if (!group_id) {
+    return undefined
+  }
+  const data = await client.maps
+    ._roomId(props.room_id)
+    .groups._groupId(group_id)
+    .people.$post({ body: { userId: p.id } })
+
   console.log("invite result", data)
   if (data.ok) {
-    const group: ChatGroup = data.joinedGroup
-    return group
+    return data.joinedGroup
   } else {
     return undefined
   }
@@ -402,9 +418,11 @@ export const initChatService = async (
     }
   })
 
-  const [{ data: comments }, { data: groups }] = await Promise.all([
-    axios.get<ChatComment[]>("/maps/" + props.room_id + "/comments"),
-    axios.get<ChatGroup[]>("/maps/" + props.room_id + "/groups"),
+  const client = api(axiosClient(axios))
+
+  const [comments, groups] = await Promise.all([
+    client.maps._roomId(props.room_id).comments.$get(),
+    client.maps._roomId(props.room_id).groups.$get(),
   ])
   state.chatGroups = keyBy(groups, "id")
 

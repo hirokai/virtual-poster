@@ -135,10 +135,13 @@ import MemberList from "./admin/MemberList.vue"
 import ManagePosters from "./admin/ManagePosters.vue"
 import firebaseConfig from "../firebaseConfig"
 
-import { keyBy, flatten, difference } from "lodash-es"
+import { keyBy, flatten, difference, pickBy } from "lodash-es"
 import io from "socket.io-client"
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
+
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
 
 const url = new URL(location.href)
 const tab = url.hash.slice(1) || "people"
@@ -218,8 +221,14 @@ export default defineComponent({
       })
     }
 
-    const setPerson = (p: PersonWithEmail) => {
-      set(state.people, p.id, p)
+    const setPerson = (p: {
+      id: string
+      name?: string
+      last_updated: number
+      email?: string
+    }) => {
+      const obj = pickBy(p)
+      set(state.people, p.id, { ...state.people[p.id], ...obj })
     }
     const on_socket_move = (s: string) => {
       const pos = decodeMoved(s)
@@ -231,6 +240,7 @@ export default defineComponent({
 
     const on_socket = (msg: string, data: any) => {
       console.log("socket", msg, data)
+      const client = api(axiosClient(axios))
       state.socketHistory.push({
         msg,
         data,
@@ -246,20 +256,22 @@ export default defineComponent({
         on_socket_move(data as string)
       } else if (msg == "person") {
         const p = data as Person
-        axios
-          .get("/people/" + p.id + "?email=true")
-          .then(p1 => {
-            setPerson(p1.data as PersonWithEmail)
+        client.people
+          ._userId(p.id)
+          .$get({ query: { email: true } })
+          .then(data => {
+            setPerson(data as PersonWithEmail)
           })
           .catch(console.error)
       } else if (msg == "person_multi") {
         const ps = data as Person[]
         const ids_concat = ps.map(p => p.id).join(",")
-        axios
-          .get("/people_multi/" + ids_concat + "?email=true")
+        client.people_multi
+          ._userIds(ids_concat)
+          .$get({ query: { email: true } })
           .then(p1 => {
-            console.log("get people", p1.data)
-            for (const p of p1.data as PersonWithEmail[]) {
+            console.log("get people", p1)
+            for (const p of p1) {
               setPerson(p)
             }
           })
@@ -275,14 +287,7 @@ export default defineComponent({
         console.log(poster)
         set(state.posters, poster.id, poster)
       } else if (msg == "posters.reset") {
-        axios
-          .get<Poster[]>("/maps/default/posters")
-          .then(({ data }) => {
-            state.posters = keyBy(data, "id")
-          })
-          .catch(err => {
-            console.error(err)
-          })
+        //
       } else if (msg == "active_users") {
         console.log("socket", msg, data)
         const ds = data as ActiveUsersSocketData
@@ -311,23 +316,19 @@ export default defineComponent({
     const reload = () => {
       state.lastUpdated = Date.now()
       ;(async () => {
-        const [
-          { data: data_p },
-          { data: data_r },
-          { data: data_g },
-          { data: data_posters },
-        ] = await Promise.all([
-          axios.get<PersonWithEmail[]>("/people?email=true"),
-          axios.get<{ id: string; name: string }[]>("/maps"),
-          axios.get<{ [index: string]: ChatGroup }>("/groups"),
-          axios.get<Poster[]>("/posters"),
+        const client = api(axiosClient(axios))
+        const [data_p, data_r, data_g, data_posters] = await Promise.all([
+          client.people.$get({ query: { email: true } }),
+          client.maps.$get(),
+          client.groups.$get(),
+          client.posters.$get(),
         ])
         state.people = keyBy(data_p as PersonWithEmail[], "id")
         state.rooms = keyBy(data_r, "id")
         for (const room of Object.keys(state.rooms)) {
           socket?.emit("active", { user: state.myUserId, room })
         }
-        state.chatGroups = data_g
+        state.chatGroups = keyBy(data_g, "id")
         state.posters = keyBy(data_posters, "id")
       })().catch(err => {
         console.error(err)
@@ -350,9 +351,10 @@ export default defineComponent({
       }
     )
     onMounted(() => {
-      axios
-        .get("/socket_url")
-        .then(({ data }) => {
+      const client = api(axiosClient(axios))
+      client.socket_url
+        .$get()
+        .then(data => {
           socket = io(data.socket_url, { path: "/socket.io" })
           if (!socket) {
             console.error("Socket connection failed.")
@@ -397,9 +399,9 @@ export default defineComponent({
             axios.defaults.headers.common = {
               Authorization: `Bearer ${idToken}`,
             }
-            const { data } = await axios.post("/id_token", {
-              token: idToken,
-              debug_from: "Admin",
+            const client = api(axiosClient(axios))
+            const data = await client.id_token.$post({
+              body: { token: idToken, debug_from: "Admin" },
             })
             if (!data.ok) {
               alert("再ログインが必要です。リロードします。")
@@ -410,8 +412,12 @@ export default defineComponent({
               alert("管理者専用ページです")
               location.href = "/"
             }
+            if (!data.debug_token) {
+              alert("デバッグトークンが見つかりません")
+              return
+            }
             state.debug_token = data.debug_token
-            state.myUserId = data.user_id
+            state.myUserId = data.user_id || null
             reload()
           }
           state.loggedIn = !!user
@@ -433,14 +439,12 @@ export default defineComponent({
             state.idToken = idToken
             let success = false
             while (!success) {
-              const { data } = await axios
-                .post("/id_token", {
-                  token: idToken,
-                  debug_from: "Admin timer",
-                })
+              const client = api(axiosClient(axios))
+              const data = await client.id_token
+                .$post({ body: { token: idToken, debug_from: "Admin timer" } })
                 .catch(err => {
                   console.log(err)
-                  return { data: null }
+                  return null
                 })
               success = !!data
               if (success) {

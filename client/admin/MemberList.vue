@@ -252,12 +252,6 @@ export default defineComponent({
         if (p.email && old_p.email != p.email) {
           obj.email = p.email
         }
-        if (p.x && old_p.x != p.x) {
-          obj.x = p.x
-        }
-        if (p.y && old_p.y != p.y) {
-          obj.y = p.y
-        }
         console.log(old_p, p, " -> putting", obj)
         props.axios
           .patch("/people/" + state.editing.person.id, obj)

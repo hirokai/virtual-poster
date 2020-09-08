@@ -49,10 +49,14 @@ test("Update a person", async () => {
 
   await model.people.set(p.id, { avatar: "006" })
   const p3 = await model.people.get(p.id)
-  expect(p3?.avatar).toBe("006")
+  expect({ ...p3, last_updated: 0 }).toStrictEqual({
+    ...p2,
+    last_updated: 0,
+    avatar: "006",
+  })
 
   const new_email = "hoge" + Math.floor(Math.random() * 100000) + "@gmail.com"
   await model.people.set(p.id, { email: new_email })
   const p4 = await model.people.get(p.id)
-  expect(p4?.email).toBe(new_email)
+  expect({ ...p4, last_updated: 0 }).toStrictEqual({ ...p3, last_updated: 0 })
 })

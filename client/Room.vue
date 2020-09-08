@@ -178,7 +178,7 @@ import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 import {
   RoomAppState,
-  Person,
+  PersonInMap,
   Cell,
   Point,
   ArrowKey,
@@ -188,9 +188,8 @@ import {
   Poster as PosterTyp,
   PosterId,
   TypingSocketSendData,
-  MapEnterResponse,
   SocketMessageFromUser,
-  PostIdTokenResponse,
+  HttpMethod,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -201,6 +200,9 @@ import ChatLocal from "./room/ChatLocal.vue"
 import { inRange, getClosestAdjacentPoints, isAdjacent } from "../common/util"
 
 import axiosDefault, { AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 import io from "socket.io-client"
 import { every, keyBy, find } from "lodash-es"
 import * as firebase from "firebase/app"
@@ -355,6 +357,7 @@ export default defineComponent({
   },
   setup(props, context) {
     const axios = props.axios
+    const client = api(axiosClient(axios))
     axios.interceptors.request.use(request => {
       request["ts"] = performance.now()
       return request
@@ -371,7 +374,7 @@ export default defineComponent({
       if (url.indexOf("/latency_report") == -1 && REPORT_LATENCY) {
         addLatencyLog(axios, {
           url,
-          method: response.config.method,
+          method: response.config.method as HttpMethod,
           latency,
           timestamp: Date.now(),
         })
@@ -408,7 +411,7 @@ export default defineComponent({
 
       enableMiniMap: true,
 
-      people: {} as { [index: string]: Person },
+      people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
       posterComments: {} as { [comment_id: string]: ChatCommentDecrypted },
       posterInputComment: "" as string | undefined,
@@ -487,10 +490,8 @@ export default defineComponent({
             const user = firebase.auth().currentUser
             if (user) {
               const token = await user.getIdToken(true)
-              const { data } = await axios.post<PostIdTokenResponse>(
-                "/id_token",
-                { token }
-              )
+              const data = await client.id_token.$post({ body: { token } })
+
               if (data.updated) {
                 console.log("/id_token result", data)
                 const shaObj = new jsSHA("SHA-256", "TEXT", {
@@ -516,8 +517,8 @@ export default defineComponent({
     //   console.log("Skyway peer data", d)
     // })
 
-    const myself: ComputedRef<Person | undefined> = computed(
-      (): Person => {
+    const myself: ComputedRef<PersonInMap | undefined> = computed(
+      (): PersonInMap => {
         return state.people[props.myUserId]
       }
     )
@@ -550,9 +551,10 @@ export default defineComponent({
       () => activePoster.value,
       (poster: PosterTyp | undefined) => {
         if (poster) {
-          axios
-            .get<ChatCommentDecrypted[]>("/posters/" + poster.id + "/comments")
-            .then(({ data }) => {
+          client.posters
+            ._posterId(poster.id)
+            .comments.$get()
+            .then(data => {
               state.posterComments = keyBy(data, "id")
             })
             .catch(err => console.error(err))
@@ -744,26 +746,27 @@ export default defineComponent({
         )
       }
       ;(async () => {
-        const res = await axios
-          .post<MapEnterResponse>("/maps/" + props.room_id + "/enter")
+        const data = await client.maps
+          ._roomId(props.room_id)
+          .enter.$post()
           .catch(() => null)
-        console.log("enter result", res?.data)
-        if (!res || !res?.data.ok) {
-          alert("部屋に入れませんでした: " + res?.data.status)
+        console.log("enter result", data)
+        if (!data || !data.ok) {
+          alert("部屋に入れませんでした")
           location.href = "/"
           return
         }
         // let socket_url = "http://localhost:5000/"
-        let socket_url = res?.data.socket_url
+        let socket_url = data.socket_url
         if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"
           return
         }
         console.log("Socket URL: " + socket_url)
-        if (res.data.socket_protocol == "Socket.IO") {
+        if (data.socket_protocol == "Socket.IO") {
           state.socket = io(socket_url)
-        } else if (res.data.socket_protocol == "WebSocket") {
+        } else if (data.socket_protocol == "WebSocket") {
           state.socket = new MySocketObject(socket_url)
         } else {
           console.error("Socket protocol not supported")
@@ -785,7 +788,7 @@ export default defineComponent({
             props,
             state,
             activePoster,
-            res.data?.public_key
+            data?.public_key
           ),
           initPosterService(axios, state.socket, props, state, activePoster),
         ])
@@ -837,8 +840,8 @@ export default defineComponent({
         .signOut()
         .then(() => {
           console.log("Firebase signed out")
-          axios
-            .post("/logout")
+          client.logout
+            .$post()
             .then(() => {
               console.log("App signed out")
               location.href = "/login"
@@ -935,9 +938,9 @@ export default defineComponent({
         if (!r) {
           return
         }
-        const { data } = await axios.post(
-          `/maps/${props.room_id}/take_slot/${poster_location}`
-        )
+        const data = await client.maps
+          ._roomId(props.room_id)
+          .take_slot._posterLocation(poster_location)
         console.log("take poster result", data)
       }
 
@@ -1025,7 +1028,7 @@ export default defineComponent({
     }) => {
       console.log(pos, event)
       state.selectedPos = pos
-      const person: Person | undefined = find(
+      const person: PersonInMap | undefined = find(
         Object.values(state.people),
         person =>
           person.id != props.myUserId && person.x == pos.x && person.y == pos.y
@@ -1087,9 +1090,11 @@ export default defineComponent({
     const leaveChat = () => {
       const group_id = myChatGroup.value
       if (group_id) {
-        axios
-          .post("/maps/" + props.room_id + "/groups/" + group_id + "/leave")
-          .then(({ data }) => {
+        client.maps
+          ._roomId(props.room_id)
+          .groups._groupId(group_id)
+          .leave.$post()
+          .then(data => {
             console.log(data)
             if (data.leftGroup) {
               Vue.set(state.chatGroups, group_id, data.leftGroup)
@@ -1108,7 +1113,7 @@ export default defineComponent({
       }
     }
 
-    const selectedPerson = computed((): Person | undefined => {
+    const selectedPerson = computed((): PersonInMap | undefined => {
       const pos = state.selectedPos
       if (!pos) {
         return undefined

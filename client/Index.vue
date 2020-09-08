@@ -65,6 +65,9 @@ import jsSHA from "jssha"
 import firebaseConfig from "../firebaseConfig"
 import { deleteUserInfoOnLogout } from "./util"
 
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
@@ -112,26 +115,23 @@ export default defineComponent({
           return config
         }
       })
+      const client = api(axiosClient(axios))
       ;(async () => {
         console.log("User:", state.user)
         if (debug_as && debug_token) {
           console.log("Initializing debug mode...", debug_as)
           state.myUserId = debug_as
-          const r = await axios.get("/maps")
-          console.log("/maps result", r)
-          state.rooms = r.data
+          state.rooms = await client.maps.$get()
           state.loggedIn = "Yes"
-          const { data } = await axios.post<PostIdTokenResponse>("/id_token", {
-            token: "DEBUG_BYPASS",
-            debug_from: "Index",
+          const data = await client.id_token.$post({
+            body: { token: "DEBUG_BYPASS", debug_from: "Index" },
           })
           console.log("/id_token result", data)
 
           state.myUserId = data.user_id || null
           if (data.ok) {
             state.admin = data.admin || false
-            const r = await axios.get("/maps")
-            state.rooms = r.data
+            state.rooms = await client.maps.$get()
             state.logged_in = true
           } else {
             state.registered = false
@@ -150,15 +150,14 @@ export default defineComponent({
           if (state.myUserId) {
             localStorage["virtual-poster:user_id"] = state.myUserId
           }
-          const r = await axios.get("/maps").catch(err => {
+          state.rooms = await client.maps.$get().catch(err => {
             console.log(err)
             if (err.response.status == 403) {
               location.href = "/login"
             }
-            return { data: [] }
+            return []
           })
-          state.rooms = r.data
-          const { data } = await axios.get("/public_key")
+          const data = await client.public_key.$get()
           console.log("/public_key result", data)
 
           const r2 = await encryption.setupEncryption(
@@ -183,13 +182,14 @@ export default defineComponent({
     firebase.initializeApp(firebaseConfig)
 
     const signOut = () => {
+      const client = api(axiosClient(axios))
       firebase
         .auth()
         .signOut()
         .then(() => {
           console.log("Firebase signed out")
-          axios
-            .post("/logout")
+          client.logout
+            .$post()
             .then(() => {
               console.log("App signed out")
               deleteUserInfoOnLogout()

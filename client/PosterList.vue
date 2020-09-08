@@ -44,6 +44,7 @@ import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 import {
   Person,
+  PersonInMap,
   PersonUpdate,
   RoomId,
   Poster as PosterTyp,
@@ -52,6 +53,9 @@ import {
 
 import axios from "axios"
 import { AxiosResponse } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 import { filter, keyBy, sortBy } from "lodash-es"
 import io from "socket.io-client"
 
@@ -82,11 +86,12 @@ export default defineComponent({
     },
   },
   setup(props) {
+    const client = api(axiosClient(axios))
     const state = reactive({
       rooms: {} as { [index: string]: Room },
       room_id: room_id as RoomId,
       socket: io(props.socketURL, { path: "/socket.io" }) as SocketIO.Socket,
-      people: {} as { [index: string]: Person },
+      people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
       inputText: "",
       inputFocused: false,
@@ -95,28 +100,26 @@ export default defineComponent({
       Authorization: `Bearer ${props.idToken}`,
     }
     const loadData = () => {
+      if (!room_id) {
+        alert("部屋IDが指定されていません")
+        return
+      }
       Promise.all([
-        axios.get<Room[]>("/maps"),
-        axios.get<Person[]>("/maps/" + room_id + "/people"),
-        axios.get<PosterTyp[]>("/maps/" + room_id + "/posters"),
+        client.maps.$get(),
+        client.maps._roomId(room_id).people.$get(),
+        client.maps._roomId(room_id).posters.$get(),
       ])
-        .then(
-          ([{ data: r_rooms }, { data: r_people }, { data: r_posters }]: [
-            AxiosResponse<Room[]>,
-            AxiosResponse<Person[]>,
-            AxiosResponse<PosterTyp[]>
-          ]) => {
-            state.people = keyBy(
-              filter(r_people, p => {
-                return p.x != undefined && p.y != undefined
-              }),
-              "id"
-            )
-            console.log("posters", r_posters)
-            state.posters = keyBy(r_posters, "id")
-            state.rooms = keyBy(r_rooms, "id")
-          }
-        )
+        .then(([r_rooms, r_people, r_posters]) => {
+          state.people = keyBy(
+            filter(r_people, p => {
+              return p.x != undefined && p.y != undefined
+            }),
+            "id"
+          )
+          console.log("posters", r_posters)
+          state.posters = keyBy(r_posters, "id")
+          state.rooms = keyBy(r_rooms, "id")
+        })
         .catch(err => {
           console.log("load error", err)
           // alert("マップまたはその他のデータが見つかりません。")
@@ -129,7 +132,7 @@ export default defineComponent({
     const setPerson = (d: PersonUpdate) => {
       console.log("setPerson", d)
       const p = state.people[d.id]
-      const person: Person = {
+      const person: PersonInMap = {
         id: d.id,
         name: d.name || p.name,
         last_updated: d.last_updated,

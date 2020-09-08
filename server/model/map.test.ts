@@ -42,25 +42,24 @@ describe("Add a map and person", () => {
     }
     done()
   })
-  test.only("Add people to a map, then delete a map", async done => {
+  test("Add people to a map, then delete a map", async done => {
     const map_data = mkMapData(rows, cols)
     const { map: mm } = await model.MapModel.mkNewRoom("Room 2", map_data)
     if (!mm) {
       throw "Initialization failed"
     }
-    for (let i = 0; i < cols * rows - 1; i++) {
+    for (let i = 0; i < cols * rows; i++) {
       const p = await createUser(mm.room_id)
-      const { ok: ok1, error: error2 } = await mm.addUser(p.id)
-      const members = await model.people.getAllPeopleList(mm.room_id)
-      console.log(ok1, error2, members.length, i)
-      expect(error2).toBeUndefined()
+      expect(p).toBeDefined()
     }
+    const ps = await model.people.getAllPeopleList(mm.room_id)
+    expect(ps).toHaveLength(cols * rows)
 
-    // Now the room is full, so you cannot create another person with the room access.
+    // Now the room is full, BUT you can still create another person with the room access.
     const i = cols * rows
     const name = "Test user " + i
     const email = "hoge" + i + "@gmail.com"
-    const { error } = await model.people.create(
+    const { ok, user, error } = await model.people.create(
       email,
       name,
       "user",
@@ -68,7 +67,7 @@ describe("Add a map and person", () => {
       [mm.room_id],
       "reject"
     )
-    expect(error).toBeDefined()
+    expect(user).toBeDefined()
 
     const r = await mm.deleteRoomFromDB()
     expect(r).toBe(true)

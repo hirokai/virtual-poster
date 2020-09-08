@@ -1,4 +1,7 @@
 import { AxiosInstance, AxiosStatic } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
+
 import * as bip39 from "bip39"
 import { UserId } from "../@types/types"
 import { difference } from "lodash-es"
@@ -388,8 +391,9 @@ export async function generateAndSendKeys(
   user_id: string,
   force = false
 ): Promise<{ ok: boolean; pub_str?: string; prv_str?: string }> {
+  const client = api(axiosClient(axios))
   try {
-    const { data: data1 } = await axios.get("/encryption_keys")
+    const data1 = await client.public_key.$get()
     const existing = !!data1.public_key
     if (existing && force) {
       const r = confirm(
@@ -412,7 +416,9 @@ export async function generateAndSendKeys(
     ] = localStorage["virtual-poster:" + user_id + ":private_key_jwk"]
     localStorage["virtual-poster:" + user_id + ":public_key_spki"] = pub_str
     localStorage["virtual-poster:" + user_id + ":private_key_jwk"] = prv_str
-    const { data } = await axios.post("/public_key", { key: pub_str, force })
+    const data = await client.public_key.$post({
+      body: { key: pub_str, force },
+    })
     return { ok: !!data.ok, pub_str, prv_str }
   } catch (err) {
     return { ok: false }
@@ -430,6 +436,7 @@ export async function setupEncryption(
   prv_mnemonic?: string
   enabled: boolean
 }> {
+  const client = api(axiosClient(axios))
   const enabled =
     localStorage["virtual-poster:" + myUserId + ":config:encryption"] == "1"
   let pub_str_local: string | null =
@@ -455,8 +462,10 @@ export async function setupEncryption(
     publicKeyString = pub_str_from_server
   } else if (pub_str_local) {
     console.log("Public key: found in localStorage, not found on server.")
-    const { data } = await axios.post("/public_key", {
-      key: pub_str_local,
+    const data = await client.public_key.$post({
+      body: {
+        key: pub_str_local,
+      },
     })
     console.log("posted /public_key", data)
     publicKeyString = pub_str_local

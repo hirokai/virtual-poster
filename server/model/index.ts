@@ -45,7 +45,7 @@ function sql(file) {
 }
 
 // Create a QueryFile globally, once per file:
-export const resetDb = sql("../../../migration/schema.sql")
+export const resetDb = sql("../../migration/schema.sql")
 
 export let db: pg.IDatabase<unknown, pgt.IClient>
 

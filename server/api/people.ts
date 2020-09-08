@@ -2,7 +2,7 @@ import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
-import { RoomId, Person, PersonUpdate } from "@/@types/types"
+import { RoomId, PersonInMap, PersonUpdate } from "@/@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
 import fs from "fs"
@@ -162,7 +162,7 @@ async function routes(
         r.user.id
       )
       for (const room of r.user.rooms || []) {
-        const p: Person = {
+        const p: PersonInMap = {
           id: r.user.id,
           last_updated: r.user.last_updated,
           room: room.room_id,

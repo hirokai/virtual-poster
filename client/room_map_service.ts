@@ -18,7 +18,7 @@ import {
   UserId,
   Point,
   Direction,
-  Person,
+  PersonInMap,
   RoomAppProps,
   RoomAppState,
   MoveSocketData,
@@ -29,21 +29,21 @@ import {
   TypingSocketSendData,
   ArrowKey,
   Cell,
-  MapRoomResponse,
   MoveErrorSocketData,
   MySocketObject,
-  PostIdTokenResponse,
 } from "../@types/types"
 
 const BATCH_MOVE_INTERVAL = 400
 import { find, map, range } from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
 
 export const personAt = (
-  people: { [user_id: string]: Person },
+  people: { [user_id: string]: PersonInMap },
   pos: Point
-): Person | undefined => {
-  return find<Person>(Object.values(people), p => {
+): PersonInMap | undefined => {
+  return find<PersonInMap>(Object.values(people), p => {
     return p.x == pos.x && p.y == pos.y
   })
 }
@@ -74,7 +74,7 @@ export const moveTo = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
-  myself: Person,
+  myself: PersonInMap,
   to: Point,
   on_complete: (g: ChatGroup | undefined) => void = () => {
     /* */
@@ -273,7 +273,7 @@ export const moveByArrow = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
-  me: Person,
+  me: PersonInMap,
   key: ArrowKey
 ): { ok: boolean; moved: boolean; error?: "during_chat" | undefined } => {
   let dx = 0,
@@ -413,6 +413,7 @@ export const initMapService = async (
   state: RoomAppState
 ): Promise<boolean> => {
   console.log("initMapService", socket)
+  const client = api(axiosClient(axios))
   socket.on("Moved", data => {
     const ss = data.split(";")
     for (const s of ss) {
@@ -426,9 +427,7 @@ export const initMapService = async (
         const user = firebase.auth().currentUser
         if (user) {
           const token = await user.getIdToken(true)
-          const { data } = await axios.post<PostIdTokenResponse>("/id_token", {
-            token,
-          })
+          const data = await client.id_token.$post({ body: { token } })
           console.log("/id_token result", data)
           if (data.token_actual && data.user_id) {
             const shaObj = new jsSHA("SHA-256", "TEXT", {
@@ -462,7 +461,7 @@ export const initMapService = async (
       // location.reload()
     }
   })
-  const { data } = await axios.get<MapRoomResponse>("/maps/" + props.room_id)
+  const data = await client.maps._roomId(props.room_id).$get()
   state.hallMap = data.cells
   state.cols = data.numCols
   state.rows = data.numRows

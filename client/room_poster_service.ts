@@ -10,6 +10,8 @@ import {
 } from "../@types/types"
 import { keyBy } from "lodash-es"
 import { AxiosStatic, AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../api/$api"
 import { SocketIO } from "socket.io-client"
 
 export const adjacentPosters = (
@@ -51,12 +53,13 @@ export const updatePosterComment = (
   console.log("updatePosterComment")
   state.posterInputComment = text
   state.editingOld = null
-  axios
-    .patch("/posters/" + poster_id + "/comments/" + comment_id, {
-      comment: text,
-    })
-    .then(res => {
-      console.log("updateComment done", res.data)
+  const client = api(axiosClient(axios))
+  client.posters
+    ._posterId(poster_id)
+    .comments._commentId(comment_id)
+    .$patch({ body: { comment: text } })
+    .then(data => {
+      console.log("updateComment done", data)
       clearInputPoster(state)
       ;(document.querySelector("#poster-chat-input") as any)?.focus()
     })
@@ -76,14 +79,17 @@ export const sendPosterComment = (
     return
   }
   console.log("Poster to comment on:", pid)
-  axios
-    .post("/posters/" + pid + "/comments", {
-      user_id: props.myUserId,
-      comment: text,
-      room_id: props.room_id,
+  const client = api(axiosClient(axios))
+  client.posters
+    ._posterId(pid)
+    .comments.$post({
+      body: {
+        user_id: props.myUserId,
+        comment: text,
+      },
     })
-    .then(res => {
-      console.log("sendPosterComment done", res.data)
+    .then(data => {
+      console.log("sendPosterComment done", data)
     })
     .catch(() => {
       //
@@ -96,7 +102,6 @@ export const doSubmitPosterComment = (
   state: RoomAppState,
   text: string
 ): void => {
-  //   console.log("submitPosterComment", text, axios.defaults.headers.common)
   if (state.editingOld) {
     const poster_id = activePoster(props, state).value?.id
     if (poster_id) {
@@ -125,7 +130,6 @@ export const doUploadPoster = (
   const fd = new FormData()
   fd.append("file", file)
   console.log(fd)
-
   axios
     .post<{ ok: boolean; poster?: Poster }>(
       "/posters/" + poster_id + "/file",
@@ -146,6 +150,7 @@ export const initPosterService = async (
   state: RoomAppState,
   activePoster: ComputedRef<Poster | undefined>
 ): Promise<boolean> => {
+  const client = api(axiosClient(axios))
   socket.on("Poster", (d: Poster) => {
     console.log("socket Poster", d)
     Vue.set(state.posters, d.id, d)
@@ -166,9 +171,7 @@ export const initPosterService = async (
     console.log("poster.comment.remove", comment_id)
     Vue.delete(state.posterComments, comment_id)
   })
-  const { data: posters } = await axios.get<Poster[]>(
-    "/maps/" + props.room_id + "/posters"
-  )
+  const posters = await client.maps._roomId(props.room_id).posters.$get()
   state.posters = keyBy(posters, "id")
   return true
 }

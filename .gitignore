@@ -27,3 +27,5 @@ yarn-error.log*
 rust-server/target/
 *.pem
 *.secret.json
+/dist_server
+virtual_poster.yaml

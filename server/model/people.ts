@@ -7,6 +7,7 @@ import crypto from "crypto"
 
 import {
   Person,
+  PersonInMap,
   PersonRDB,
   PersonWithEmail,
   Direction,
@@ -191,7 +192,7 @@ export async function getAllPeopleList(
   room_id: RoomId | null,
   with_email = false,
   with_room_access = false
-): Promise<PersonWithEmail[]> {
+): Promise<(PersonInMap & { email?: string })[]> {
   let rows
   if (room_id) {
     rows = await db.query(
@@ -280,6 +281,7 @@ export async function get(
           public_key: rows[0].public_key || undefined,
           room: rows[0].room,
           name: rows[0].name,
+          avatar: rows[0].avatar,
           rooms:
             rows[0].rooms?.split("::::")?.map((room_id: string) => {
               return { room_id }

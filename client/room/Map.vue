@@ -106,7 +106,7 @@ import {
   Point,
   ChatGroup,
   ChatGroupId,
-  Person,
+  PersonInMap,
   Poster,
   PosterId,
   UserId,
@@ -143,7 +143,7 @@ export default defineComponent({
       required: true,
     },
     people: {
-      type: Object as PropType<{ [index: string]: Person }>,
+      type: Object as PropType<{ [index: string]: PersonInMap }>,
       required: true,
     },
     selectedUsers: {
@@ -162,7 +162,7 @@ export default defineComponent({
       required: true,
     },
     myself: {
-      type: Object as PropType<Person>,
+      type: Object as PropType<PersonInMap>,
     },
     chatGroups: {
       type: Object as PropType<{ [index: string]: ChatGroup }>,
@@ -177,12 +177,12 @@ export default defineComponent({
     const uploadPoster = (file: File, poster_id: PosterId) => {
       context.emit("uploadPoster", file, poster_id)
     }
-    const personAt = (pos: Point): Person | undefined => {
+    const personAt = (pos: Point): PersonInMap | undefined => {
       return find(Object.values(props.people), p => {
         return p.x == pos.x && p.y == pos.y
       })
     }
-    const peopleInMagMap = computed((): Person[] => {
+    const peopleInMagMap = computed((): PersonInMap[] => {
       return Object.values(props.people).filter(p => {
         return (
           Math.abs(p.x - props.center.x) <= 5 &&

@@ -2,5 +2,6 @@
   "watch": ["server", "common", "@types", "./.env", "./virtual_poster.yaml"],
   "ignore": ["*.test.ts"],
   "ext": "ts,yaml",
-  "exec": "ts-node"
+  "exec": "ts-node",
+  "delay": 0.5
 }

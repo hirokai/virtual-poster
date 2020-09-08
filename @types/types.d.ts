@@ -18,16 +18,19 @@ export type PersonPos = {
 export type Person = {
   id: string
   last_updated: number
-  room: RoomId | null
-  x: number
-  y: number
-  direction: Direction
-  moving: boolean
   name: string
   avatar?: string
   connected?: boolean
   stats: PersonStat
   public_key?: string
+}
+
+export type PersonInMap = Person & {
+  room: RoomId | null
+  x: number
+  y: number
+  direction: Direction
+  moving: boolean
 }
 
 export type PersonUpdate = {
@@ -93,7 +96,7 @@ type RoomAppState = {
   socket: SocketIO.Socket | MySocketObject | null
   peer: Peer | null
   skywayRoom: MeshRoom | SfuRoom | null
-  people: { [index: string]: Person }
+  people: { [index: string]: PersonInMap }
   enableEncryption: boolean
   avatarImages: { [index: string]: string }
   enableMiniMap: boolean
@@ -446,3 +449,14 @@ interface Emitter {
 // | SocketIO.Namespace
 // | SocketIOEmitter
 // | HTTPEmitter
+
+type HttpMethod =
+  | "GET"
+  | "HEAD"
+  | "POST"
+  | "DELETE"
+  | "PUT"
+  | "OPTIONS"
+  | "PATCH"
+  | "LINK"
+  | "UNLINK"

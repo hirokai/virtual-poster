@@ -33,9 +33,10 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Person"
+                  $ref: "#/components/schemas/PersonInMap"
       operationId: get-maps-roomId-people
       parameters: []
+      description: Get all people in the room
   "/people/{userId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -65,11 +66,11 @@ paths:
       description: Get a person
       parameters:
         - schema:
-            type: string
+            type: boolean
           in: query
           name: email
     patch:
-      summary: Edit information on a user
+      summary: Information on a user
       operationId: put-people-userId
       responses:
         "200":
@@ -99,6 +100,7 @@ paths:
                   type: string
       tags:
         - people
+      description: "Update person info  "
   /people:
     get:
       summary: List all users
@@ -161,6 +163,9 @@ paths:
                 - email
                 - name
         description: ""
+      description: Add new person
+      tags:
+        - people
   "/people_multi/{userIds}":
     get:
       summary: Get information on users
@@ -177,6 +182,12 @@ paths:
                   $ref: "#/components/schemas/PersonWithEmail"
       operationId: "get-people_multi-:userIds"
       description: "Get information on multiple users at one time  "
+      parameters:
+        - schema:
+            type: boolean
+          in: query
+          name: email
+          description: Return email address
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -217,8 +228,21 @@ paths:
                     name:
                       type: string
                       minLength: 1
+                    poster_location_count:
+                      type: integer
+                      minimum: 0
+                    poster_count:
+                      type: integer
+                      minimum: 0
+                  required:
+                    - numCols
+                    - numRows
+                    - id
+                    - name
+                    - poster_location_count
+                    - poster_count
       operationId: get-maps
-      description: ""
+      description: Get a list of rooms
   "/maps/{roomId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -250,7 +274,12 @@ paths:
                       type: array
                       items:
                         $ref: "#/components/schemas/Cell"
+                required:
+                  - numCols
+                  - numRows
+                  - cells
       operationId: get-maps-roomId
+      description: Get room information
   "/maps/{roomId}/enter":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -288,6 +317,7 @@ paths:
                   - ok
       tags:
         - map
+      description: Enter a room
   "/maps/{roomId}/groups/{groupId}/join":
     post:
       summary: Join a chat
@@ -406,6 +436,7 @@ paths:
                   type: string
               required:
                 - userId
+      description: Get people of a group in a room
   "/maps/{roomId}/groups":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -417,7 +448,8 @@ paths:
         required: true
     post:
       summary: Make a new chat group
-      tags: []
+      tags:
+        - chat
       responses:
         "200":
           description: OK
@@ -450,6 +482,7 @@ paths:
               required:
                 - fromUser
                 - toUsers
+      description: Create a new chat group
     get:
       summary: List members of a chat group
       operationId: get-maps-roomId-groups
@@ -461,17 +494,8 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                    users:
-                      type: array
-                      items:
-                        $ref: "#/components/schemas/UserId"
-                    color:
-                      type: string
-      description: List members of a chat group.
+                  $ref: "#/components/schemas/ChatGroup"
+      description: List members of a chat group
       tags:
         - chat
   /groups:
@@ -485,7 +509,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatGroup"
       operationId: get-chat-groups
       description: Get chat groups (Return type stub)
     parameters:
@@ -517,6 +543,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChatGroup"
       operationId: get-maps-roomId-people-userId-groups
+      description: Get a chat group of the user in a room
   "/maps/{roomId}/comments":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -551,12 +578,13 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - type: object
-                  properties:
-                    comment:
-                      type: string
-                - $ref: "#/components/schemas/CommentEncrypted"
+              type: array
+              items:
+                $ref: "#/components/schemas/CommentEncrypted"
+        description: ""
+      description: Post a comment in a room
+      tags:
+        - chat
   "/posters/{posterId}/comments/{commentId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -572,7 +600,7 @@ paths:
         in: path
         required: true
     patch:
-      summary: Get poster comments
+      summary: Poster comment
       responses:
         "200":
           description: OK
@@ -586,7 +614,7 @@ paths:
                   error:
                     type: string
                   comment:
-                    $ref: "#/components/schemas/ChatCommentEncrypted"
+                    $ref: "#/components/schemas/ChatComment"
                 required:
                   - ok
       operationId: patch-posters-posterId-comments-commentId
@@ -600,7 +628,7 @@ paths:
                   type: string
       tags:
         - poster
-      description: ""
+      description: Update poster comment
       parameters: []
   "/comments/{commentId}":
     parameters:
@@ -679,7 +707,8 @@ paths:
         required: true
     get:
       summary: Get a poster of a user in a room
-      tags: []
+      tags:
+        - poster
       responses:
         "200":
           description: OK
@@ -722,10 +751,12 @@ paths:
                     items:
                       $ref: "#/components/schemas/Poster"
       operationId: get-people-userId-posters
+      description: Get all poster of the user
   "/maps/{roomId}/people/{userId}/poster/file":
     post:
       summary: Upload a poster file
-      tags: []
+      tags:
+        - poster
       responses:
         "200":
           description: OK
@@ -741,7 +772,7 @@ paths:
                 required:
                   - ok
       operationId: "post-maps-:roomId-people-:userId-poster-file"
-      description: ""
+      description: Upload a poster file
       requestBody:
         content:
           multipart/form-data:
@@ -784,7 +815,7 @@ paths:
                 type: object
                 properties: {}
       operationId: get-posters-posterId-file
-      description: ""
+      description: Get a poster file
     post:
       summary: Upload a poster file
       operationId: post-posters-posterId-file
@@ -804,7 +835,9 @@ paths:
                     $ref: "#/components/schemas/Poster"
                 required:
                   - ok
-      description: ""
+      description: Upload a poster file
+      tags:
+        - poster
     delete:
       summary: Delete a poster file
       operationId: delete-posters-posterId-file
@@ -824,6 +857,9 @@ paths:
                     type: string
                 required:
                   - ok
+      tags:
+        - poster
+      description: Delete a poster file
   "/posters/{posterId}/comments":
     post:
       summary: Post a comment on a poster
@@ -852,6 +888,7 @@ paths:
                   $ref: "#/components/schemas/UserId"
                 comment:
                   type: string
+      description: Add a comment on a poster
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -871,9 +908,10 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ChatComment"
+                  $ref: "#/components/schemas/ChatCommentDecrypted"
       tags:
         - poster
+      description: Get comments on a poster
   /posters:
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -916,7 +954,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Poster"
       operationId: get-maps-roomId-posters
-      description: ""
+      description: Get all posters in a room
   /id_token:
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -948,13 +986,30 @@ paths:
                   registered:
                     type: string
                     enum:
-                      - registered
                       - can_register
-                      - should_verify
+                      - registered
+                  name:
+                    type: string
+                  updated:
+                    type: boolean
+                  token_actual:
+                    type: string
                 required:
                   - ok
-                  - registered
+                  - updated
       operationId: post-id_token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                debug_from:
+                  type: string
+                force:
+                  type: boolean
       parameters:
         - schema:
             type: string
@@ -964,7 +1019,7 @@ paths:
             type: string
           in: query
           name: debug_token
-      description: "  "
+      description: Register Firebase Auth ID token
   /ping:
     get:
       summary: Ping
@@ -982,6 +1037,283 @@ paths:
       operationId: get-ping
       description: "Return pong. Used for health check, etc.  "
       security: []
+  /socket_url:
+    get:
+      summary: Get socket URL
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  socket_url:
+                    type: string
+      operationId: get-socket_url
+      description: "Get the URL of a socket server  "
+  /public_key:
+    get:
+      summary: Get my public key
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  public_key:
+                    type: string
+                required:
+                  - ok
+      operationId: get-public_key
+      description: Get my public key
+    post:
+      summary: Post my public key
+      operationId: post-public_key
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      description: Post my public key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                force:
+                  type: boolean
+              required:
+                - key
+  /logout:
+    post:
+      summary: Logout
+      tags:
+        - auth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-logout
+      description: Logout from the app and remove cookie
+  "/maps/{roomId}/take_slot/{posterLocation}":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: number
+        name: posterLocation
+        in: path
+        required: true
+    post:
+      summary: Take a poster slot
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+      operationId: post-maps-roomId-take_slot-posterLocation
+      description: Take a poster slot
+  /latency_report:
+    post:
+      summary: Submit a latency report
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-latency_report
+      description: Submit a latency report. Used for performance metrics.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  method:
+                    type: string
+                    enum:
+                      - GET
+                      - POST
+                      - PATCH
+                      - PUT
+                      - DELETE
+                      - HEAD
+                      - OPTIONS
+                      - LINK
+                      - UNLINK
+                  latency:
+                    type: number
+                  timestamp:
+                    type: integer
+        description: ""
+  /register:
+    post:
+      summary: Register a user
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  user:
+                    $ref: "#/components/schemas/PersonWithEmail"
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: post-register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                access_code:
+                  type: string
+              required:
+                - email
+                - name
+                - access_code
+      description: "Register a new user from their web browser  "
+  /blind_sign/key_pair:
+    get:
+      summary: Get a key pair for blind signature
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  "N":
+                    type: string
+                  E:
+                    type: string
+                required:
+                  - "N"
+                  - E
+      operationId: get-blind_sign-key_pair
+      description: Get a key pair for blind signature.
+  /blind_sign/sign:
+    post:
+      summary: Sign a message with blind signature
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  signed:
+                    type: string
+                required:
+                  - ok
+      operationId: post-blind_sign-sign
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                blinded:
+                  type: string
+              required:
+                - blinded
+  /blind_sign/verify:
+    get:
+      summary: Verify blind signature
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: get-blind_sign-verify
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: unblinded
+        - schema:
+            type: string
+          in: query
+          name: message
+      description: "Verify blind signature  "
 components:
   parameters:
     debug_token:
@@ -1002,6 +1334,10 @@ components:
     Person:
       title: Person
       type: object
+      description: Person
+      x-examples: {}
+      x-tags:
+        - types
       properties:
         id:
           type: string
@@ -1009,16 +1345,20 @@ components:
           type: string
         last_updated:
           type: integer
-      description: Person
-      x-examples: {}
-      x-tags:
-        - types
+        public_key:
+          type: string
+      required:
+        - id
+        - name
+        - last_updated
     PersonWithEmail:
       title: PersonWithEmail
       type: object
       description: Person with email
       x-examples:
         example-1: {}
+      x-tags:
+        - types
       properties:
         id:
           type: string
@@ -1029,25 +1369,51 @@ components:
         email:
           type: string
           format: email
+        public_key:
+          type: string
+        stats:
+          $ref: "#/components/schemas/PersonStat"
       required:
         - id
         - name
         - last_updated
-      x-tags:
-        - types
+        - stats
     Cell:
       title: Cell
       type: object
-      properties:
-        id:
-          type: string
       x-tags:
         - types
       description: Map cell
+      properties:
+        id:
+          type: string
+        x:
+          type: integer
+        "y":
+          type: integer
+        kind:
+          type: string
+          enum:
+            - grass
+            - wall
+            - water
+            - poster
+            - poster_seat
+            - mud
+        open:
+          type: boolean
+      required:
+        - id
+        - x
+        - "y"
+        - kind
+        - open
     ChatGroup:
       title: ChatGroup
       type: object
       description: Chat group
+      x-tags:
+        - types
       properties:
         id:
           $ref: "#/components/schemas/ChatGroupId"
@@ -1064,8 +1430,12 @@ components:
           enum:
             - poster
             - people
-      x-tags:
-        - types
+      required:
+        - id
+        - room
+        - users
+        - color
+        - kind
     UserId:
       type: string
       title: UserId
@@ -1093,10 +1463,12 @@ components:
       minLength: 1
       x-tags:
         - types
-    ChatComment:
+    ChatCommentDecrypted:
       title: ChatComment
       type: object
       description: Chat comment object
+      x-tags:
+        - types
       properties:
         id:
           type: string
@@ -1118,24 +1490,45 @@ components:
             type: boolean
         person:
           $ref: "#/components/schemas/UserId"
-        text:
+        text_decrypted:
           type: string
-        to:
+        texts:
           type: array
           items:
-            oneOf:
-              - $ref: "#/components/schemas/UserId"
-              - $ref: "#/components/schemas/PosterId"
+            type: object
+            properties:
+              encrypted:
+                type: boolean
+              to:
+                oneOf:
+                  - $ref: "#/components/schemas/UserId"
+                  - $ref: "#/components/schemas/PosterId"
+            required:
+              - encrypted
+              - to
         kind:
           type: string
           enum:
             - poster
             - person
-      x-tags:
-        - types
+      required:
+        - id
+        - timestamp
+        - last_updated
+        - room
+        - x
+        - "y"
+        - encrypted
+        - person
+        - text_decrypted
+        - texts
+        - kind
     CommentEncrypted:
       title: CommentEncrypted
       type: object
+      description: Encrypted comment object
+      x-tags:
+        - types
       properties:
         to:
           type: string
@@ -1147,12 +1540,11 @@ components:
         - to
         - text
         - encrypted
-      description: Encrypted comment object
-      x-tags:
-        - types
-    ChatCommentEncrypted:
+    ChatComment:
       title: ChatCommentEncrypted
       type: object
+      x-tags:
+        - types
       properties:
         id:
           type: string
@@ -1166,8 +1558,6 @@ components:
           type: integer
         "y":
           type: integer
-        texts:
-          $ref: "#/components/schemas/CommentEncrypted"
         person:
           $ref: "#/components/schemas/UserId"
         kind:
@@ -1175,8 +1565,20 @@ components:
           enum:
             - poster
             - person
-      x-tags:
-        - types
+        texts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentEncrypted"
+      required:
+        - id
+        - timestamp
+        - last_updated
+        - room
+        - x
+        - "y"
+        - person
+        - kind
+        - texts
     Poster:
       title: Poster
       type: object
@@ -1184,7 +1586,7 @@ components:
         id:
           $ref: "#/components/schemas/PosterId"
         last_updated:
-          type: string
+          type: integer
         title:
           type: string
         author:
@@ -1199,6 +1601,8 @@ components:
           type: number
         "y":
           type: number
+        file_url:
+          type: string
       required:
         - id
         - last_updated
@@ -1207,8 +1611,67 @@ components:
         - location
         - x
         - "y"
+        - file_url
       x-tags:
         - types
+    PersonInMap:
+      title: PersonInMap
+      type: object
+      description: ""
+      properties:
+        id:
+          type: string
+        room:
+          type: string
+        x:
+          type: number
+        "y":
+          type: number
+        direction:
+          type: string
+          enum:
+            - up
+            - down
+            - left
+            - right
+            - none
+        name:
+          type: string
+        last_updated:
+          type: integer
+        moving:
+          type: boolean
+        stats:
+          $ref: "#/components/schemas/PersonStat"
+      required:
+        - id
+        - room
+        - x
+        - "y"
+        - direction
+        - name
+        - last_updated
+        - moving
+        - stats
+    PersonStat:
+      title: PersonStat
+      type: object
+      properties:
+        walking_steps:
+          type: integer
+        people_encountered:
+          type: array
+          items:
+            type: string
+        chat_count:
+          type: integer
+        chat_char_count:
+          type: integer
+      required:
+        - walking_steps
+        - people_encountered
+        - chat_count
+        - chat_char_count
   securitySchemes:
     debugAs:
       type: apiKey

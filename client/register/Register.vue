@@ -88,7 +88,6 @@
 </template>
 
 <script lang="ts">
-import { PostIdTokenResponse, RegisterResponse } from "../../@types/types"
 import firebaseConfig from "../../firebaseConfig"
 
 import { onMounted, toRefs, computed } from "@vue/composition-api"
@@ -106,6 +105,10 @@ Vue.use(VueCompositionApi)
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
+
+import axiosClient from "@aspida/axios"
+import api from "../../api/$api"
+const client = api(axiosClient(axios))
 
 export default defineComponent({
   setup() {
@@ -165,16 +168,14 @@ export default defineComponent({
                   axios.defaults.headers.common = {
                     Authorization: `Bearer ${idToken}`,
                   }
-                  axios
-                    .post<PostIdTokenResponse>("/id_token", {
-                      token: idToken,
-                    })
+                  client.id_token
+                    .$post({ body: { token: idToken } })
                     .then(data => {
                       console.log("/id_token result", data)
-                      if (data.data.registered == "can_register") {
+                      if (data.registered == "can_register") {
                         state.nextAction = "register"
                         location.href = "/register"
-                      } else if (data.data.registered == "registered") {
+                      } else if (data.registered == "registered") {
                         state.nextAction = undefined
                         location.href = "/"
                       }
@@ -224,10 +225,12 @@ export default defineComponent({
     console.log("state", state)
     const submitRegistration = async ev => {
       console.log(state.register_name)
-      const { data } = await axios.post<RegisterResponse>("/register", {
-        email: state.user.email,
-        name: state.register_name,
-        access_code: state.access_code,
+      const data = await client.register.$post({
+        body: {
+          email: state.user.email,
+          name: state.register_name,
+          access_code: state.access_code,
+        },
       })
       console.log("/register result", data)
       if (data.ok && data.user) {

@@ -127,29 +127,14 @@ async function protected_api_routes(
     return { ok, error: r != null ? "Exists" : undefined }
   })
 
-  fastify.get("/encryption_keys", async req => {
-    const rows = await model.db.query(
-      `SELECT public_key FROM public_key WHERE person=$1;`,
-      [req["requester"]]
-    )
-    if (rows.length == 1) {
-      return {
-        ok: true,
-        public_key: rows[0]?.public_key as string | undefined,
-      }
-    } else {
-      return { ok: false }
-    }
-  })
-
-  fastify.get("/blind_pair", async () => {
+  fastify.get("/blind_sign/key_pair", async () => {
     return {
       N: Bob.key.keyPair.n.toString(),
       E: Bob.key.keyPair.e.toString(),
     }
   })
 
-  fastify.post<any>("/blindsign_message", async req => {
+  fastify.post<any>("/blind_sign/sign", async req => {
     const rows = await model.db.query(
       `SELECT person FROM vote WHERE person=$1;`,
       [req["requester"]]
@@ -173,7 +158,7 @@ async function protected_api_routes(
     return { ok: true, signed: signed.toString() }
   })
 
-  fastify.get<any>("/blindsign_verify", async req => {
+  fastify.get<any>("/blind_sign/verify", async req => {
     // Alice sends Bob unblinded signature and original message
     const unblinded = req.query.unblinded
     const message = req.query.message

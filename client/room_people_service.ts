@@ -49,6 +49,7 @@ const updatePerson = (
     direction: d.direction || p.direction,
     stats: d.stats || p.stats,
     public_key: d.public_key || p.public_key,
+    connected: d.connected != undefined ? d.connected : p.connected,
   }
   Vue.set(state.people, d.id, person)
 }

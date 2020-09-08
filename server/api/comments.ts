@@ -4,8 +4,9 @@ import {
   PosterId,
   CommentEncryptedEntry,
   ChatComment,
+  UserId,
   ChatCommentDecrypted,
-} from "@/@types/types"
+} from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
@@ -27,13 +28,11 @@ async function routes(
     return model.chat.getAllComments(req.params.roomId, req["requester"])
   })
 
-  fastify.post<any>("/maps/:roomId/comments", async req => {
-    const comments_encrypted: CommentEncryptedEntry[] | undefined = req.body
+  fastify.post<any>("/maps/:roomId/groups/:groupId/comments", async req => {
+    const comments_encrypted: CommentEncryptedEntry[] = req.body as CommentEncryptedEntry[]
     const roomId: string = req.params.roomId
+    const groupId: string = req.params.groupId
     const requester: string = req["requester"]
-    if (!comments_encrypted) {
-      throw { statusCode: 400, message: "Parameter(s) missing" }
-    }
     const timestamp = Date.now()
     userLog({
       userId: requester,
@@ -41,6 +40,12 @@ async function routes(
       data: { text: comments_encrypted },
     })
     const group = await model.chat.getGroupOfUser(roomId, requester)
+    if (!group) {
+      throw { statusCode: 400, message: "Not in a chat group" }
+    }
+    if (group.id != groupId) {
+      throw { statusCode: 400, message: "Chat group is wrong" }
+    }
     const pos = await model.people.getPos(requester, roomId)
     if (!pos) {
       throw { statusCode: 400, message: "User position not found" }
@@ -48,6 +53,12 @@ async function routes(
     const map = model.maps[roomId]
     if (!map) {
       throw { statusCode: 400, message: "Room not found" }
+    }
+
+    const to_users = comments_encrypted.map(c => c.to)
+    if (!_.isEqual(group.users.sort(), to_users.sort())) {
+      emit.room(requester).group(group) // Emit correct group info
+      throw { statusCode: 400, message: "Chat recipients are invalid" }
     }
 
     const e: ChatComment = {

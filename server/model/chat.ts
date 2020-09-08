@@ -559,7 +559,9 @@ export async function getGroupIdOfUser(
 ): Promise<ChatGroupId | null> {
   log.info("getGroupIdOfUser", room_id, user_id)
   const rows = await db.query(
-    `SELECT id FROM chat_group as g join person_in_chat_group as pcg on pcg.chat=g.id WHERE pcg.person=$1 and g.room=$2`,
+    `SELECT id FROM chat_group AS g
+     JOIN person_in_chat_group AS pcg ON pcg.chat=g.id
+     WHERE pcg.person=$1 AND g.room=$2`,
     [user_id, room_id]
   )
   if (rows.length > 0) {
@@ -610,7 +612,7 @@ export async function newGroup(
   const points = _.compact(points_)
   if (points.length != points_.length) {
     log.error("Null position exists.")
-    return { ok: false, error: "Null position exists" }
+    return { ok: false, error: "Not all people have a position" }
   }
   if (!allPointsConnected(points)) {
     return { ok: false, error: "Not all people are in proximity" }
@@ -684,15 +686,29 @@ export async function joinChat(
 }
 export async function addMember(
   room_id: RoomId,
-  from_user: UserId,
-  to_user: UserId,
+  from_user_id: UserId,
+  to_user_id: UserId,
   group_id: ChatGroupId
 ): Promise<{ ok: boolean; error?: string; joinedGroup?: ChatGroup }> {
   // log.debug("addMember", room_id, from_user, to_user, group_id)
   try {
+    const group = await model.chat.getGroupOfUser(room_id, from_user_id)
+    if (!group || group.id != group_id) {
+      return { ok: false, error: "Wrong Group ID" }
+    }
+    const positions = await model.people.getPosMulti(
+      room_id,
+      _.uniq(group.users.concat([from_user_id, to_user_id]))
+    )
+    if (!_.every(positions)) {
+      return { ok: false, error: "Not all people have a position" }
+    }
+    if (!allPointsConnected(_.compact(positions))) {
+      return { ok: false, error: "Cannot add a member at a remote site" }
+    }
     await db.query(
       pgp.helpers.insert(
-        { person: to_user, chat: group_id },
+        { person: to_user_id, chat: group_id },
         null,
         "person_in_chat_group"
       )

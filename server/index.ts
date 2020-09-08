@@ -124,13 +124,14 @@ workerInitData()
             secret: DEBUG_TOKEN || "",
           })
 
-          swaggerValidation.init(`./server/virtual-poster.v1.yaml`, {
+          await swaggerValidation.initAsync(`./server/virtual-poster.v1.yaml`, {
             framework: "fastify",
             beautifyErrors: true,
           })
           await server.register(swaggerValidation.validate({}))
 
           server.setErrorHandler(async (err, req, reply) => {
+            console.log("ERROR!!!!!", err)
             if (err instanceof swaggerValidation.InputValidationError) {
               server.log.warn(err.errors)
               return reply

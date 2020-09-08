@@ -7,10 +7,4 @@ export type Methods = {
     status: 200
     resBody: Types.ChatComment[]
   }
-
-  post: {
-    query?: Types.debug_token & Types.debug_as
-    status: 200
-    reqBody?: Types.CommentEncrypted[]
-  }
 }

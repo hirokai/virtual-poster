@@ -84,10 +84,6 @@ async function routes(
       fastify.log.debug(from_user)
       fastify.log.debug(to_users)
       console.log("log 2")
-      if (!to_users || to_users.length == 0 || !from_user) {
-        console.log("Parameter missing")
-        throw { statusCode: 400, message: "Parameter(s) missing" }
-      }
       if (to_users.indexOf(from_user) != -1) {
         console.log("to_users cannot include from_user")
 

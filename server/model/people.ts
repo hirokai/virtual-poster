@@ -399,7 +399,7 @@ export async function setPos(
 export async function getPosMulti(
   room_id: RoomId,
   user_ids: UserId[]
-): Promise<((Point & { direction: Direction }) | null)[]> {
+): Promise<(PosDir | null)[]> {
   const keys = user_ids.map(u => "pos:" + room_id + ":" + u)
   const ss = await redis.accounts.mget(keys)
   return ss.map(s => {

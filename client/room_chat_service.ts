@@ -35,7 +35,8 @@ export async function doSendOrUpdateComment(
   to_users: UserId[],
   privateKey: CryptoKey | null,
   public_keys: { [user_id: string]: { public_key?: string } },
-  editingOld?: CommentId
+  editingOld?: CommentId,
+  groupId?: ChatGroupId
 ): Promise<{ ok: boolean; data?: any }> {
   const comments_encrypted: CommentEncryptedEntry[] = []
   const client = api(axiosClient(axios))
@@ -69,9 +70,15 @@ export async function doSendOrUpdateComment(
   }
   console.log(comments_encrypted)
   if (!editingOld) {
-    const data = await client.maps._roomId(room_id).comments.$post({
-      body: comments_encrypted,
-    })
+    if (!groupId) {
+      return { ok: false }
+    }
+    const data = await client.maps
+      ._roomId(room_id)
+      .groups._groupId(groupId)
+      .comments.$post({
+        body: comments_encrypted,
+      })
     console.log(data)
     if (skywayRoom) {
       skywayRoom.send({

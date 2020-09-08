@@ -568,23 +568,6 @@ paths:
                   $ref: "#/components/schemas/ChatComment"
       operationId: get-maps-roomId-comments
       description: Get all comments (that are visible to a user) in the room.
-    post:
-      summary: Post a comment in a room
-      operationId: post-maps-roomId-comments
-      responses:
-        "200":
-          description: OK
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: "#/components/schemas/CommentEncrypted"
-        description: ""
-      description: Post a comment in a room
-      tags:
-        - chat
   "/posters/{posterId}/comments/{commentId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -1314,6 +1297,35 @@ paths:
           in: query
           name: message
       description: "Verify blind signature  "
+  "/maps/{roomId}/groups/{groupId}/comments":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: groupId
+        in: path
+        required: true
+    post:
+      summary: Send a comment to a chat group
+      operationId: post-maps-roomId-comments
+      responses:
+        "200":
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CommentEncrypted"
+        description: ""
+      description: Post a comment in a room
+      tags:
+        - chat
 components:
   parameters:
     debug_token:

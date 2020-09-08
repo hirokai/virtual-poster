@@ -630,7 +630,8 @@ export default defineComponent({
         to_users,
         state.privateKey,
         state.people,
-        updating ? state.editingOld || undefined : undefined
+        updating ? state.editingOld || undefined : undefined,
+        myChatGroup.value || undefined
       )
       if (ok) {
         ;(document.querySelector("#local-chat-input") as any)?.focus()
@@ -1096,15 +1097,19 @@ export default defineComponent({
           .leave.$post()
           .then(data => {
             console.log(data)
-            if (data.leftGroup) {
-              Vue.set(state.chatGroups, group_id, data.leftGroup)
-            }
-            showMessage("会話から離脱しました。")
-            state.encryption_possible_in_chat = !!state.privateKey
-            Vue.set(state.people_typing, props.myUserId, false)
-            if (state.skywayRoom) {
-              state.skywayRoom.close()
-              state.skywayRoom = null
+            if (data.ok) {
+              if (data.leftGroup) {
+                Vue.set(state.chatGroups, group_id, data.leftGroup)
+              }
+              showMessage("会話から離脱しました。")
+              state.encryption_possible_in_chat = !!state.privateKey
+              Vue.set(state.people_typing, props.myUserId, false)
+              if (state.skywayRoom) {
+                state.skywayRoom.close()
+                state.skywayRoom = null
+              }
+            } else {
+              //
             }
           })
           .catch(err => {

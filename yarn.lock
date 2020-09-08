@@ -9645,10 +9645,10 @@ openapi-types@^1.3.5:
   resolved "https://registry.yarnpkg.com/openapi-types/-/openapi-types-1.3.5.tgz#6718cfbc857fe6c6f1471f65b32bdebb9c10ce40"
   integrity sha512-11oi4zYorsgvg5yBarZplAqbpev5HkuVNPlZaPTknPDzAynq+lnJdXAmruGWP0s+dNYZS7bjM+xrTpJw7184Fg==
 
-openapi-validator-middleware@^3.1.0:
-  version "3.1.0"
-  resolved "https://registry.yarnpkg.com/openapi-validator-middleware/-/openapi-validator-middleware-3.1.0.tgz#8de00733e26591ccb515ba83c282619a7c469154"
-  integrity sha512-CJFNXPxK65Ys0S0wT+XrcNGnpoHCgheoqPRDCX5F73TpcTyc5XSIz/9vcS4CYtLA+latBOE/9KQeCE5spVqMRw==
+openapi-validator-middleware@^3.1.1:
+  version "3.1.1"
+  resolved "https://registry.yarnpkg.com/openapi-validator-middleware/-/openapi-validator-middleware-3.1.1.tgz#7f3cd0dbe6a8a51e6cb4416b0c69a5a58ecf4369"
+  integrity sha512-7Z3QQcvHsKe3sS9GJj2FxCT0+KBnxcIZs2lLQ3S28Yl81ZRJUJDheL/NjKThW1NZ3yeZTCampAz8+CTdKhIRuA==
   dependencies:
     api-schema-builder "^2.0.3"
     memoizee "^0.4.14"

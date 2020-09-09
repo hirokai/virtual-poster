@@ -14,7 +14,7 @@ import { Methods as Methods10 } from './_roomId@string/people/_userId@string/gro
 import { Methods as Methods11 } from './_roomId@string/people/_userId@string/poster'
 import { Methods as Methods12 } from './_roomId@string/people/_userId@string/poster/file'
 import { Methods as Methods13 } from './_roomId@string/posters'
-import { Methods as Methods14 } from './_roomId@string/take_slot/_posterLocation@number'
+import { Methods as Methods14 } from './_roomId@string/take_slot/_posterNumber@number'
 
 const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const prefix = (baseURL === undefined ? 'http://localhost:3000/api' : baseURL).replace(/\/$/, '')
@@ -149,7 +149,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
             `${prefix}${prefix0}${PATH9}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         take_slot: {
-          _posterLocation: (val3: number) => {
+          _posterNumber: (val3: number) => {
             const prefix3 = `${prefix0}${PATH10}/${val3}`
 
             return {

@@ -16,6 +16,7 @@
           ') px, ' +
           (cells[0] ? cells[0].length : 0) * 9 +
           'px 0px)',
+        top: isMobile ? '560px' : undefined,
       }"
     >
       <g v-for="(row, yi) in cells" :key="yi">
@@ -138,6 +139,10 @@ export default defineComponent({
     },
     chatGroups: {
       type: Object as PropType<{ [index: string]: ChatGroup }>,
+      required: true,
+    },
+    isMobile: {
+      type: Boolean,
       required: true,
     },
   },

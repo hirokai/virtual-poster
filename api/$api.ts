@@ -22,7 +22,7 @@ import { Methods as Methods18 } from './maps/_roomId@string/people/_userId@strin
 import { Methods as Methods19 } from './maps/_roomId@string/people/_userId@string/poster'
 import { Methods as Methods20 } from './maps/_roomId@string/people/_userId@string/poster/file'
 import { Methods as Methods21 } from './maps/_roomId@string/posters'
-import { Methods as Methods22 } from './maps/_roomId@string/take_slot/_posterLocation@number'
+import { Methods as Methods22 } from './maps/_roomId@string/take_slot/_posterNumber@number'
 import { Methods as Methods23 } from './people'
 import { Methods as Methods24 } from './people/_userId@string'
 import { Methods as Methods25 } from './people/_userId@string/posters'
@@ -256,7 +256,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
               `${prefix}${prefix1}${PATH15}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
           },
           take_slot: {
-            _posterLocation: (val4: number) => {
+            _posterNumber: (val4: number) => {
               const prefix4 = `${prefix1}${PATH16}/${val4}`
 
               return {

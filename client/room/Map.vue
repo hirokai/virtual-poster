@@ -1,5 +1,13 @@
 <template>
-  <svg id="cells" :style="{ opacity: hidden ? 0 : 1 }" viewBox="0 0 528 528">
+  <svg
+    id="cells"
+    :style="{
+      opacity: hidden ? 0 : 1,
+      top: isMobile ? '0px' : undefined,
+      left: isMobile ? '3px' : undefined,
+    }"
+    viewBox="0 0 528 528"
+  >
     <g v-for="(row, yi) in cells" :key="yi" :data-y="row[0].y">
       <MapCell
         v-for="(cell, xi) in row"
@@ -168,6 +176,10 @@ export default defineComponent({
       type: Object as PropType<{ [index: string]: ChatGroup }>,
       required: true,
     },
+    isMobile: {
+      type: Boolean,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({})
@@ -239,6 +251,17 @@ export default defineComponent({
 </script>
 
 <style lang="css">
+svg#cells {
+  position: absolute;
+  left: 8px;
+  top: 50px;
+  height: 528px;
+  width: 528px;
+  user-select: none;
+  transition: opacity 0.5s linear;
+  z-index: -1;
+}
+
 #controller polygon {
   cursor: pointer;
 }

@@ -57,8 +57,15 @@
         トラックパッドの2本指スクロール）
       </div>
     </div>
-    <div id="poster-comments-container">
-      <h3>ポスターにコメント書き込み</h3>
+    <div
+      id="poster-comments-container"
+      :style="{
+        top: isMobile ? '560px' : undefined,
+        height: isMobile ? 'calc(100% - 580px)' : undefined,
+        width: isMobile ? '520px' : undefined,
+      }"
+    >
+      <h3>ポスターにコメント書き込み（参加者全員が読めます）</h3>
       <div id="poster-chat-input-container">
         <textarea
           ref="input"
@@ -158,6 +165,10 @@ export default defineComponent({
     },
     inputFromParent: {
       type: String,
+    },
+    isMobile: {
+      type: Boolean,
+      required: true,
     },
   },
   setup(props, context) {
@@ -298,6 +309,9 @@ export default defineComponent({
 </script>
 
 <style lang="css">
+h3 {
+  font-size: 14px;
+}
 #poster.inactive {
   background: #ccc;
 }

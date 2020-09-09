@@ -6,6 +6,15 @@ import axiosDefault from "axios"
 import { UserId, RoomId } from "../@types/types"
 import firebaseConfig from "../firebaseConfig"
 
+const url = new URL(location.href)
+
+const isMobile = !!JSON.parse(url.searchParams.get("mobile") || "false")
+const mobile_agent = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
+if (!isMobile && mobile_agent) {
+  url.searchParams.set("mobile", "true")
+  location.href = url.toString()
+}
+
 Vue.config.productionTip = true
 
 const API_ROOT = "/api"
@@ -16,7 +25,6 @@ const axios = axiosDefault.create({
 firebase.initializeApp(firebaseConfig)
 window.firebase = firebase
 
-const url = new URL(location.href)
 const room_id: RoomId | null = url.searchParams.get("room_id")
 if (!room_id) {
   alert("Room IDが不正です。")
@@ -54,6 +62,7 @@ declare module "vue/types/vue" {
       bot_mode,
       idToken: "",
       axios,
+      isMobile,
     }
     new Vue({
       render: h => h(Room, { props: propsData }),
@@ -84,6 +93,7 @@ declare module "vue/types/vue" {
           bot_mode: bot_mode,
           jwt_hash_initial,
           axios,
+          isMobile,
         }
         console.log("Initializing...", data, user?.email, propsData)
         // app.$props.socket = app.$mount("#app")

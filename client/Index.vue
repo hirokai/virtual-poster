@@ -13,7 +13,9 @@
             v-for="room in rooms"
             :key="room.id"
             class="room"
-            :href="'/room?room_id=' + room.id"
+            :href="
+              '/room?room_id=' + room.id + (isMobile ? '&mobile=true' : '')
+            "
           >
             <h2 :class="{ small: room.name.length >= 13 }">{{ room.name }}</h2>
             <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
@@ -104,6 +106,8 @@ export default defineComponent({
       required_action: undefined as undefined | "register" | "verify",
       logged_in: false,
     })
+    const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
+
     onMounted(() => {
       axios.interceptors.request.use(config => {
         if (debug_as && debug_token) {
@@ -208,7 +212,7 @@ export default defineComponent({
     const enterRoom = (room_id: string) => {
       location.href = "/room?room_id=" + room_id
     }
-    return { ...toRefs(state), signOut, enterRoom, location }
+    return { ...toRefs(state), signOut, enterRoom, location, isMobile }
   },
 })
 </script>

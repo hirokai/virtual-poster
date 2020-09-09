@@ -90,6 +90,7 @@ export const sendPosterComment = (
     })
     .then(data => {
       console.log("sendPosterComment done", data)
+      state.posterInputComment = ""
     })
     .catch(() => {
       //

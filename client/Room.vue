@@ -1,6 +1,12 @@
 <template>
   <div id="app-main" v-cloak>
-    <div id="header">
+    <div
+      id="header"
+      :style="{
+        opacity: isMobile ? 0.7 : 1,
+        top: isMobile ? '0px' : undefined,
+      }"
+    >
       <span v-if="!!myself">
         {{ myself ? myself.name : "" }}さん
         <span id="login-info">({{ myUserId }})</span>
@@ -62,6 +68,7 @@
     <div
       id="announce"
       :class="{ marquee: announcement && announcement.marquee }"
+      :style="{ top: isMobile ? '530px' : undefined }"
     >
       <div
         class="marquee-inner"
@@ -76,6 +83,7 @@
       v-if="!botActive"
       v-show="!!myself"
       :myself="myself"
+      :isMobile="isMobile"
       :hidden="hidden"
       :people="people"
       :posters="posters"
@@ -96,6 +104,7 @@
     <MiniMap
       v-if="enableMiniMap && !botActive"
       v-show="!activePoster"
+      :isMobile="isMobile"
       :hidden="hidden"
       :cells="hallMap"
       :center="center"
@@ -109,6 +118,8 @@
     />
     <ChatLocal
       ref="chatLocal"
+      v-show="isMobile ? !enableMiniMap && !activePoster : true"
+      :isMobile="isMobile"
       :inputTextFromParent="''"
       :myself="myself"
       :contentHidden="hidden"
@@ -133,6 +144,7 @@
     <Poster
       v-if="!botActive"
       ref="posterComponent"
+      :isMobile="isMobile"
       :myself="myself"
       :poster="activePoster"
       :comments="posterComments"
@@ -354,8 +366,15 @@ export default defineComponent({
       type: Function as PropType<AxiosInstance>,
       required: true,
     },
+    isMobile: {
+      type: Boolean,
+      required: true,
+    },
   },
   setup(props, context) {
+    if (props.isMobile) {
+      document.body.style.minWidth = "0px"
+    }
     const axios = props.axios
     const client = api(axiosClient(axios))
     axios.interceptors.request.use(request => {
@@ -409,7 +428,7 @@ export default defineComponent({
       enableEncryption: false,
       avatarImages: {} as { [index: string]: string },
 
-      enableMiniMap: true,
+      enableMiniMap: !props.isMobile,
 
       people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
@@ -939,7 +958,8 @@ export default defineComponent({
         }
         const data = await client.maps
           ._roomId(props.room_id)
-          .take_slot._posterLocation(poster_location)
+          .take_slot._posterNumber(poster_location)
+          .$post()
         console.log("take poster result", data)
       }
 
@@ -1158,6 +1178,8 @@ body {
 }
 
 #header {
+  background: white;
+  z-index: 100;
   width: 528px;
   height: 40px;
   /* background: #ccc; */
@@ -1232,16 +1254,6 @@ button#leave-chat-on-map {
   font-size: 12px;
   color: #1d1c1d;
   line-height: 1.3em;
-}
-
-svg#cells {
-  position: absolute;
-  left: 8px;
-  top: 50px;
-  height: 528px;
-  width: 528px;
-  user-select: none;
-  transition: opacity 0.5s linear;
 }
 
 #minimap-area {

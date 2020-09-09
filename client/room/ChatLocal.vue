@@ -2,9 +2,14 @@
   <div
     id="chat-local"
     :style="{
-      width: poster
+      width: isMobile
+        ? '510px'
+        : poster
         ? 'calc(100% - max(68vh,600px) - 600px)'
         : 'calc(100% -  600px)',
+      left: isMobile ? '10px' : undefined,
+      top: isMobile ? '550px' : undefined,
+      height: isMobile ? 'calc(100% - 550px)' : undefined,
     }"
   >
     <div id="chat-input-container">
@@ -179,6 +184,10 @@ export default defineComponent({
     },
     comments: {
       type: Object as PropType<{ [index: string]: ChatCommentDecrypted }>,
+      required: true,
+    },
+    isMobile: {
+      type: Boolean,
       required: true,
     },
   },

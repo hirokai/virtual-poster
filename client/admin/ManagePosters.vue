@@ -47,7 +47,7 @@
 <script lang="ts">
 import { Room, Poster, PosterId, PersonWithEmail } from "@/@types/types"
 import { AxiosStatic } from "axios"
-import { sortBy } from "lodash-es"
+import { sortBy } from "../../common/util"
 
 import Vue from "vue"
 import {

@@ -147,7 +147,7 @@
 </template>
 
 <script lang="ts">
-import { cloneDeep, mapValues, filter, intersection } from "lodash-es"
+import { mapValues, intersection } from "../../common/util"
 
 import { AxiosStatic } from "axios"
 import { PersonWithEmailRooms, RoomId } from "@/@types/types"
@@ -192,13 +192,16 @@ export default defineComponent({
     const state = reactive({
       files: {} as { [index: string]: File },
       editing: { person: null as PersonWithEmailRooms | null },
-      selected_rooms: mapValues(props.rooms, () => true) as {
+      selected_rooms: (props.rooms
+        ? mapValues(props.rooms, () => true)
+        : {}) as {
         [room_id: string]: boolean
       },
       peopleFiltered: Object.values(props.people),
     })
     const editPerson = (user_id: string) => {
-      state.editing.person = cloneDeep(props.people[user_id])
+      const p = props.people[user_id]
+      state.editing.person = JSON.parse(JSON.stringify(p))
     }
     const onFileChange = (name: string, e) => {
       set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
@@ -276,14 +279,14 @@ export default defineComponent({
       () => {
         state.peopleFiltered = state.selected_rooms["::all"]
           ? Object.values(props.people)
-          : filter(Object.values(props.people), p => {
+          : Object.values(props.people).filter(p => {
               return (
-                intersection(
+                intersection([
                   p.rooms,
-                  filter(Object.keys(state.selected_rooms), k => {
+                  Object.keys(state.selected_rooms).filter(k => {
                     return state.selected_rooms[k]
-                  })
-                ).length > 0
+                  }),
+                ]).length > 0
               )
             })
       }

@@ -17,8 +17,6 @@
 </template>
 
 <script lang="ts">
-import { PostIdTokenResponse } from "../@types/types"
-
 import { onMounted, toRefs } from "@vue/composition-api"
 import axios from "axios"
 import * as firebase from "firebase/app"

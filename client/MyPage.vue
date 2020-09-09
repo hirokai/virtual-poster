@@ -270,11 +270,10 @@ import {
   UserId,
   PersonWithEmail,
 } from "../@types/types"
-import { keyBy, difference, range, chunk } from "lodash-es"
+import { keyBy, difference, range, chunk } from "../common/util"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-import jsSHA from "jssha"
 import * as encryption from "./encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
@@ -526,7 +525,7 @@ export default defineComponent({
           client.public_key.$get(),
         ])
         state.people = keyBy(data_p, "id")
-        state.posters = keyBy(data_poster.posters, "id")
+        state.posters = keyBy(data_poster.posters || [], "id")
         state.privateKey =
           localStorage[
             "virtual-poster:" + state.myUserId + ":private_key_jwk"

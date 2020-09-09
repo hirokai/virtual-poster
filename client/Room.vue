@@ -204,7 +204,7 @@ import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 
 import io from "socket.io-client"
-import { every, keyBy, find } from "lodash-es"
+import { keyBy } from "../common/util"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import * as encryption from "./encryption"
@@ -794,11 +794,9 @@ export default defineComponent({
           initPosterService(axios, state.socket, props, state, activePoster),
         ])
         const other_users_encryptions = myChatGroup.value
-          ? every(
-              state.chatGroups[myChatGroup.value!].users.map(
-                u => !!state.people[u]?.public_key
-              )
-            )
+          ? state.chatGroups[myChatGroup.value!].users
+              .map(u => !!state.people[u]?.public_key)
+              .every(a => a)
           : true
 
         state.encryption_possible_in_chat =
@@ -956,24 +954,6 @@ export default defineComponent({
                   state.encryption_possible_in_chat =
                     !!state.privateKey && d.encryption_possible
                   state.selectedUsers.clear()
-                  if (!state.skywayRoom) {
-                    state.peer = new Peer(props.myUserId + "-" + Date.now(), {
-                      key: process.env.VUE_APP_SKYWAY_API_KEY || "",
-                    })
-                    state.skywayRoom = state.peer.joinRoom(group.id) as
-                      | MeshRoom
-                      | SfuRoom
-                  }
-                  console.log("Skyway connection", state.skywayRoom)
-                  state.skywayRoom.on("open", () => {
-                    console.log("Skyway OPEN")
-                    state.skywayRoom!.on("data", data => {
-                      console.log(data)
-                    })
-                    state.skywayRoom!.send({
-                      msg: "Hello from " + props.myUserId,
-                    })
-                  })
                 }
                 //
               })
@@ -1029,8 +1009,7 @@ export default defineComponent({
     }) => {
       console.log(pos, event)
       state.selectedPos = pos
-      const person: PersonInMap | undefined = find(
-        Object.values(state.people),
+      const person: PersonInMap | undefined = Object.values(state.people).find(
         person =>
           person.id != props.myUserId && person.x == pos.x && person.y == pos.y
       )

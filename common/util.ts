@@ -10,13 +10,9 @@ import {
   RoomId,
   PersonPos,
 } from "@/@types/types"
-// import { fromPairs, minBy, groupBy, find, mapValues, sortBy } from "lodash"
 import fromPairs from "lodash/fromPairs"
 import minBy from "lodash/minBy"
 import groupBy from "lodash/groupBy"
-import find from "lodash/find"
-import mapValues from "lodash/mapValues"
-import sortBy from "lodash/sortBy"
 
 import * as bunyan from "bunyan"
 const log = bunyan.createLogger({ name: "util", src: true, level: 1 })
@@ -396,8 +392,7 @@ export function lookingAt(
     x = me.x
     y = me.y + 1
   }
-  const person: Person | undefined = find(
-    people_in_room,
+  const person: Person | undefined = people_in_room.find(
     p => p.x == x && p.y == y
   )
   return person ? person.id : null
@@ -407,7 +402,7 @@ export function getGroupIdOfUser(
   user_id: UserId,
   groups: ChatGroup[]
 ): ChatGroupId | undefined {
-  return find(groups, g => g.users.indexOf(user_id) != -1)?.id
+  return groups.find(g => g.users.indexOf(user_id) != -1)?.id
 }
 
 export function findAdjacentChatGroup(
@@ -499,4 +494,81 @@ export function allPointsConnected(points: Point[]): boolean {
     }
   }
   return true
+}
+
+export function keyBy<T>(array: T[], key: string): { [index: string]: T } {
+  return (array || []).reduce((r, x) => ({ ...r, [key ? x[key] : x]: x }), {})
+}
+
+export function difference<T>(a: T[], b: T[]): T[] {
+  return [a, b].reduce((a, b) => a.filter(c => !b.includes(c)))
+}
+
+export function flatten<T>(vs: T[][]): T[] {
+  return vs.reduce((a, b) => a.concat(b), [])
+}
+
+export function pickBy<T>(object: {
+  [index: string]: T | undefined | null
+}): { [index: string]: T } {
+  const obj = {}
+  for (const key in object) {
+    if (object[key]) {
+      obj[key] = object[key]
+    }
+  }
+  return obj
+}
+
+export function chunk<T>(input, size: number): T[][] {
+  return input.reduce((arr, item, idx) => {
+    return idx % size === 0
+      ? [...arr, [item]]
+      : [...arr.slice(0, -1), [...arr.slice(-1)[0], item]]
+  }, [])
+}
+
+export const randomInt = (a = 1, b = 0): number => {
+  const lower = Math.ceil(Math.min(a, b))
+  const upper = Math.floor(Math.max(a, b))
+  return Math.floor(lower + Math.random() * (upper - lower))
+}
+
+export function range(from: number, to: number): number[] {
+  return Array.from({ length: to - from }, (_, i) => i + from)
+}
+
+// Native
+function sortByHelper<T>(keyFunc: (T) => number) {
+  return (a: T, b: T) =>
+    keyFunc(a) > keyFunc(b) ? 1 : keyFunc(b) > keyFunc(a) ? -1 : 0
+}
+
+// The native sort modifies the array in place. `_.orderBy` and `_.sortBy` do not, so we use `.concat()` to
+// copy the array, then sort.
+export function sortBy<T>(vs: T[], keyFunc: (T) => number): T[] {
+  return vs.concat().sort(sortByHelper(keyFunc))
+}
+
+export function compact<T>(vs: T[]): T[] {
+  return vs.filter(Boolean)
+}
+
+export function intersection<T>(vss: T[][]): T[] {
+  return vss.reduce(function(a, b) {
+    return a.filter(function(value) {
+      return b.includes(value)
+    })
+  })
+}
+
+export function mapValues<A, B>(
+  vs: { [index: string]: A },
+  f: (A) => B
+): { [index: string]: B } {
+  const res = {} as { [index: string]: B }
+  for (const k in vs) {
+    res[k] = f(vs[k])
+  }
+  return res
 }

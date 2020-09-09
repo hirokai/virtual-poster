@@ -135,7 +135,7 @@ import MemberList from "./admin/MemberList.vue"
 import ManagePosters from "./admin/ManagePosters.vue"
 import firebaseConfig from "../firebaseConfig"
 
-import { keyBy, flatten, difference, pickBy } from "lodash-es"
+import { keyBy, difference, flatten, pickBy } from "../common/util"
 import io from "socket.io-client"
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT

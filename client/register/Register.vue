@@ -99,7 +99,7 @@ import Vue from "vue"
 import { defineComponent, reactive } from "@vue/composition-api"
 import VueCompositionApi from "@vue/composition-api"
 import * as encryption from "../encryption"
-import { chunk } from "lodash-es"
+import { chunk } from "../../common/util"
 
 Vue.use(VueCompositionApi)
 

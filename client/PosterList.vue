@@ -52,11 +52,10 @@ import {
 } from "../@types/types"
 
 import axios from "axios"
-import { AxiosResponse } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 
-import { filter, keyBy, sortBy } from "lodash-es"
+import { keyBy, sortBy } from "../common/util"
 import io from "socket.io-client"
 
 const API_ROOT = "/api"
@@ -111,7 +110,7 @@ export default defineComponent({
       ])
         .then(([r_rooms, r_people, r_posters]) => {
           state.people = keyBy(
-            filter(r_people, p => {
+            r_people.filter(p => {
               return p.x != undefined && p.y != undefined
             }),
             "id"

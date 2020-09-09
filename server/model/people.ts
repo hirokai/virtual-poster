@@ -76,6 +76,7 @@ function normalizeStats(obj: Record<string, any>): PersonStat {
   }
   return res
 }
+
 export async function isAdmin(token: string): Promise<boolean> {
   try {
     const decodedToken = await admin.auth().verifyIdToken(token)

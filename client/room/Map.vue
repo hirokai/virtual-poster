@@ -114,7 +114,7 @@ import {
 } from "../../@types/types"
 import MapCell from "./MapCell.vue"
 import MapCellPerson from "./MapCellPerson.vue"
-import { find, keyBy } from "lodash-es"
+import { keyBy } from "../../common/util"
 
 export default defineComponent({
   components: {
@@ -178,7 +178,7 @@ export default defineComponent({
       context.emit("uploadPoster", file, poster_id)
     }
     const personAt = (pos: Point): PersonInMap | undefined => {
-      return find(Object.values(props.people), p => {
+      return Object.values(props.people).find(p => {
         return p.x == pos.x && p.y == pos.y
       })
     }

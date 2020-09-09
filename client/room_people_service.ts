@@ -11,7 +11,7 @@ import {
   MySocketObject,
   UserId,
 } from "../@types/types"
-import { keyBy, filter, map } from "lodash-es"
+import { keyBy } from "../common/util"
 import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
@@ -112,7 +112,7 @@ export const initPeopleService = async (
     axiosDefault.get<{ [index: string]: string }>("/img/avatars_base64.json"),
   ])
   state.people = keyBy(
-    filter(r_people, p => {
+    r_people.filter(p => {
       return p.x != undefined && p.y != undefined
     }),
     "id"
@@ -124,10 +124,9 @@ export const initPeopleService = async (
   })
 
   // console.log("posters", r_posters)
-  state.connectedUsers = map(
-    Object.values(state.people).filter(p => p.connected),
-    "name"
-  )
+  state.connectedUsers = Object.values(state.people)
+    .filter(p => p.connected)
+    .map(p => p.name)
   state.avatarImages = r_avatars
 
   return true

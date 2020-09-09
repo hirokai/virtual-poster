@@ -70,7 +70,7 @@
 <script lang="ts">
 import { RoomId, Room } from "@/@types/types"
 import { AxiosStatic } from "axios"
-import { keyBy } from "lodash-es"
+import { keyBy } from "../../common/util"
 const API_ROOT = "/api"
 
 import Vue from "vue"

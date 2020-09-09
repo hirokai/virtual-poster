@@ -86,7 +86,7 @@ import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 const client = api(axiosClient(axios))
 
-import { difference, keyBy, random } from "lodash-es"
+import { difference, keyBy, randomInt } from "../common/util"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
@@ -397,8 +397,8 @@ export default class App extends Vue {
       let count = 0
       if (kind == "batch") {
         while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = random(0, this.hallMap.numCols)
-          ny = random(0, this.hallMap.numRows)
+          nx = randomInt(0, this.hallMap.numCols)
+          ny = randomInt(0, this.hallMap.numRows)
           count += 1
           if (count >= 100) {
             throw "Move failed 100 times."
@@ -406,8 +406,8 @@ export default class App extends Vue {
         }
       } else {
         while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = p.x + random(-1, 1)
-          ny = p.y + random(-1, 1)
+          nx = p.x + randomInt(-1, 1)
+          ny = p.y + randomInt(-1, 1)
           count += 1
           if (count >= 100) {
             throw "Move failed 100 times."

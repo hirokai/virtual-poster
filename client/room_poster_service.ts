@@ -8,7 +8,7 @@ import {
   ChatComment,
   MySocketObject,
 } from "../@types/types"
-import { keyBy } from "lodash-es"
+import { keyBy } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"

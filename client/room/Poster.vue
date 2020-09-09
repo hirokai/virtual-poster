@@ -116,9 +116,8 @@ import {
   Person,
   ChatCommentDecrypted,
 } from "../../@types/types"
-import { inRange } from "../../common/util"
+import { inRange, sortBy } from "../../common/util"
 import axiosDefault from "axios"
-import { sortBy } from "lodash-es"
 
 import Vue from "vue"
 import {
@@ -180,7 +179,7 @@ export default defineComponent({
       imageMag: 1,
     })
     const comments_sorted = computed(() => {
-      return sortBy(Object.values(props.comments), "timestamp")
+      return sortBy(Object.values(props.comments), c => c.timestamp)
     })
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)

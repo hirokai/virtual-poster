@@ -17,11 +17,12 @@ import {
   MySocketObject,
   CommentEncryptedEntry,
 } from "../@types/types"
-import { every, find, findIndex, keyBy, compact, uniq } from "lodash-es"
+import { keyBy, compact } from "../common/util"
 import * as encryption from "./encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
 import { SocketIO } from "socket.io-client"
+import Peer from "skyway-js"
 
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
@@ -124,7 +125,7 @@ export const decryptIfNeeded = async (
   error?: string
 }> => {
   const comment = comment_ as ChatComment
-  const to_me_idx = findIndex(comment.texts, t => t.to == myUserId)
+  const to_me_idx = comment.texts.findIndex(t => t.to == myUserId)
   if (to_me_idx == -1) {
     return { text: null, ok: false, error: "Does not have a message to me" }
   }
@@ -245,9 +246,9 @@ export const startChat = async (
   if (to_users.length == 0) {
     return undefined
   }
-  const to_groups: ChatGroupId[] = uniq(
-    compact(to_users.map(u => chatGroupOfUser(state).value[u]))
-  )
+  const to_groups: ChatGroupId[] = [
+    ...new Set(compact(to_users.map(u => chatGroupOfUser(state).value[u]))),
+  ]
   if (to_groups.length > 1) {
     // Multiple groups
     state.selectedUsers.clear()
@@ -265,9 +266,9 @@ export const startChat = async (
     if (!group) {
       return undefined
     }
-    const encryption_possible = every(
-      group.users.map(uid => !!state.people[uid]?.public_key)
-    )
+    const encryption_possible = group.users
+      .map(uid => !!state.people[uid]?.public_key)
+      .every(a => a)
     console.log("join result", data)
     return { group, encryption_possible }
   } else {
@@ -282,9 +283,9 @@ export const startChat = async (
     if (!group) {
       return undefined
     }
-    const encryption_possible = every(
-      group.users.map(uid => !!state.people[uid]?.public_key)
-    )
+    const encryption_possible = group.users
+      .map(uid => !!state.people[uid]?.public_key)
+      .every(a => a)
     return { group, encryption_possible }
   }
 }
@@ -294,7 +295,7 @@ export const myChatGroup = (
   state: RoomAppState
 ): ComputedRef<ChatGroupId | null> =>
   computed((): ChatGroupId | null => {
-    const g = find(Object.values(state.chatGroups), g => {
+    const g = Object.values(state.chatGroups).find(g => {
       return g.users.indexOf(props.myUserId) != -1
     })
     return g?.id || null
@@ -394,15 +395,33 @@ export const initChatService = async (
     console.log("myChatGroup", group)
     if (group) {
       if (!state.skywayRoom) {
-        state.skywayRoom = state.peer?.joinRoom(group) as MeshRoom | SfuRoom
-        state.skywayRoom.on("open", () => {
-          if (state.skywayRoom) {
-            state.skywayRoom.send({
-              msg: `Thanks for adding. I'm ${props.myUserId}.`,
+        if (!state.peer) {
+          console.log("Peer is null! Making...")
+
+          state.peer = new Peer(props.myUserId + "-" + Date.now(), {
+            key: process.env.VUE_APP_SKYWAY_API_KEY || "",
+          })
+        }
+        console.log("Peer is: ", state.peer)
+        state.peer.on("open", peerId => {
+          console.log("Peer ID: ", peerId)
+          state.skywayRoom = state.peer!.joinRoom(group) as MeshRoom | SfuRoom
+          state.skywayRoom.on("open", () => {
+            console.log("Skyway Room OPEN")
+            state.skywayRoom!.on("data", data => {
+              console.log(data)
             })
-          }
-          state.skywayRoom!.on("data", data => {
-            console.log("%c" + JSON.stringify(data.data), "color: purple")
+            state.skywayRoom!.send({
+              msg: "Hello from " + props.myUserId,
+            })
+            if (state.skywayRoom) {
+              state.skywayRoom.send({
+                msg: `Thanks for adding. I'm ${props.myUserId}.`,
+              })
+            }
+            state.skywayRoom!.on("data", data => {
+              console.log("%c" + JSON.stringify(data.data), "color: purple")
+            })
           })
         })
       }

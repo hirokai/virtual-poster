@@ -1,14 +1,8 @@
 import { initData, dbWith, resetDb } from "."
 import * as model from "."
-import _, { omit } from "lodash"
-import { Point, UserId } from "@/@types/types"
-import { inRange } from "../../common/util"
-import {
-  random_str,
-  createUser,
-  mkMapData,
-  rand_non_adjacent,
-} from "../test_util"
+import _ from "lodash"
+import { UserId } from "@/@types/types"
+import { createUser, mkMapData, rand_non_adjacent } from "../test_util"
 
 beforeEach(async () => {
   const db = dbWith("postgres://postgres@localhost/virtual_poster_test")

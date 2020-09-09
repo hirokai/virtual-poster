@@ -4,7 +4,7 @@ import api from "../api/$api"
 
 import * as bip39 from "bip39"
 import { UserId } from "../@types/types"
-import { difference } from "lodash-es"
+import { difference } from "../common/util"
 
 type EncryptedData = {
   iv: string

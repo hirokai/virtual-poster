@@ -6,8 +6,7 @@ import { verifyIdToken } from "../auth"
 import { config } from "../config"
 
 const USER_REGISTRATION = config.user_registration
-const DOMAIN = config.domain
-const SOCKET_URL = config.socket_url
+const PRODUCTION = process.env.NODE_ENV == "production"
 const DEBUG_TOKEN = config.debug_token
 
 async function public_api_routes(
@@ -189,14 +188,8 @@ async function public_api_routes(
   )
   fastify.get("/socket_url", async () => {
     return {
-      socket_url: SOCKET_URL
-        ? SOCKET_URL
-        : (config.socket_server.tls ? "https" : "http") +
-          "://" +
-          DOMAIN +
-          ":" +
-          config.socket_server.port +
-          "/socket.io",
+      socket_url: PRODUCTION ? "/" : "http://localhost:5000/",
+      socket_protocol: "Socket.IO",
     }
   })
   if (process.env.NODE_TEST) {

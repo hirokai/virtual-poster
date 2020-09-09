@@ -7,7 +7,12 @@ import {
   lookingAt,
   decodeMoved,
 } from "../common/util"
-import { startChat, myChatGroup } from "./room_chat_service"
+import {
+  startChat,
+  myChatGroup,
+  inviteToChat,
+  myChatGroup as _myChatGroup,
+} from "./room_chat_service"
 import { addLatencyLog } from "./room_log_service"
 import { SocketIO } from "socket.io-client"
 import * as firebase from "firebase/app"
@@ -33,11 +38,37 @@ import {
   MySocketObject,
 } from "../@types/types"
 
+import { getClosestAdjacentPoints, isAdjacent } from "../common/util"
+
 const BATCH_MOVE_INTERVAL = 400
 import { range } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
+
+export function showMessage(props: RoomAppProps, state: RoomAppState) {
+  return (msg: string, timeout = 5000): void => {
+    Vue.set(state.message, "text", msg)
+    Vue.set(state.message, "hide", false)
+    state.message.hide = false
+    if (state.message.timer) {
+      window.clearTimeout(state.message.timer)
+      Vue.set(state.message, "timer", undefined)
+    }
+    if (timeout > 0) {
+      Vue.set(
+        state.message,
+        "timer",
+        window.setTimeout(() => {
+          if (state.message) {
+            Vue.set(state.message, "hide", true)
+            Vue.set(state.message, "text", "")
+          }
+        }, timeout)
+      )
+    }
+  }
+}
 
 export const personAt = (
   people: { [user_id: string]: PersonInMap },
@@ -47,6 +78,7 @@ export const personAt = (
     return p.x == pos.x && p.y == pos.y
   })
 }
+
 export const posterAt = (
   posters: { [id: string]: Poster },
   pos: Point
@@ -464,10 +496,146 @@ export const initMapService = async (
       // location.reload()
     }
   })
+  socket.on("MoveRequest", d => {
+    console.log("MoveRequest", d)
+    const p = state.posters[d.to_poster]
+    dblClickHandler(
+      props,
+      state,
+      axios
+    )({ x: p.x, y: p.y })
+      .then(() => {
+        //
+      })
+      .catch(() => {
+        //
+      })
+  })
   const data = await client.maps._roomId(props.room_id).$get()
   state.hallMap = data.cells
   state.cols = data.numCols
   state.rows = data.numRows
 
   return true
+}
+
+export const dblClickHandler = (
+  props: RoomAppProps,
+  state: RoomAppState,
+  axios: AxiosStatic | AxiosInstance
+): ((p: Point) => Promise<void>) => {
+  const client = api(axiosClient(axios))
+  return async (p: Point): Promise<void> => {
+    const me = state.people[props.myUserId]
+    if (!me) {
+      return
+    }
+    const poster = posterAt(state.posters, p)
+    const person = poster ? undefined : personAt(state.people, p)
+    if (myChatGroup(props, state).value) {
+      if (person && isAdjacent(me, person)) {
+        inviteToChat(axios, props, state, person)
+          .then(group => {
+            if (group) {
+              showMessage(
+                props,
+                state
+              )(
+                "会話に加わりました。参加者：" +
+                  group.users.map(u => state.people[u].name).join(",")
+              )
+              state.selectedUsers.clear()
+            }
+          })
+          .catch(err => {
+            console.error(err)
+          })
+      } else {
+        showMessage(
+          props,
+          state
+        )("会話中は動けません。動くためには会話を終了してください。")
+      }
+      return
+    }
+    const poster_location = state.hallMap[p.y][p.x].poster_number
+
+    console.log("dblCliked", person, poster, poster_location)
+
+    if (state.people_typing[props.myUserId]) {
+      const d: TypingSocketSendData = {
+        user: me.id,
+        room: props.room_id,
+        typing: false,
+        token: props.jwt_hash_initial,
+        debug_as: props.debug_as,
+      }
+      state.socket?.emit("ChatTyping", d)
+    }
+
+    if (!poster && poster_location != undefined) {
+      const r = confirm("このポスター板を確保しますか？")
+      if (!r) {
+        return
+      }
+      const data = await client.maps
+        ._roomId(props.room_id)
+        .take_slot._posterNumber(poster_location)
+        .$post()
+      console.log("take poster result", data)
+    }
+
+    if (person || poster) {
+      if (Math.abs(p.x - me.x) <= 1 && Math.abs(p.y - me.y) <= 1) {
+        if (person) {
+          state.selectedUsers.add(person.id)
+          startChat(props, state, axios)
+            .then(d => {
+              if (d) {
+                state.encryption_possible_in_chat =
+                  !!state.privateKey && d.encryption_possible
+                state.selectedUsers.clear()
+              }
+              //
+            })
+            .catch(() => {
+              //
+            })
+        } else if (poster) {
+          state.selectedUsers.clear()
+        }
+      } else {
+        const dps = getClosestAdjacentPoints({ x: me.x, y: me.y }, p)
+        state.chatAfterMove = person ? person.id : poster ? poster.id : null
+        // Try to move to an adjacent open until it succeeds.
+        for (const p1 of dps) {
+          const r = moveTo(
+            axios,
+            props,
+            state,
+            me,
+            p1,
+            group => {
+              if (group) {
+                showMessage(
+                  props,
+                  state
+                )(
+                  "会話に加わりました。参加者：" +
+                    group.users.map(u => state.people[u].name).join(",")
+                )
+              }
+            },
+            person?.id
+          )
+          if (r) {
+            break
+          }
+        }
+      }
+    } else {
+      state.selectedUsers.clear()
+      moveTo(axios, props, state, me, p)
+    }
+  }
 }

@@ -74,5 +74,10 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
 }
 
 export function genPosterId(): PosterId {
-  return "P" + shortid.generate()
+  for (;;) {
+    const s = "P" + shortid.generate()
+    if (s.indexOf("-") == -1) {
+      return s
+    }
+  }
 }

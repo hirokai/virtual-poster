@@ -14,7 +14,8 @@ import { Methods as Methods10 } from './_roomId@string/people/_userId@string/gro
 import { Methods as Methods11 } from './_roomId@string/people/_userId@string/poster'
 import { Methods as Methods12 } from './_roomId@string/people/_userId@string/poster/file'
 import { Methods as Methods13 } from './_roomId@string/posters'
-import { Methods as Methods14 } from './_roomId@string/take_slot/_posterNumber@number'
+import { Methods as Methods14 } from './_roomId@string/posters/_posterId@string/approach'
+import { Methods as Methods15 } from './_roomId@string/take_slot/_posterNumber@number'
 
 const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const prefix = (baseURL === undefined ? 'http://localhost:3000/api' : baseURL).replace(/\/$/, '')
@@ -28,7 +29,8 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const PATH7 = '/poster'
   const PATH8 = '/poster/file'
   const PATH9 = '/posters'
-  const PATH10 = '/take_slot'
+  const PATH10 = '/approach'
+  const PATH11 = '/take_slot'
   const GET = 'GET'
   const POST = 'POST'
 
@@ -141,6 +143,19 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
             `${prefix}${prefix0}${PATH6}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         posters: {
+          _posterId: (val3: string) => {
+            const prefix3 = `${prefix0}${PATH9}/${val3}`
+
+            return {
+              approach: {
+                post: (option?: { config?: T }) =>
+                  fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, `${prefix3}${PATH10}`, POST, option).json(),
+                $post: (option?: { config?: T }) =>
+                  fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, `${prefix3}${PATH10}`, POST, option).json().then(r => r.body),
+                $path: () => `${prefix}${prefix3}${PATH10}`
+              }
+            }
+          },
           get: (option?: { query?: Methods13['get']['query'], config?: T }) =>
             fetch<Methods13['get']['resBody'], BasicHeaders, Methods13['get']['status']>(prefix, `${prefix0}${PATH9}`, GET, option).json(),
           $get: (option?: { query?: Methods13['get']['query'], config?: T }) =>
@@ -149,15 +164,15 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
             `${prefix}${prefix0}${PATH9}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         take_slot: {
-          _posterNumber: (val3: number) => {
-            const prefix3 = `${prefix0}${PATH10}/${val3}`
+          _posterNumber: (val4: number) => {
+            const prefix4 = `${prefix0}${PATH11}/${val4}`
 
             return {
               post: (option?: { config?: T }) =>
-                fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, prefix3, POST, option).json(),
+                fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, prefix4, POST, option).json(),
               $post: (option?: { config?: T }) =>
-                fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, prefix3, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${prefix3}`
+                fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, prefix4, POST, option).json().then(r => r.body),
+              $path: () => `${prefix}${prefix4}`
             }
           }
         },

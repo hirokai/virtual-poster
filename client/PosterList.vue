@@ -11,10 +11,11 @@
           <th>Y座標</th>
           <th>発表者</th>
           <th>タイトル</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="poster in postersSorted" :key="poster.id">
+        <tr v-for="poster in postersSorted" :key="poster.id" class="poster_row">
           <td>{{ poster.poster_number }}</td>
           <td>{{ poster.x }}</td>
           <td>{{ poster.y }}</td>
@@ -24,6 +25,7 @@
           <td>
             {{ poster.title }}
           </td>
+          <td><button @click="clickMove(poster.id)">移動</button></td>
         </tr>
       </tbody>
     </table>
@@ -49,11 +51,14 @@ import {
   RoomId,
   Poster as PosterTyp,
   Room,
+  PosterId,
 } from "../@types/types"
 
 import axios from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
+const client = api(axiosClient(axios))
+import jsSHA from "jssha"
 
 import { keyBy, sortBy } from "../common/util"
 import io from "socket.io-client"
@@ -89,11 +94,43 @@ export default defineComponent({
     const state = reactive({
       rooms: {} as { [index: string]: Room },
       room_id: room_id as RoomId,
-      socket: io(props.socketURL, { path: "/socket.io" }) as SocketIO.Socket,
+      socket: io(props.socketURL) as SocketIO.Socket,
       people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
       inputText: "",
       inputFocused: false,
+    })
+    const shaObj = new jsSHA("SHA-256", "TEXT", {
+      encoding: "UTF8",
+    })
+    shaObj.update(props.idToken)
+    const jwt_hash = shaObj.getHash("HEX")
+    state.socket.emit("Active", {
+      room_id,
+      user: props.myUserId,
+      token: jwt_hash,
+    })
+    console.log("Socket URL: ", props.socketURL)
+    state.socket.on("connection", () => {
+      console.log("SOCKET CONNECTED")
+    })
+    state.socket.on("person", d => {
+      console.log("socket person", d.name)
+      setPerson(d)
+    })
+    state.socket.on("person_multi", ds => {
+      console.log("socket people", ds.length)
+      for (const d of ds) {
+        setPerson(d)
+      }
+    })
+    state.socket.on("poster", (d: PosterTyp) => {
+      console.log("socket poster", d)
+      set(state.posters, d.id, d)
+    })
+
+    state.socket.on("greeting", () => {
+      state.socket.emit("active", props.myUserId)
     })
     axios.defaults.headers.common = {
       Authorization: `Bearer ${props.idToken}`,
@@ -176,26 +213,15 @@ export default defineComponent({
       window["socket"] = state.socket
 
       loadData()
-      socket.on("person", d => {
-        console.log("socket person", d.name)
-        setPerson(d)
-      })
-      socket.on("person_multi", ds => {
-        console.log("socket people", ds.length)
-        for (const d of ds) {
-          setPerson(d)
-        }
-      })
-      socket.on("poster", (d: PosterTyp) => {
-        console.log("socket poster", d)
-        set(state.posters, d.id, d)
-      })
-
-      socket.on("greeting", () => {
-        socket.emit("active", props.myUserId)
-      })
     })
-    return { ...toRefs(state), postersSorted, myself, uploadPoster }
+    const clickMove = async (pid: PosterId) => {
+      const r = await client.maps
+        ._roomId(room_id!)
+        .posters._posterId(pid)
+        .approach.$post()
+      console.log(r)
+    }
+    return { ...toRefs(state), postersSorted, myself, uploadPoster, clickMove }
   },
 })
 </script>
@@ -222,6 +248,10 @@ tr:nth-child(even) {
 }
 tr:nth-child(odd) {
   background: #fff;
+}
+
+tr.poster_row {
+  cursor: pointer;
 }
 
 th {

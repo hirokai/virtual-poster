@@ -15,6 +15,7 @@ import {
   Poster,
   PersonPos,
   PersonUpdate,
+  PosterId,
   GroupSocketData,
   MoveErrorSocketData,
   MoveSocketData,
@@ -165,6 +166,10 @@ export class Emit {
   }
   authError(user_id: UserId): void {
     this.emitter.to(user_id).emit("AuthError")
+  }
+  moveRequest(d: { to_poster: PosterId }): void {
+    console.log("Emitting: MoveRequest", d)
+    this.emitter.emit("MoveRequest", d)
   }
 }
 

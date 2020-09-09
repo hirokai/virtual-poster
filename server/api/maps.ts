@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { RoomId, MapEnterResponse, Announcement } from "@/@types/types"
 import { protectedRoute } from "../auth"
+import { emit } from "../socket"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 
@@ -45,6 +46,12 @@ async function maps_api_routes(
       return
     }
     return await map.getStaticMap()
+  })
+
+  fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
+    console.log("APPROACH", req["requester"])
+    emit.room(req["requester"]).moveRequest({ to_poster: req.params.posterId })
+    return { ok: true }
   })
 
   fastify.post<any>("/maps/:roomId/enter", async req => {

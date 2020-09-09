@@ -439,6 +439,7 @@ type EmitCommand =
   | "MapReset"
   | "ActiveUsers"
   | "ChatTyping"
+  | "MoveRequest"
 
 interface Emitter {
   emit(msg: EmitCommand, data?: any): void

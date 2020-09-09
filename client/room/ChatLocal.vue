@@ -39,6 +39,9 @@
       >
         {{ editingOld ? "保存" : "送信" }}
       </button>
+      <button v-if="is_chrome" id="dictation" @click="toggleDictation">
+        {{ dictation.running ? "音声入力中" : "音声入力" }}
+      </button>
       <button
         id="leave-chat"
         @click="$emit('leave-chat')"
@@ -100,7 +103,10 @@
             >編集</span
           >
         </div>
-        <div class="local-entry-content">
+        <div
+          class="local-entry-content"
+          @dblclick="speechText(c.text_decrypted || '')"
+        >
           <span
             class="comment-content"
             v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
@@ -179,6 +185,13 @@ export default defineComponent({
   setup(props, context) {
     const state = reactive({
       inputText: "",
+      voice: null as SpeechSynthesisVoice | null,
+      inputTextWithoutDictation: undefined as string | undefined,
+      dictation: {
+        running: false,
+        text: undefined as string | undefined,
+      },
+      recognition: null as any | null,
     })
     const numInputRows = computed((): number => {
       if (state.inputText == "") {
@@ -228,7 +241,7 @@ export default defineComponent({
           return c.kind == "person"
         }),
         (c: ChatCommentDecrypted) => {
-          return -c.timestamp
+          return c.timestamp
         }
       )
     })
@@ -247,9 +260,91 @@ export default defineComponent({
       }
     }
 
+    interface IWindow extends Window {
+      webkitSpeechRecognition: any
+    }
+
+    const { webkitSpeechRecognition }: IWindow = <IWindow>(window as any)
+
+    const toggleDictation = () => {
+      if (!state.dictation.running) {
+        startDictation()
+      } else {
+        stopDictation()
+      }
+    }
+
+    const startDictation = () => {
+      if (state.dictation.running) {
+        return
+      }
+      console.log("Starting dictation")
+      state.inputTextWithoutDictation = state.inputText
+      state.dictation.running = true
+
+      const SpeechRecognition = webkitSpeechRecognition
+      const recognition = new SpeechRecognition()
+      state.recognition = recognition
+      recognition.interimResults = true
+
+      recognition.onresult = event => {
+        const text = event.results[0][0].transcript
+        Vue.set(state.dictation, "text", text)
+        state.inputText = state.inputTextWithoutDictation + text
+        if (event.results[0].isFinal) {
+          state.inputText += "。"
+        }
+        console.log(event.results[0][0].transcript, event.results[0])
+      }
+      recognition.onend = () => {
+        console.log("Ended")
+        state.inputTextWithoutDictation = state.inputText
+        if (state.dictation.running) {
+          recognition.start()
+        }
+      }
+
+      recognition.start()
+    }
+
+    const stopDictation = () => {
+      state.dictation.running = false
+      console.log("stopDictation", state.recognition)
+      state.recognition.stop()
+      state.recognition = undefined
+    }
+
+    const speechText = (text: string) => {
+      window.speechSynthesis.cancel()
+
+      const utter = new SpeechSynthesisUtterance(text)
+      utter.lang = "ja-JP"
+      window.speechSynthesis.onvoiceschanged = () => {
+        const voices = window.speechSynthesis.getVoices()
+        // console.log(voices)
+        for (const voice of voices) {
+          if (voice.lang == "ja-JP") {
+            console.log(utter)
+            console.log(voice)
+            state.voice = voice
+            utter.voice = voice
+            break
+          }
+        }
+      }
+      const voices = window.speechSynthesis.getVoices()
+      state.voice = voices.filter(v => v.lang == "ja-JP")[0]
+      utter.voice = state.voice
+      console.log(voices.filter(v => v.lang == "ja-JP"))
+
+      window.speechSynthesis.speak(utter)
+    }
+
     context.parent?.$on("clear-chat-input", ev => {
       state.inputText = ""
     })
+
+    const is_chrome = !!window["chrome"]
 
     return {
       ...toRefs(state),
@@ -258,6 +353,9 @@ export default defineComponent({
       clearInput,
       startUpdateComment,
       numInputRows,
+      speechText,
+      toggleDictation,
+      is_chrome,
     }
   },
 })
@@ -360,6 +458,20 @@ textarea {
   100% {
     color: red;
   }
+}
+
+button#submit {
+  width: 60px;
+  height: 26px;
+  margin-left: 10px;
+  vertical-align: 7px;
+}
+
+button#dictation {
+  width: 90px;
+  height: 26px;
+  margin-left: 10px;
+  vertical-align: 7px;
 }
 
 button#leave-chat {

@@ -109,7 +109,7 @@
     />
     <ChatLocal
       ref="chatLocal"
-      inputTextFromParent=""
+      :inputTextFromParent="''"
       :myself="myself"
       :contentHidden="hidden"
       :comments="comments"
@@ -1193,13 +1193,6 @@ h2 {
 
 #announce a {
   color: inherit;
-}
-
-button#submit {
-  width: 60px;
-  height: 26px;
-  margin-left: 10px;
-  vertical-align: 7px;
 }
 
 button#leave-chat-on-map {

@@ -2,12 +2,14 @@
 import { AspidaClient, BasicHeaders, dataToURLString } from 'aspida'
 import { Methods as Methods0 } from '.'
 import { Methods as Methods1 } from './_userId@string'
-import { Methods as Methods2 } from './_userId@string/posters'
+import { Methods as Methods2 } from './_userId@string/access_code'
+import { Methods as Methods3 } from './_userId@string/posters'
 
 const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const prefix = (baseURL === undefined ? 'http://localhost:3000/api' : baseURL).replace(/\/$/, '')
   const PATH0 = '/people'
-  const PATH1 = '/posters'
+  const PATH1 = '/access_code'
+  const PATH2 = '/posters'
   const GET = 'GET'
   const POST = 'POST'
   const PATCH = 'PATCH'
@@ -17,13 +19,20 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
       const prefix0 = `${PATH0}/${val0}`
 
       return {
+        access_code: {
+          post: (option?: { body?: Methods2['post']['reqBody'], config?: T }) =>
+            fetch<Methods2['post']['resBody'], BasicHeaders, Methods2['post']['status']>(prefix, `${prefix0}${PATH1}`, POST, option).json(),
+          $post: (option?: { body?: Methods2['post']['reqBody'], config?: T }) =>
+            fetch<Methods2['post']['resBody'], BasicHeaders, Methods2['post']['status']>(prefix, `${prefix0}${PATH1}`, POST, option).json().then(r => r.body),
+          $path: () => `${prefix}${prefix0}${PATH1}`
+        },
         posters: {
-          get: (option?: { query?: Methods2['get']['query'], config?: T }) =>
-            fetch<Methods2['get']['resBody'], BasicHeaders, Methods2['get']['status']>(prefix, `${prefix0}${PATH1}`, GET, option).json(),
-          $get: (option?: { query?: Methods2['get']['query'], config?: T }) =>
-            fetch<Methods2['get']['resBody'], BasicHeaders, Methods2['get']['status']>(prefix, `${prefix0}${PATH1}`, GET, option).json().then(r => r.body),
-          $path: (option?: { method?: 'get'; query: Methods2['get']['query'] }) =>
-            `${prefix}${prefix0}${PATH1}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+          get: (option?: { query?: Methods3['get']['query'], config?: T }) =>
+            fetch<Methods3['get']['resBody'], BasicHeaders, Methods3['get']['status']>(prefix, `${prefix0}${PATH2}`, GET, option).json(),
+          $get: (option?: { query?: Methods3['get']['query'], config?: T }) =>
+            fetch<Methods3['get']['resBody'], BasicHeaders, Methods3['get']['status']>(prefix, `${prefix0}${PATH2}`, GET, option).json().then(r => r.body),
+          $path: (option?: { method?: 'get'; query: Methods3['get']['query'] }) =>
+            `${prefix}${prefix0}${PATH2}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         get: (option?: { query?: Methods1['get']['query'], config?: T }) =>
           fetch<Methods1['get']['resBody'], BasicHeaders, Methods1['get']['status']>(prefix, prefix0, GET, option).json(),

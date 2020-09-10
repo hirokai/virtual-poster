@@ -141,9 +141,14 @@ async function routes(
       return { ok: false, error: "Incorrect email address" }
     }
     const name = req.body.name as string
-    const access_code = req.body.access_code as string | undefined
+    const access_code = ((
+      req.body.access_code || ""
+    ).toString() as string).trim()
     console.log(name, access_code)
     const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
+    if (!rooms) {
+      return { ok: false, error: "Access code is invalid" }
+    }
 
     const avatar = model.people.randomAvatar()
     const r = await model.people.create(
@@ -188,6 +193,25 @@ async function routes(
         .send(r)
     } else {
       return r
+    }
+  })
+
+  fastify.post<any>("/people/:userId/access_code", async req => {
+    const access_code = ((
+      req.body.access_code || ""
+    ).toString() as string).trim()
+    const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
+    if (rooms) {
+      for (const rid of rooms) {
+        const r = await model.maps[rid].addUser(req["requester"], true, "user")
+        if (!r.ok) {
+          req.log.debug(r)
+          return { ok: false }
+        }
+      }
+      return { ok: true }
+    } else {
+      return { ok: false, error: "Access code is invalid" }
     }
   })
 

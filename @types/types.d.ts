@@ -2,6 +2,7 @@ import { admin } from "firebase-admin/lib/auth"
 import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
 import { SocketIOEmitter } from "socket.io-emitter"
+import { ComputedRef } from "@vue/composition-api"
 
 export type Point = { x: number; y: number }
 
@@ -116,7 +117,7 @@ type RoomAppState = {
   }
   posterChatGroup: UserId[]
 
-  activePoster: Poster | null
+  posterLooking: boolean
 
   botActive: boolean
 
@@ -438,6 +439,7 @@ type EmitCommand =
   | "PosterCommentRemove"
   | "PosterReset"
   | "Poster"
+  | "PosterRemove"
   | "MapReset"
   | "ActiveUsers"
   | "ChatTyping"

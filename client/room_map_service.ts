@@ -321,7 +321,7 @@ export const moveByArrow = (
   if (myChatGroup(props, state).value) {
     return { ok: false, moved, error: "during_chat" }
   }
-  if (state.activePoster) {
+  if (state.posterLooking) {
     return { ok: false, moved, error: "during_poster" }
   }
   const x = me.x
@@ -539,7 +539,7 @@ export const dblClickHandler = (
     }
     const poster = posterAt(state.posters, p)
     const person = poster ? undefined : personAt(state.people, p)
-    if (state.activePoster && !(person && isAdjacent(me, person))) {
+    if (state.posterLooking && !(person && isAdjacent(me, person))) {
       showMessage(
         props,
         state
@@ -597,7 +597,7 @@ export const dblClickHandler = (
       }
       const data = await client.maps
         ._roomId(props.room_id)
-        .take_slot._posterNumber(poster_location)
+        .poster_slots._posterNumber(poster_location)
         .$post()
       console.log("take poster result", data)
     }

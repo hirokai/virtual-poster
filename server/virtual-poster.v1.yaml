@@ -1106,7 +1106,7 @@ paths:
                   - ok
       operationId: post-logout
       description: Logout from the app and remove cookie
-  "/maps/{roomId}/take_slot/{posterNumber}":
+  "/maps/{roomId}/poster_slots/{posterNumber}":
     parameters:
       - schema:
           type: string
@@ -1134,6 +1134,21 @@ paths:
                     type: boolean
       operationId: post-maps-roomId-take_slot-posterLocation
       description: Take a poster slot
+    delete:
+      summary: ""
+      operationId: delete-maps-roomId-poster_slot-posterNumber
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+      description: "Release a poster slot the user reserved  "
+      parameters: []
   /latency_report:
     post:
       summary: Submit a latency report
@@ -1357,6 +1372,42 @@ paths:
                     type: boolean
       operationId: post-maps-roomId-posters-posterId-approach
       description: Approach a poster by walking.
+  "/people/{userId}/access_code":
+    parameters:
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    post:
+      summary: Post an access code
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: post-people-userId-access_code
+      description: "Post an access code for rooms, etc."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_code:
+                  type: string
+              required:
+                - access_code
 components:
   parameters:
     debug_token:

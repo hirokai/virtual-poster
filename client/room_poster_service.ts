@@ -7,6 +7,7 @@ import {
   Poster,
   ChatComment,
   MySocketObject,
+  PosterId,
 } from "../@types/types"
 import { keyBy } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
@@ -74,7 +75,7 @@ export const sendPosterComment = (
   state: RoomAppState,
   text: string
 ): void => {
-  const pid = adjacentPosters(props, state).value[0]?.id
+  const pid = adjacentPoster(props, state).value?.id
   if (!pid) {
     return
   }
@@ -180,6 +181,15 @@ export const initPosterService = async (
   socket.on("poster.comment.remove", (comment_id: string) => {
     console.log("poster.comment.remove", comment_id)
     Vue.delete(state.posterComments, comment_id)
+  })
+
+  socket.on("PosterRemove", (poster_id: PosterId) => {
+    const pid = adjacentPoster(props, state).value?.id
+    Vue.delete(state.posters, poster_id)
+    console.log("PosterRemove", pid, poster_id)
+    if (pid == poster_id) {
+      state.posterLooking = false
+    }
   })
   const posters = await client.maps._roomId(props.room_id).posters.$get()
   state.posters = keyBy(posters, "id")

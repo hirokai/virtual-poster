@@ -452,6 +452,7 @@ export class MapModel {
       return r2
     })
   }
+
   async assignPosterLocation(
     poster_number: number,
     author: UserId,
@@ -504,19 +505,40 @@ export class MapModel {
       },
     }
   }
+
   async freePosterLocation(
     poster_number: number,
-    author: UserId
-  ): Promise<boolean> {
+    author: UserId,
+    forceRemoveComments = false
+  ): Promise<{ ok: boolean; poster_id?: PosterId; error?: string }> {
     try {
+      const poster: Poster | null = await model.posters.getByNumber(
+        this.room_id,
+        poster_number
+      )
+      if (!poster) {
+        return { ok: false, error: "Poster not found" }
+      }
+      if (poster.author != author) {
+        return {
+          ok: false,
+          poster_id: poster.id,
+          error: "Not my poster",
+        }
+      }
+      if (forceRemoveComments) {
+        await db.query(`DELETE FROM comment_to_poster WHERE poster=$1;`, [
+          poster.id,
+        ])
+      }
       const rows = await db.query(
         `DELETE FROM poster WHERE author=$1 AND location in (SELECT id FROM map_cell WHERE room=$2 AND poster_number=$3) RETURNING id;`,
         [author, this.room_id, poster_number]
       )
-      return rows.length == 1
+      return { ok: rows.length == 1, poster_id: rows[0]?.id }
     } catch (err) {
       log.error(err)
-      return false
+      return { ok: false, error: "DB error" }
     }
   }
   async getAdjacentPosters(pos: Point): Promise<PosterId[]> {
@@ -616,9 +638,16 @@ export class MapModel {
     }
   }
   static async getAllowedRoomsFromCode(
-    code: string | undefined
-  ): Promise<RoomId[]> {
-    // Stub
-    return (code || "").split(":").concat(DEFAULT_ROOMS)
+    code: string
+  ): Promise<RoomId[] | undefined> {
+    // If it has non-existent room ID, return undefined
+    const rooms = code.split(":")
+    for (const rid of rooms) {
+      const mm = model.maps[rid]
+      if (!mm) {
+        return undefined
+      }
+    }
+    return rooms.concat(DEFAULT_ROOMS)
   }
 }

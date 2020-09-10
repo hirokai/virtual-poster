@@ -1,7 +1,7 @@
 <template>
   <div
     id="app-main"
-    :class="{ poster_active: !!activePoster, mobile: isMobile }"
+    :class="{ poster_active: posterLooking, mobile: isMobile }"
     v-cloak
   >
     <div
@@ -73,7 +73,7 @@
       id="announce"
       :class="{
         marquee: announcement && announcement.marquee,
-        poster_active: !!activePoster,
+        poster_active: posterLooking,
       }"
       :style="{ top: isMobile ? '530px' : undefined }"
     >
@@ -94,7 +94,7 @@
       :hidden="hidden"
       :people="people"
       :posters="posters"
-      :activePoster="activePoster"
+      :activePoster="posterLooking ? adjacentPoster : undefined"
       :cells="cellsMag"
       :center="center"
       :myChatGroup="myChatGroup"
@@ -111,7 +111,7 @@
     />
     <MiniMap
       v-if="enableMiniMap && !botActive"
-      v-show="!activePoster"
+      v-show="!posterLooking"
       :isMobile="isMobile"
       :hidden="hidden"
       :cells="hallMap"
@@ -126,7 +126,7 @@
     />
     <ChatLocal
       ref="chatLocal"
-      v-show="isMobile ? !enableMiniMap && !activePoster : true"
+      v-show="isMobile ? !enableMiniMap && !posterLooking : true"
       :isMobile="isMobile"
       :inputTextFromParent="''"
       :myself="myself"
@@ -136,7 +136,7 @@
       :editingOld="editingOld"
       :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
       :inputFocused="inputFocused"
-      :poster="botActive ? null : activePoster"
+      :poster="botActive || !posterLooking ? null : adjacentPoster"
       :people_typing="people_typing"
       :enableEncryption="enableEncryption"
       :encryptionPossibleInChat="encryption_possible_in_chat"
@@ -154,7 +154,7 @@
       ref="posterComponent"
       :isMobile="isMobile"
       :myself="myself"
-      :poster="activePoster"
+      :poster="posterLooking ? adjacentPoster : undefined"
       :comments="posterComments"
       :people="people"
       :editingOld="editingOld"
@@ -165,16 +165,16 @@
       @delete-comment="deleteComment"
       @set-editing-old="setEditingOld"
       @on-focus-input="onFocusInput"
-      v-show="activePoster"
+      v-show="posterLooking"
     />
     <button
       id="enter-poster-on-map"
       @click="enterPoster"
-      v-if="adjacentPoster && !activePoster"
+      v-if="adjacentPoster && !posterLooking"
     >
       ポスターを閲覧
     </button>
-    <div id="poster-preview" v-if="adjacentPoster && !activePoster">
+    <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
       <span style="font-weight: bold;"
         >{{ adjacentPoster.poster_number }}:
         {{ people[adjacentPoster.author].name }}</span
@@ -183,7 +183,7 @@
       <br />
       {{ adjacentPoster.title }}
     </div>
-    <button id="leave-poster-on-map" @click="leavePoster" v-if="activePoster">
+    <button id="leave-poster-on-map" @click="leavePoster" v-if="posterLooking">
       ポスターから離脱
     </button>
     <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
@@ -466,7 +466,7 @@ export default defineComponent({
         [groupId: string]: ChatGroup
       },
       posterChatGroup: [] as UserId[],
-      activePoster: null,
+      posterLooking: false,
 
       botActive: false,
 
@@ -567,21 +567,6 @@ export default defineComponent({
 
     const showMessage = showMessage_(props, state)
 
-    watch(
-      () => state.activePoster,
-      (poster: PosterTyp | null) => {
-        if (poster) {
-          client.posters
-            ._posterId(poster.id)
-            .comments.$get()
-            .then(data => {
-              state.posterComments = keyBy(data, "id")
-            })
-            .catch(err => console.error(err))
-        }
-      }
-    )
-
     const posterComponent = ref<typeof Poster>()
 
     const clearInput = () => {
@@ -589,12 +574,19 @@ export default defineComponent({
       context.emit("clear-chat-input")
     }
 
-    const enterPoster = () => {
-      state.activePoster = adjacentPoster.value || null
+    const enterPoster = async () => {
+      const pid = adjacentPoster.value?.id
+      if (!pid) {
+        return
+      }
+      state.posterLooking = true
+      const data = await client.posters._posterId(pid).comments.$get()
+      state.posterComments = keyBy(data, "id")
     }
 
     const leavePoster = () => {
-      state.activePoster = null
+      state.posterLooking = false
+      state.posterComments = {}
     }
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {

@@ -108,7 +108,7 @@ async function routes(
     return { ok: !!posters, posters: posters || undefined }
   })
 
-  fastify.post<any>("/maps/:roomId/take_slot/:posterNumber", async req => {
+  fastify.post<any>("/maps/:roomId/poster_slots/:posterNumber", async req => {
     const { roomId, posterNumber } = req.params as Record<string, string>
     const num = parseInt(posterNumber)
     if (isNaN(num)) {
@@ -121,6 +121,27 @@ async function routes(
       )
       if (r.ok && r.poster) {
         emit.poster(r.poster)
+      }
+      return r
+    }
+  })
+
+  fastify.delete<any>("/maps/:roomId/poster_slots/:posterNumber", async req => {
+    const { roomId, posterNumber } = req.params as Record<string, string>
+    const num = parseInt(posterNumber)
+    if (!model.maps[roomId]) {
+      throw { statusCode: 404 }
+    }
+    if (isNaN(num)) {
+      return { ok: false }
+    } else {
+      const r = await model.maps[roomId].freePosterLocation(
+        num,
+        req["requester"],
+        true
+      )
+      if (r.ok && r.poster_id) {
+        emit.posterRemove(roomId, req["requester"], r.poster_id)
       }
       return r
     }

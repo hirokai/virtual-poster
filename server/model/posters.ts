@@ -22,6 +22,22 @@ export async function get(poster_id: string): Promise<Poster | null> {
   return d as Poster
 }
 
+export async function getByNumber(
+  room_id: RoomId,
+  num: number
+): Promise<Poster | null> {
+  const rows = await db.query(
+    `
+      SELECT id FROM poster
+      WHERE location in
+        (SELECT id FROM map_cell
+          WHERE room=$1 AND poster_number=$2);
+        `,
+    [room_id, num]
+  )
+  return rows.length > 0 ? await get(rows[0].id) : null
+}
+
 export async function set(poster: Poster): Promise<boolean> {
   await db.query(
     `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4 where id=$5;`,

@@ -158,6 +158,12 @@ export class Emit {
   poster(d: Poster, socket: Emitter = this.emitter): void {
     socket.emit("Poster", d)
   }
+  posterRemove(rid: RoomId, uid: UserId, pid: PosterId): void {
+    this.emitter
+      .to(rid)
+      .to(uid)
+      .emit("PosterRemove", pid)
+  }
   posterReset(): void {
     this.emitter.emit("PosterReset")
   }
@@ -356,7 +362,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           socket.emit("auth_error")
         }
 
-        log.debug("active", room, user)
+        log.debug("User Active", room, user)
         userLog({
           userId: user,
           operation: "active",

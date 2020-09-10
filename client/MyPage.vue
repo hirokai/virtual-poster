@@ -110,8 +110,14 @@
           >
             <img :src="dataURI[poster.id]" />
           </div>
-          <button class="remove-poster" @click="removePoster(poster.id)">
+          <button class="remove-poster" @click="removePosterFile(poster.id)">
             ポスター画像を削除
+          </button>
+          <button
+            class="release-poster-slot"
+            @click="releasePosterSlot(poster)"
+          >
+            ポスター枠を開放
           </button>
         </div>
       </div>
@@ -150,6 +156,10 @@
         </div>
       </div>
       <div v-if="tab == 'account'">
+        <h2>アクセスコード</h2>
+        <label for="access_code">アクセスコード</label>
+        <input type="text" id="access_code" v-model="access_code" />
+        <button @click="submitAccessCode(access_code)">送信</button>
         <h2>アカウント</h2>
         <div>
           <button class="btn-danger" @click="deleteAccount">
@@ -341,10 +351,9 @@ export default defineComponent({
         user_id: string
       } | null,
       myUserId: myUserId,
-      idToken: null as string | null,
       debug_as,
       debug_token,
-      jwt_hash: "",
+      jwt_hash: localStorage["virtual-poster:jwt_hash"] as string | undefined,
 
       people: {} as { [index: string]: PersonWithEmail },
       posters: {} as { [index: string]: Poster },
@@ -371,6 +380,8 @@ export default defineComponent({
       mouseOnAvatar: {} as { [index: string]: boolean },
       dragover: {} as { [poster_id: string]: boolean },
       count: 0,
+
+      access_code: "",
 
       enableEncryption: false,
       showPrivKey: false,
@@ -656,7 +667,7 @@ export default defineComponent({
           })
       }
     }
-    const removePoster = (poster_id: PosterId) => {
+    const removePosterFile = (poster_id: PosterId) => {
       axios
         .delete("/posters/" + poster_id + "/file")
         .then(({ data }) => {
@@ -681,6 +692,14 @@ export default defineComponent({
             console.error("Socket connection failed.")
             return
           }
+          socket.on("connect", () => {
+            socket?.emit("Active", {
+              room: "::mypage",
+              user: state.myUserId,
+              token: state.jwt_hash,
+            })
+            console.log("Connected")
+          })
           socket.on("person", d => {
             setPerson(d)
           })
@@ -689,6 +708,12 @@ export default defineComponent({
             for (const d of ds) {
               setPerson(d)
             }
+          })
+          socket.on("Poster", (p: Poster) => {
+            Vue.set(state.posters, p.id, p)
+          })
+          socket.on("PosterRemove", (pid: PosterId) => {
+            Vue.delete(state.posters, pid)
           })
         })
         .catch(err => {
@@ -1020,6 +1045,32 @@ export default defineComponent({
       }
     }
 
+    const submitAccessCode = async (code: string) => {
+      const r = await client.people
+        ._userId(state.myUserId)
+        .access_code.$post({ body: { access_code: code } })
+      console.log(r)
+      if (!r.ok) {
+        const idx = r.error?.indexOf("Access code is invalid")
+        if (idx && idx >= 0) {
+          alert("アクセスコードが正しくありません。")
+        } else {
+          alert("エラー（すでにアクセスできるマップの可能性）")
+        }
+      }
+    }
+
+    const releasePosterSlot = async (poster: Poster) => {
+      const num = poster.poster_number
+      if (!num) {
+        return
+      }
+      await client.maps
+        ._roomId(poster.room)
+        .poster_slots._posterNumber(num)
+        .$delete()
+    }
+
     return {
       ...toRefs(state),
       onMouseOverAvatar,
@@ -1035,13 +1086,15 @@ export default defineComponent({
       clickAvatar,
       saveName,
       onDrop,
-      removePoster,
+      removePosterFile,
+      releasePosterSlot,
       goback_path,
       avatars: difference(range(1, 31), [20]).map(n => {
         return n.toString().padStart(3, "0")
       }),
       page_from,
       myself,
+      submitAccessCode,
     }
   },
 })
@@ -1187,6 +1240,12 @@ div.poster img {
 button.remove-poster {
   position: relative;
   left: 10px;
+  bottom: 1px;
+}
+
+button.release-poster-slot {
+  position: relative;
+  left: 100px;
   bottom: 1px;
 }
 

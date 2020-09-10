@@ -7,4 +7,12 @@ export type Methods = {
       ok?: boolean
     }
   }
+
+  delete: {
+    status: 200
+
+    resBody: {
+      ok?: boolean
+    }
+  }
 }

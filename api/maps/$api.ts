@@ -13,9 +13,9 @@ import { Methods as Methods9 } from './_roomId@string/people'
 import { Methods as Methods10 } from './_roomId@string/people/_userId@string/groups'
 import { Methods as Methods11 } from './_roomId@string/people/_userId@string/poster'
 import { Methods as Methods12 } from './_roomId@string/people/_userId@string/poster/file'
-import { Methods as Methods13 } from './_roomId@string/posters'
-import { Methods as Methods14 } from './_roomId@string/posters/_posterId@string/approach'
-import { Methods as Methods15 } from './_roomId@string/take_slot/_posterNumber@number'
+import { Methods as Methods13 } from './_roomId@string/poster_slots/_posterNumber@number'
+import { Methods as Methods14 } from './_roomId@string/posters'
+import { Methods as Methods15 } from './_roomId@string/posters/_posterId@string/approach'
 
 const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const prefix = (baseURL === undefined ? 'http://localhost:3000/api' : baseURL).replace(/\/$/, '')
@@ -28,11 +28,12 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
   const PATH6 = '/people'
   const PATH7 = '/poster'
   const PATH8 = '/poster/file'
-  const PATH9 = '/posters'
-  const PATH10 = '/approach'
-  const PATH11 = '/take_slot'
+  const PATH9 = '/poster_slots'
+  const PATH10 = '/posters'
+  const PATH11 = '/approach'
   const GET = 'GET'
   const POST = 'POST'
+  const DELETE = 'DELETE'
 
   return {
     _roomId: (val0: string) => {
@@ -142,39 +143,43 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
           $path: (option?: { method?: 'get'; query: Methods9['get']['query'] }) =>
             `${prefix}${prefix0}${PATH6}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
-        posters: {
-          _posterId: (val3: string) => {
+        poster_slots: {
+          _posterNumber: (val3: number) => {
             const prefix3 = `${prefix0}${PATH9}/${val3}`
+
+            return {
+              post: (option?: { config?: T }) =>
+                fetch<Methods13['post']['resBody'], BasicHeaders, Methods13['post']['status']>(prefix, prefix3, POST, option).json(),
+              $post: (option?: { config?: T }) =>
+                fetch<Methods13['post']['resBody'], BasicHeaders, Methods13['post']['status']>(prefix, prefix3, POST, option).json().then(r => r.body),
+              delete: (option?: { config?: T }) =>
+                fetch<Methods13['delete']['resBody'], BasicHeaders, Methods13['delete']['status']>(prefix, prefix3, DELETE, option).json(),
+              $delete: (option?: { config?: T }) =>
+                fetch<Methods13['delete']['resBody'], BasicHeaders, Methods13['delete']['status']>(prefix, prefix3, DELETE, option).json().then(r => r.body),
+              $path: () => `${prefix}${prefix3}`
+            }
+          }
+        },
+        posters: {
+          _posterId: (val4: string) => {
+            const prefix4 = `${prefix0}${PATH10}/${val4}`
 
             return {
               approach: {
                 post: (option?: { config?: T }) =>
-                  fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, `${prefix3}${PATH10}`, POST, option).json(),
+                  fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, `${prefix4}${PATH11}`, POST, option).json(),
                 $post: (option?: { config?: T }) =>
-                  fetch<Methods14['post']['resBody'], BasicHeaders, Methods14['post']['status']>(prefix, `${prefix3}${PATH10}`, POST, option).json().then(r => r.body),
-                $path: () => `${prefix}${prefix3}${PATH10}`
+                  fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, `${prefix4}${PATH11}`, POST, option).json().then(r => r.body),
+                $path: () => `${prefix}${prefix4}${PATH11}`
               }
             }
           },
-          get: (option?: { query?: Methods13['get']['query'], config?: T }) =>
-            fetch<Methods13['get']['resBody'], BasicHeaders, Methods13['get']['status']>(prefix, `${prefix0}${PATH9}`, GET, option).json(),
-          $get: (option?: { query?: Methods13['get']['query'], config?: T }) =>
-            fetch<Methods13['get']['resBody'], BasicHeaders, Methods13['get']['status']>(prefix, `${prefix0}${PATH9}`, GET, option).json().then(r => r.body),
-          $path: (option?: { method?: 'get'; query: Methods13['get']['query'] }) =>
-            `${prefix}${prefix0}${PATH9}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
-        },
-        take_slot: {
-          _posterNumber: (val4: number) => {
-            const prefix4 = `${prefix0}${PATH11}/${val4}`
-
-            return {
-              post: (option?: { config?: T }) =>
-                fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, prefix4, POST, option).json(),
-              $post: (option?: { config?: T }) =>
-                fetch<Methods15['post']['resBody'], BasicHeaders, Methods15['post']['status']>(prefix, prefix4, POST, option).json().then(r => r.body),
-              $path: () => `${prefix}${prefix4}`
-            }
-          }
+          get: (option?: { query?: Methods14['get']['query'], config?: T }) =>
+            fetch<Methods14['get']['resBody'], BasicHeaders, Methods14['get']['status']>(prefix, `${prefix0}${PATH10}`, GET, option).json(),
+          $get: (option?: { query?: Methods14['get']['query'], config?: T }) =>
+            fetch<Methods14['get']['resBody'], BasicHeaders, Methods14['get']['status']>(prefix, `${prefix0}${PATH10}`, GET, option).json().then(r => r.body),
+          $path: (option?: { method?: 'get'; query: Methods14['get']['query'] }) =>
+            `${prefix}${prefix0}${PATH10}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         get: (option?: { query?: Methods1['get']['query'], config?: T }) =>
           fetch<Methods1['get']['resBody'], BasicHeaders, Methods1['get']['status']>(prefix, prefix0, GET, option).json(),

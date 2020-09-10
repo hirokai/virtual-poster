@@ -17,7 +17,8 @@
     "build": "vue-cli-service build && tsc",
     "lint": "vue-cli-service lint --no-fix",
     "lint:fix": "vue-cli-service lint",
-    "db": "psql postgres -d virtual_poster"
+    "db": "psql postgres -d virtual_poster",
+    "dev:api": "rm -r api && openapi2aspida -i server/virtual-poster.v1.yaml"
   },
   "husky": {
     "hooks": {}

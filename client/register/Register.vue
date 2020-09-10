@@ -248,6 +248,10 @@ export default defineComponent({
           "このEmailアドレスのアカウントは既に登録されています。ホーム画面に移動します。"
         )
         location.href = "/"
+      } else if (data.error?.indexOf("Access code is invalid")) {
+        alert(
+          "アクセスコードが正しくありません。修正するか，アクセスコード無しで登録してください。"
+        )
       }
     }
     return {

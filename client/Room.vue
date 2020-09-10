@@ -1,5 +1,9 @@
 <template>
-  <div id="app-main" v-cloak>
+  <div
+    id="app-main"
+    :class="{ poster_active: !!activePoster, mobile: isMobile }"
+    v-cloak
+  >
     <div
       id="header"
       :style="{
@@ -67,7 +71,10 @@
     </div>
     <div
       id="announce"
-      :class="{ marquee: announcement && announcement.marquee }"
+      :class="{
+        marquee: announcement && announcement.marquee,
+        poster_active: !!activePoster,
+      }"
       :style="{ top: isMobile ? '530px' : undefined }"
     >
       <div
@@ -87,6 +94,7 @@
       :hidden="hidden"
       :people="people"
       :posters="posters"
+      :activePoster="activePoster"
       :cells="cellsMag"
       :center="center"
       :myChatGroup="myChatGroup"
@@ -156,14 +164,29 @@
       @update-poster-comment="updatePosterComment"
       @delete-comment="deleteComment"
       @set-editing-old="setEditingOld"
+      @on-focus-input="onFocusInput"
       v-show="activePoster"
     />
     <button
-      id="leave-chat-on-map"
-      @click="leaveChat"
-      :disabled="!myChatGroup"
-      v-show="myChatGroup"
+      id="enter-poster-on-map"
+      @click="enterPoster"
+      v-if="adjacentPoster && !activePoster"
     >
+      ポスターを閲覧
+    </button>
+    <div id="poster-preview" v-if="adjacentPoster && !activePoster">
+      <span style="font-weight: bold;"
+        >{{ adjacentPoster.poster_number }}:
+        {{ people[adjacentPoster.author].name }}</span
+      >
+
+      <br />
+      {{ adjacentPoster.title }}
+    </div>
+    <button id="leave-poster-on-map" @click="leavePoster" v-if="activePoster">
+      ポスターから離脱
+    </button>
+    <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
       会話から離脱
     </button>
     <div id="message" :class="{ hide: message.hide }">
@@ -245,7 +268,7 @@ import {
 import {
   updatePosterComment,
   doSubmitPosterComment,
-  activePoster as _activePoster,
+  adjacentPoster as _adjacentPoster,
   doUploadPoster,
   adjacentPosters,
   initPosterService,
@@ -443,6 +466,7 @@ export default defineComponent({
         [groupId: string]: ChatGroup
       },
       posterChatGroup: [] as UserId[],
+      activePoster: null,
 
       botActive: false,
 
@@ -539,13 +563,13 @@ export default defineComponent({
       }
     )
 
-    const activePoster = _activePoster(props, state)
+    const adjacentPoster = _adjacentPoster(props, state)
 
     const showMessage = showMessage_(props, state)
 
     watch(
-      () => activePoster.value,
-      (poster: PosterTyp | undefined) => {
+      () => state.activePoster,
+      (poster: PosterTyp | null) => {
         if (poster) {
           client.posters
             ._posterId(poster.id)
@@ -563,6 +587,14 @@ export default defineComponent({
     const clearInput = () => {
       console.log("clearInput")
       context.emit("clear-chat-input")
+    }
+
+    const enterPoster = () => {
+      state.activePoster = adjacentPoster.value || null
+    }
+
+    const leavePoster = () => {
+      state.activePoster = null
     }
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
@@ -784,10 +816,10 @@ export default defineComponent({
             state.socket,
             props,
             state,
-            activePoster,
+            adjacentPoster,
             data?.public_key
           ),
-          initPosterService(axios, state.socket, props, state, activePoster),
+          initPosterService(axios, state.socket, props, state, adjacentPoster),
         ])
         const other_users_encryptions = myChatGroup.value
           ? state.chatGroups[myChatGroup.value!].users
@@ -1026,18 +1058,32 @@ export default defineComponent({
       selected,
       inputArrowKey,
       myChatGroup,
-      activePoster,
+      adjacentPoster,
       myself,
       updatePosterComment,
       chatGroupOfUser: chatGroupOfUser(state),
       selectedPerson,
       posterComponent,
+      enterPoster,
+      leavePoster,
     }
   },
 })
 </script>
 
 <style>
+*,
+*:before,
+*:after {
+  -webkit-box-sizing: inherit;
+  box-sizing: inherit;
+}
+
+html {
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
 @font-face {
   font-family: "PixelMplus";
   src: url(/PixelMplus12-Regular.ttf);
@@ -1054,7 +1100,8 @@ body {
   background: white;
   z-index: 100;
   width: 528px;
-  height: 40px;
+  height: 38px;
+  margin: 0px;
   /* background: #ccc; */
 }
 
@@ -1086,6 +1133,10 @@ h2 {
   overflow: hidden;
 }
 
+#announce.poster_active {
+  top: 315px;
+}
+
 #announce a {
   color: inherit;
 }
@@ -1095,6 +1146,33 @@ button#leave-chat-on-map {
   width: 120px;
   height: 26px;
   left: 400px;
+  top: 60px;
+}
+
+button#enter-poster-on-map {
+  position: absolute;
+  width: 120px;
+  height: 26px;
+  left: 400px;
+  top: 60px;
+}
+
+div#poster-preview {
+  position: absolute;
+  padding: 8px;
+  width: 180px;
+  /* height: 100px; */
+  left: 340px;
+  top: 90px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+button#leave-poster-on-map {
+  position: absolute;
+  width: 150px;
+  height: 26px;
+  left: 370px;
   top: 60px;
 }
 
@@ -1211,6 +1289,11 @@ button#leave-chat-on-map {
   box-shadow: 2px 2px 2px #8c8;
   /* animation: opacity 1s linear; */
 }
+
+.poster_active #message {
+  top: 250px;
+}
+
 #message.hide {
   display: none;
   /* animation: opacity 1s linear; */

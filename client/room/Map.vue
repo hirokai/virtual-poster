@@ -6,6 +6,7 @@
       top: isMobile ? '0px' : undefined,
       left: isMobile ? '3px' : undefined,
     }"
+    :class="{ small: !!activePoster, normal: goBackToNormal }"
     viewBox="0 0 528 528"
   >
     <g v-for="(row, yi) in cells" :key="yi" :data-y="row[0].y">
@@ -103,6 +104,7 @@ import Vue from "vue"
 import {
   defineComponent,
   reactive,
+  watch,
   toRefs,
   computed,
   PropType,
@@ -180,9 +182,14 @@ export default defineComponent({
       type: Boolean,
       required: true,
     },
+    activePoster: {
+      type: Object as PropType<Poster>,
+    },
   },
   setup(props, context) {
-    const state = reactive({})
+    const state = reactive({
+      goBackToNormal: false,
+    })
     const select = (p: Point) => {
       context.emit("select", p)
     }
@@ -216,18 +223,28 @@ export default defineComponent({
       context.emit("inputArrowKey", key)
     }
     const clickController = event => {
-      const x = event.layerX - 384
-      const y = event.layerY - 432
-      if (y <= 48) {
+      const scale = props.activePoster ? 0.6 : 1
+      const x = event.layerX - 384 * scale
+      const y = event.layerY - 432 * scale
+      if (y <= 48 * scale) {
         pressArrowButton("ArrowUp")
-      } else if (x < 48) {
+      } else if (x < 48 * scale) {
         pressArrowButton("ArrowLeft")
-      } else if (x < 96) {
+      } else if (x < 96 * scale) {
         pressArrowButton("ArrowDown")
       } else {
         pressArrowButton("ArrowRight")
       }
     }
+
+    watch(
+      () => !!props.activePoster,
+      () => {
+        if (!props.activePoster) {
+          state.goBackToNormal = true
+        }
+      }
+    )
 
     const isSelectedUser = (cell: Cell) => {
       return props.selectedUsers.has(
@@ -251,15 +268,53 @@ export default defineComponent({
 </script>
 
 <style lang="css">
+:root {
+  --map_scale_normal: 1;
+  --map_scale_small: 0.5;
+}
+
 svg#cells {
   position: absolute;
   left: 8px;
   top: 50px;
-  height: 528px;
-  width: 528px;
+  height: calc(48px * 11);
+  width: calc(48px * 11);
   user-select: none;
+  /* transform: translate(0px, 0px) scale(0.8); */
   transition: opacity 0.5s linear;
   z-index: -1;
+}
+
+svg#cells.normal {
+  animation-name: svg_scale_back;
+  animation-duration: 0.5s;
+  animation-direction: normal;
+  animation-fill-mode: forwards;
+}
+
+svg#cells.small {
+  animation-name: svg_scale;
+  animation-duration: 0.5s;
+  animation-direction: normal;
+  animation-fill-mode: forwards;
+}
+
+@keyframes svg_scale {
+  0% {
+    transform: translate(0px, 0px) scale(var(--map_scale_normal));
+  }
+  100% {
+    transform: translate(-133px, -133px) scale(var(--map_scale_small));
+  }
+}
+
+@keyframes svg_scale_back {
+  0% {
+    transform: translate(-133px, -133px) scale(var(--map_scale_small));
+  }
+  100% {
+    transform: translate(0px, 0px) scale(var(--map_scale_normal));
+  }
 }
 
 #controller polygon {

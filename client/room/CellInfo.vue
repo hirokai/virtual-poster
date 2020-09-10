@@ -56,7 +56,7 @@ export default defineComponent({
 
 #cell-info {
   position: absolute;
-  top: 35px;
+  top: 33px;
   left: 10px;
 }
 </style>

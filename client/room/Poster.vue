@@ -57,34 +57,34 @@
         トラックパッドの2本指スクロール）
       </div>
     </div>
+    <div id="poster-chat-input-container">
+      <h3>ポスターにコメント書き込み（参加者全員が読めます）</h3>
+      <textarea
+        ref="input"
+        id="poster-chat-input"
+        v-model="inputText"
+        :rows="numInputRows"
+        @compositionstart="composing = true"
+        @compositionend="composing = false"
+        @focus="$emit('on-focus-input', true)"
+        @blur="$emit('on-focus-input', false)"
+        placeholder="Shift+Enterで送信"
+      ></textarea>
+      <button
+        id="submit-poster-comment"
+        @click="$emit('submit-poster-comment', inputText)"
+      >
+        {{ editingOld ? "保存" : "送信" }}
+      </button>
+    </div>
     <div
       id="poster-comments-container"
+      :class="{ poster_active: !!poster }"
       :style="{
-        top: isMobile ? '560px' : undefined,
-        height: isMobile ? 'calc(100% - 580px)' : undefined,
         width: isMobile ? '520px' : undefined,
+        bottom: '' + (120 + numInputRows * 20) + 'px',
       }"
     >
-      <h3>ポスターにコメント書き込み（参加者全員が読めます）</h3>
-      <div id="poster-chat-input-container">
-        <textarea
-          ref="input"
-          id="poster-chat-input"
-          v-model="inputText"
-          :rows="numInputRows"
-          @compositionstart="composing = true"
-          @compositionend="composing = false"
-          @focus="$emit('on-focus-input', true)"
-          @blur="$emit('on-focus-input', false)"
-          placeholder="Shift+Enterで送信"
-        ></textarea>
-        <button
-          id="submit-poster-comment"
-          @click="$emit('submit-poster-comment', inputText)"
-        >
-          {{ editingOld ? "保存" : "送信" }}
-        </button>
-      </div>
       <div id="poster-comments">
         <div
           v-for="c in comments_sorted"
@@ -105,10 +105,10 @@
             @click="startUpdateComment(c.id)"
             >編集</span
           >
-          <span
+          <div
             class="comment-content"
             v-html="c.text_decrypted.replace(/[\r\n]/g, '<br>')"
-          ></span>
+          ></div>
         </div>
       </div>
     </div>
@@ -125,6 +125,7 @@ import {
 } from "../../@types/types"
 import { inRange, sortBy } from "../../common/util"
 import axiosDefault from "axios"
+import { countLines } from "../util"
 
 import Vue from "vue"
 import {
@@ -173,8 +174,6 @@ export default defineComponent({
   },
   setup(props, context) {
     const state = reactive({
-      //FIXME: Stub
-      numInputRows: 1,
       posterDataURI: "",
       inputText: "",
       posterStatus: "unknown" as
@@ -249,6 +248,22 @@ export default defineComponent({
       }
     )
 
+    const numInputRows = computed((): number => {
+      if (state.inputText == "") {
+        return 1
+      }
+      const el = document.querySelector(
+        "#poster-chat-input"
+      ) as HTMLTextAreaElement
+      if (el) {
+        const c = countLines(el)
+        console.log("countLines", c)
+        return Math.min(c, 15)
+      } else {
+        return 0
+      }
+    })
+
     const posterImage = ref<Element>()
 
     const clearInput = () => {
@@ -302,13 +317,14 @@ export default defineComponent({
       startUpdateComment,
       comments_sorted,
       clearInput,
+      numInputRows,
       ...CommonMixin,
     }
   },
 })
 </script>
 
-<style lang="css">
+<style lang="css" scoped>
 h3 {
   font-size: 14px;
 }
@@ -339,12 +355,33 @@ div#poster-container {
   width: calc(95vh / 1.4);
   height: 95vh;
   z-index: 200;
+  height: 613px;
+}
+
+div#poster-comments-container.poster_active {
+  /* height: calc(100% - 485px); */
+  top: 343px;
+}
+
+.mobile div#poster-comments-container {
+  height: calc(100% - 580px);
+  top: 560px;
+}
+
+.mobile div#poster-comments-container.poster_active {
+  top: 280px;
+  height: calc(100% - 400px);
 }
 
 @media (max-width: 1270px) {
   div#poster-container {
     left: 550px;
   }
+}
+
+.comment-edit,
+.comment-delete {
+  cursor: pointer;
 }
 
 div#poster {
@@ -368,17 +405,15 @@ div#poster-comments-container {
   border: 1px solid #888;
   position: absolute;
   left: 8px;
-  top: 613px;
-  width: 526px;
+  width: 528px;
   min-height: 100px;
-  height: calc(100% - 633px);
   overflow: scroll;
   font-size: 12px;
   background: white;
 }
 
 div#poster-comments {
-  margin: 20px 0px 0px 0px;
+  margin: 0px 0px 0px 0px;
 }
 
 h3 {
@@ -390,5 +425,35 @@ h3 {
   right: 10px;
   bottom: -20px;
   font-size: 12px;
+}
+
+textarea#poster-chat-input {
+  white-space: pre-wrap;
+  font-size: 16px;
+  font-family: "Lato", sans-serif;
+
+  line-height: 20px;
+  width: calc(100% - 20px);
+  /* height: 28px; */
+  margin: 10px 10px 20px 10px;
+  resize: none;
+  display: inline-block;
+  vertical-align: -12px;
+  padding: 8px;
+  z-index: 100 !important;
+}
+
+#poster-chat-input-container {
+  position: absolute;
+  bottom: 20px;
+  background: white;
+  width: 528px;
+  border: 1px solid #ccc;
+  z-index: 100 !important;
+  box-shadow: 1px 1px 2px #222;
+}
+
+.comment-content {
+  padding: 0px 10px;
 }
 </style>

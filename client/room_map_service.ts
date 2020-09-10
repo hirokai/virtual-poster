@@ -310,12 +310,19 @@ export const moveByArrow = (
   state: RoomAppState,
   me: PersonInMap,
   key: ArrowKey
-): { ok: boolean; moved: boolean; error?: "during_chat" | undefined } => {
+): {
+  ok: boolean
+  moved: boolean
+  error?: "during_chat" | "during_poster" | undefined
+} => {
   let dx = 0,
     dy = 0
   let moved = false
   if (myChatGroup(props, state).value) {
     return { ok: false, moved, error: "during_chat" }
+  }
+  if (state.activePoster) {
+    return { ok: false, moved, error: "during_poster" }
   }
   const x = me.x
   const y = me.y
@@ -532,6 +539,16 @@ export const dblClickHandler = (
     }
     const poster = posterAt(state.posters, p)
     const person = poster ? undefined : personAt(state.people, p)
+    if (state.activePoster && !(person && isAdjacent(me, person))) {
+      showMessage(
+        props,
+        state
+      )(
+        "ポスター閲覧中は動けません。動くためにはポスターから離脱してください。"
+      )
+      return
+    }
+
     if (myChatGroup(props, state).value) {
       if (person && isAdjacent(me, person)) {
         inviteToChat(axios, props, state, person)

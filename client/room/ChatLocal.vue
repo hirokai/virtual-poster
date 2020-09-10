@@ -44,7 +44,13 @@
       >
         {{ editingOld ? "保存" : "送信" }}
       </button>
-      <button v-if="is_chrome" id="dictation" @click="toggleDictation">
+      <button
+        v-if="is_chrome"
+        id="dictation"
+        :class="{ running: dictation.running }"
+        @click="toggleDictation"
+        :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
+      >
         {{ dictation.running ? "音声入力中" : "音声入力" }}
       </button>
       <button
@@ -68,7 +74,9 @@
         </div>
       </h2>
       <h2 v-else>
-        会話に参加していません
+        <div id="participants">
+          会話に参加していません
+        </div>
       </h2>
     </div>
     <div
@@ -78,44 +86,61 @@
     >
       <div
         v-for="c in localCommentHistory"
-        :key="c.timestamp + c.person + c.to + c.kind"
-        class="comment-entry"
-        :class="{ hidden: contentHidden }"
+        :key="'' + c.timestamp + c.person + c.to + c.kind"
+        :class="{
+          'comment-entry': c.event == 'comment',
+          'date-entry': c.event == 'comment',
+          hidden: contentHidden,
+        }"
       >
-        <div class="local-entry-header">
-          <span class="comment-name">
-            {{ people[c.person] ? people[c.person].name : null }}
-          </span>
-          <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
-          <span class="comment-recipients">
-            &#x27a1;
-
-            <span class="recipient" v-for="t in c.texts" :key="t.to">
-              {{ people[t.to] ? people[t.to].name : "" }}
-              <span v-if="t.encrypted">&#x1F512; </span>
-            </span>
-          </span>
-          <span
-            v-if="myself && c.person == myself.id"
-            class="comment-delete"
-            @click="$emit('delete-comment', c.id)"
-            >削除</span
-          >
-          <span
-            v-if="myself && c.person == myself.id"
-            class="comment-edit"
-            @click="startUpdateComment(c.id)"
-            >編集</span
-          >
+        <div v-if="c.event == 'new_date'" class="date_event">
+          <hr />
+          <span> {{ c.date_str }} </span>
         </div>
-        <div
-          class="local-entry-content"
-          @dblclick="speechText(c.text_decrypted || '')"
-        >
-          <span
-            class="comment-content"
-            v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
-          ></span>
+        <div v-if="c.event == 'comment'">
+          <div class="local-entry-header">
+            <span class="comment-name">
+              {{ people[c.person] ? people[c.person].name : null }}
+            </span>
+            <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
+            <span class="comment-recipients">
+              &#x27a1;
+              <span
+                class="recipient"
+                v-for="t in notMyself(c.texts)"
+                :key="t.to"
+              >
+                {{ people[t.to] ? people[t.to].name : "" }}
+              </span>
+              <span v-if="c.encrypted_for_all">&#x1F512; </span>
+            </span>
+            <span
+              class="comment-entry-tool"
+              @click="speechText(c.text_decrypted || '')"
+              >読み上げ</span
+            >
+            <span
+              v-if="myself && c.person == myself.id"
+              class="comment-entry-tool comment-delete"
+              @click="$emit('delete-comment', c.id)"
+              >削除</span
+            >
+            <span
+              v-if="myself && c.person == myself.id"
+              class="comment-entry-tool comment-edit"
+              @click="startUpdateComment(c.id)"
+              >編集</span
+            >
+          </div>
+          <div
+            class="local-entry-content"
+            @dblclick="speechText(c.text_decrypted || '')"
+          >
+            <span
+              class="comment-content"
+              v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
+            ></span>
+          </div>
         </div>
       </div>
     </div>
@@ -127,6 +152,8 @@ import {
   Person,
   ChatCommentDecrypted,
   Poster as PosterTyp,
+  UserId,
+  RoomId,
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
@@ -143,6 +170,30 @@ import {
 } from "@vue/composition-api"
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
+
+interface CommentHistoryEntry {
+  event: string
+  timestamp: number
+}
+
+interface CommentEvent extends CommentHistoryEntry {
+  event: "comment"
+  encrypted_for_all: boolean
+  id: string
+  last_updated: number
+  x: number
+  y: number
+  text_decrypted: string
+  texts: {
+    to: UserId
+  }[]
+  person: UserId
+}
+
+interface DateEvent extends CommentHistoryEntry {
+  event: "new_date"
+  date_str: string
+}
 
 export default defineComponent({
   props: {
@@ -244,15 +295,72 @@ export default defineComponent({
         })
       }
     )
-    const localCommentHistory = computed((): ChatCommentDecrypted[] => {
-      return sortBy<ChatCommentDecrypted>(
-        Object.values(props.comments).filter(c => {
-          return c.kind == "person"
-        }),
-        (c: ChatCommentDecrypted) => {
+
+    const sameDate = (a: number, b: number): boolean => {
+      const ta = new Date(a)
+      const tb = new Date(b)
+      return (
+        ta.getFullYear() == tb.getFullYear() &&
+        ta.getMonth() == tb.getMonth() &&
+        ta.getDate() == tb.getDate()
+      )
+    }
+
+    const formatDate = (t: number): string => {
+      const t1 = new Date(t)
+      const show_year = t1.getFullYear() != new Date().getFullYear()
+      return (
+        "" +
+        (show_year ? t1.getFullYear() + "年" : "") +
+        (t1.getMonth() + 1) +
+        "月" +
+        t1.getDate() +
+        "日 (" +
+        ["日", "月", "火", "水", "木", "金", "土"][t1.getDay()] +
+        ")"
+      )
+    }
+
+    const localCommentHistory = computed((): CommentHistoryEntry[] => {
+      const comments = sortBy(
+        Object.values(props.comments)
+          .filter(c => {
+            return c.kind == "person"
+          })
+          .map(c => {
+            return {
+              ...c,
+              event: "comment",
+              encrypted_for_all: c.texts.every(t => t.encrypted),
+            } as CommentEvent
+          }),
+        c => {
           return c.timestamp
         }
-      )
+      ) as CommentHistoryEntry[]
+
+      const comments_with_date: CommentHistoryEntry[] = []
+      if (comments.length > 0) {
+        comments_with_date.push({
+          event: "new_date",
+          date_str: formatDate(comments[0].timestamp),
+        } as DateEvent)
+      }
+      for (let i = 0; i < comments.length; i++) {
+        comments_with_date.push(comments[i])
+        if (
+          i < comments.length - 1 &&
+          !sameDate(comments[i + 1].timestamp, comments[i].timestamp)
+        ) {
+          comments_with_date.push({
+            event: "new_date",
+            date_str: formatDate(comments[i + 1].timestamp),
+            timestamp: comments[i + 1].timestamp - 1,
+          } as DateEvent)
+        }
+      }
+
+      return comments_with_date
     })
     const clearInput = () => {
       state.inputText = ""
@@ -281,6 +389,10 @@ export default defineComponent({
       } else {
         stopDictation()
       }
+    }
+
+    const notMyself = (texts: { to: UserId }[]): { to: UserId }[] => {
+      return texts.filter(t => t.to != props.myself?.id)
     }
 
     const startDictation = () => {
@@ -365,12 +477,14 @@ export default defineComponent({
       speechText,
       toggleDictation,
       is_chrome,
+      notMyself,
     }
   },
 })
 </script>
 
 <style lang="css">
+@import url("https://fonts.googleapis.com/css2?family=Lato&display=swap");
 #participants {
   display: inline-block;
   font-size: 12px;
@@ -384,6 +498,7 @@ export default defineComponent({
   min-width: 250px;
   width: calc(100% - 68vh - 600px);
   height: calc(100% - 20px);
+  font-family: "Lato", sans-serif;
 }
 
 #chat-input-container {
@@ -406,18 +521,27 @@ export default defineComponent({
   /* width: 790px; */
   /* z-index: -100; */
   border: 1px solid #888;
+  border-radius: 4px;
+}
+
+.comment-entry {
+  padding: 0px 10px;
 }
 .comment-entry:hover {
   background: #eee;
 }
 
-.comment-delete,
-.comment-edit {
+.comment-entry-tool {
   float: right;
   display: block;
   font-size: 12px;
   cursor: pointer;
-  width: 30px;
+  visibility: hidden;
+  margin: 0px 4px;
+}
+
+.comment-entry:hover .comment-entry-tool {
+  visibility: visible;
 }
 
 .comment-delete {
@@ -433,16 +557,19 @@ export default defineComponent({
   margin: 0px;
 }
 
-textarea {
+textarea#local-chat-input {
   white-space: pre-wrap;
   font-size: 16px;
+  font-family: "Lato", sans-serif;
+
   line-height: 20px;
-  width: calc(100% - 10px);
-  margin-top: 10px;
-  margin-bottom: 10px;
+  width: calc(100% - 20px);
+  /* height: 28px; */
+  margin: 10px 10px 10px 10px;
   resize: none;
   display: inline-block;
   vertical-align: -12px;
+  padding: 8px;
   z-index: 100 !important;
 }
 
@@ -450,14 +577,15 @@ textarea {
   margin-right: 10px;
 }
 
-.person-in-local.typing {
-  animation-name: glowing_text;
+button#dictation.running {
+  font-weight: bold;
+  animation-name: glowing_bg;
   animation-duration: 2s;
   animation-direction: normal;
   animation-iteration-count: infinite;
 }
 
-@keyframes glowing_text {
+@keyframes glowing_bg {
   0% {
     color: red;
   }
@@ -481,6 +609,27 @@ button#dictation {
   height: 26px;
   margin-left: 10px;
   vertical-align: 7px;
+}
+
+.person-in-local.typing {
+  color: blue;
+  font-weight: bold;
+  animation-name: glowing_text;
+  animation-duration: 2s;
+  animation-direction: normal;
+  animation-iteration-count: infinite;
+}
+
+@keyframes glowing_text {
+  0% {
+    color: red;
+  }
+  50% {
+    color: #faa;
+  }
+  100% {
+    color: red;
+  }
 }
 
 button#leave-chat {
@@ -507,12 +656,37 @@ button#leave-chat {
     brightness(95%) contrast(112%);
 }
 
+.comment-recipients {
+  margin-left: 5px;
+}
 .recipient {
-  margin: 0px 5px;
+  margin: 0px 3px;
 }
 
 .comment-entry.hidden {
   opacity: 0;
   transition: opacity 0.5s linear;
+}
+
+.date_event {
+  text-align: center;
+  font-size: 12px;
+}
+
+.date_event span {
+  display: block;
+  margin: -10px auto 0px auto;
+  background: white;
+  width: 150px;
+  border: 1px solid black;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.date_event hr {
+  margin: 10px 0px 0px 0px;
+  background-color: #888;
+  height: 1px;
+  border: 0;
 }
 </style>

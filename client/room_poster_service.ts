@@ -29,7 +29,7 @@ export const adjacentPosters = (
     return posters
   })
 
-export const activePoster = (
+export const adjacentPoster = (
   props: RoomAppProps,
   state: RoomAppState
 ): ComputedRef<Poster | undefined> =>
@@ -104,7 +104,7 @@ export const doSubmitPosterComment = (
   text: string
 ): void => {
   if (state.editingOld) {
-    const poster_id = activePoster(props, state).value?.id
+    const poster_id = adjacentPoster(props, state).value?.id
     if (poster_id) {
       updatePosterComment(
         axios,
@@ -164,8 +164,17 @@ export const initPosterService = async (
     console.log("PosterComment", d)
     const pid = activePoster.value?.id
     const to_s = d.texts.map(t => t.to)
+    const scroll = !state.posterComments[d.id]
     if (pid && to_s.indexOf(pid) != -1) {
       set(state.posterComments, d.id, d)
+    }
+    if (scroll) {
+      Vue.nextTick(() => {
+        const el = document.querySelector("#poster-comments-container")
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      })
     }
   })
   socket.on("poster.comment.remove", (comment_id: string) => {

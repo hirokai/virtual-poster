@@ -116,6 +116,8 @@ type RoomAppState = {
   }
   posterChatGroup: UserId[]
 
+  activePoster: Poster | null
+
   botActive: boolean
 
   hidden: boolean

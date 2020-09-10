@@ -46,7 +46,7 @@ export async function doSendOrUpdateComment(
     return { ok: false }
   }
   for (const u of to_users) {
-    const k = public_keys[u].public_key
+    const k = public_keys[u]?.public_key
     if (k) {
       const pub = await encryption.importPublicKey(k, true)
       // console.log(to_users, u, k, pub)

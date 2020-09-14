@@ -99,7 +99,7 @@ export default defineComponent({
     const onFileChange = (name: string, e) => {
       set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
     }
-    const submitClick = (room_id: string) => {
+    const submitClick = async (room_id: string) => {
       console.log("submitClick", state.files[room_id])
       try {
         const formData = new FormData()
@@ -109,28 +109,21 @@ export default defineComponent({
             "content-type": "multipart/form-data",
           },
         }
-        props.axios
-          .post(
-            "/admin/import/maps/" + room_id + "/poster_locations",
-            formData,
-            config
+        const res = await props.axios.post(
+          "/admin/import/maps/" + room_id + "/poster_locations",
+          formData,
+          config
+        )
+        console.log(res.data)
+        if (!res.data.ok || !res.data.poster_assigned) {
+          alert("エラー。" + (res.data.error || ""))
+        } else if (res.data.poster_assigned.length == 0) {
+          alert(
+            "登録が0件。おそらくエラー（すでに記載の番号のポスターが指定済みなど）"
           )
-          .then(res => {
-            console.log(res.data)
-            if (!res.data.ok || !res.data.poster_assigned) {
-              alert("エラー。" + (res.data.error || ""))
-            } else if (res.data.poster_assigned.length == 0) {
-              alert(
-                "登録が0件。おそらくエラー（すでに記載の番号のポスターが指定済みなど）"
-              )
-            } else {
-              alert("" + res.data.poster_assigned.length + "件登録完了")
-            }
-          })
-          .catch(err => {
-            console.error(err)
-            alert("ファイルの送信に失敗しました")
-          })
+        } else {
+          alert("" + res.data.poster_assigned.length + "件登録完了")
+        }
         return false
       } catch (error) {
         alert("ファイルの送信に失敗しました")

@@ -75,6 +75,41 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  modified:
+                    type: object
+                    properties:
+                      keys:
+                        type: array
+                        items:
+                          type: string
+                      update:
+                        type: object
+                        required:
+                          - id
+                          - last_updated
+                        properties:
+                          id:
+                            type: string
+                          last_updated:
+                            type: number
+                          name:
+                            type: string
+                          email:
+                            type: string
+                    required:
+                      - keys
+                      - update
+                required:
+                  - ok
       requestBody:
         content:
           application/json:
@@ -1408,6 +1443,39 @@ paths:
                   type: string
               required:
                 - access_code
+  "/posters/{posterId}":
+    parameters:
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    patch:
+      summary: Update poster info
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+      operationId: patch-posters-posterId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+              required:
+                - title
+      description: Update poster info.
 components:
   parameters:
     debug_token:

@@ -177,7 +177,11 @@
     <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
       <span style="font-weight: bold;"
         >{{ adjacentPoster.poster_number }}:
-        {{ people[adjacentPoster.author].name }}</span
+        {{
+          people[adjacentPoster.author]
+            ? people[adjacentPoster.author].name
+            : ""
+        }}</span
       >
 
       <br />
@@ -717,8 +721,8 @@ export default defineComponent({
       }
     }
 
-    const submitPosterComment = (t: string) => {
-      doSubmitPosterComment(axios, props, state, t)
+    const submitPosterComment = async (t: string) => {
+      await doSubmitPosterComment(axios, props, state, t)
     }
 
     onMounted(() => {
@@ -744,6 +748,12 @@ export default defineComponent({
                 //   app.clearInput()
               } else if (t?.id == "poster-chat-input") {
                 doSubmitPosterComment(axios, props, state, t.value)
+                  .then(() => {
+                    //
+                  })
+                  .catch(() => {
+                    //
+                  })
               }
             }
             ev.preventDefault()
@@ -849,29 +859,20 @@ export default defineComponent({
       }
     )
 
-    const signOut = () => {
+    const signOut = async () => {
       if (!confirm("ログアウトしますか？")) {
         return
       }
-      deleteUserInfoOnLogout()
-      firebase
-        .auth()
-        .signOut()
-        .then(() => {
-          console.log("Firebase signed out")
-          client.logout
-            .$post()
-            .then(() => {
-              console.log("App signed out")
-              location.href = "/login"
-            })
-            .catch(err => {
-              console.error(err)
-            })
-        })
-        .catch(err => {
-          console.error(err)
-        })
+      try {
+        deleteUserInfoOnLogout()
+        await firebase.auth().signOut()
+        console.log("Firebase signed out")
+        await client.logout.$post()
+        console.log("App signed out")
+        location.href = "/login"
+      } catch (err) {
+        console.log(err)
+      }
     }
 
     const onInputTextChange = () => {
@@ -942,8 +943,8 @@ export default defineComponent({
       }
     }
 
-    const uploadPoster = (file: File, poster_id: string) => {
-      doUploadPoster(axios, file, poster_id)
+    const uploadPoster = async (file: File, poster_id: string) => {
+      await doUploadPoster(axios, file, poster_id)
     }
 
     const onFocusInput = (focused: boolean) => {
@@ -1123,10 +1124,12 @@ h2 {
   font-size: 14px;
   /* padding: 3px 0px 0px 3px; */
   overflow: hidden;
+  /* transition: top 0.5s; */
 }
 
 #announce.poster_active {
-  top: 315px;
+  top: 293px;
+  transition: top 0.5s 0.5s;
 }
 
 #announce a {
@@ -1283,7 +1286,7 @@ button#leave-poster-on-map {
 }
 
 .poster_active #message {
-  top: 250px;
+  top: 215px;
 }
 
 #message.hide {

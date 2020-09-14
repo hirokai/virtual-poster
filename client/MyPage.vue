@@ -546,17 +546,13 @@ export default defineComponent({
         console.error(err)
       })
     }
-    const clickAvatar = (n: string) => {
-      axios
-        .patch("/people/" + state.myUserId, { avatar: n })
-        .then(({ data }) => {
-          if (data.ok) {
-            Vue.set(state.people[state.myUserId], "avatar", n)
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
+    const clickAvatar = async (n: string) => {
+      const data = await client.people
+        ._userId(state.myUserId)
+        .$patch({ body: { avatar: n } })
+      if (data.ok) {
+        Vue.set(state.people[state.myUserId], "avatar", n)
+      }
     }
     const setPerson = (d: PersonUpdate) => {
       console.log("setPerson", d)
@@ -570,7 +566,7 @@ export default defineComponent({
       }
       set(state.people, d.id, person)
     }
-    const saveName = (ev: KeyboardEvent & MouseEvent) => {
+    const saveName = async (ev: KeyboardEvent & MouseEvent) => {
       if (ev.keyCode && ev.keyCode !== 13) return
       const new_name = state.editing.name
       if (!new_name) {
@@ -584,41 +580,26 @@ export default defineComponent({
         state.editing.name = null
         return
       }
-      axios
-        .patch("/people/" + state.myUserId, { name: new_name })
-        .then(r => {
-          console.log(r.data)
-        })
-        .catch(console.error)
+      const data = await client.people
+        ._userId(state.myUserId)
+        .$patch({ body: { name: new_name } })
+      console.log(data)
       set(state.people[state.myUserId], "name", new_name)
       state.editing.name = null
     }
-    const signOut = () => {
-      firebase
-        .auth()
-        .signOut()
-        .then(() => {
-          console.log("Firebase signed out")
-          client.logout
-            .$post()
-            .then(() => {
-              console.log("App signed out")
-              localStorage.removeItem("virtual-poster:user_id")
-              localStorage.removeItem("virtual-poster:email")
-              localStorage.removeItem("virtual-poster:name")
-              location.href = "/login"
-            })
-            .catch(err => {
-              console.error(err)
-            })
-        })
-        .catch(err => {
-          console.error(err)
-        })
+    const signOut = async () => {
+      await firebase.auth().signOut()
+      console.log("Firebase signed out")
+      await client.logout.$post()
+      console.log("App signed out")
+      deleteUserInfoOnLogout()
+      location.href = "/login"
     }
     const setTitle = async (pid: PosterId) => {
       const title = state.editingTitleText
-      const { data } = await axios.patch("/posters/" + pid, { title })
+      const data = await client.posters
+        ._posterId(pid)
+        .$patch({ body: { title } })
       if (data.ok) {
         Vue.nextTick(() => {
           Vue.set(state.posters[pid], "title", title)
@@ -628,7 +609,7 @@ export default defineComponent({
         })
       }
     }
-    const onDrop = (event: any, poster_id: PosterId) => {
+    const onDrop = async (event: any, poster_id: PosterId) => {
       state.dragover[poster_id] = false
       const fileList: File[] = event.target.files
         ? event.target.files
@@ -656,30 +637,18 @@ export default defineComponent({
         fd.append("file", file)
         console.log(fd)
 
-        axios
-          .post("/posters/" + poster_id + "/file", fd)
-          .then(({ data }) => {
-            console.log(data)
-            set(state.posters, poster_id, data.poster)
-          })
-          .catch(err => {
-            console.error(err)
-          })
+        const { data } = await axios.post("/posters/" + poster_id + "/file", fd)
+        console.log(data)
+        set(state.posters, poster_id, data.poster)
       }
     }
-    const removePosterFile = (poster_id: PosterId) => {
-      axios
-        .delete("/posters/" + poster_id + "/file")
-        .then(({ data }) => {
-          console.log(data)
-          if (data.ok) {
-            set(state.posters, data.poster.id, data.poster)
-            set(state.dataURI, data.poster.id, "")
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
+    const removePosterFile = async (poster_id: PosterId) => {
+      const data = await client.posters._posterId(poster_id).file.$delete()
+      console.log(data)
+      if (data.ok && data.poster) {
+        set(state.posters, data.poster.id, data.poster)
+        set(state.dataURI, data.poster.id, "")
+      }
     }
 
     onMounted(() => {

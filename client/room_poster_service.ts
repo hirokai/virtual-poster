@@ -43,71 +43,63 @@ const clearInputPoster = (state: RoomAppState) => {
   state.posterInputComment = undefined
 }
 
-export const updatePosterComment = (
+export const updatePosterComment = async (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   poster_id: string,
   comment_id: string,
   text: string
-): void => {
+): Promise<void> => {
   console.log("updatePosterComment")
   state.posterInputComment = text
   state.editingOld = null
   const client = api(axiosClient(axios))
-  client.posters
-    ._posterId(poster_id)
-    .comments._commentId(comment_id)
-    .$patch({ body: { comment: text } })
-    .then(data => {
-      console.log("updateComment done", data)
-      clearInputPoster(state)
-      ;(document.querySelector("#poster-chat-input") as any)?.focus()
-    })
-    .catch(err => {
-      console.log(err)
-    })
+  try {
+    const data = await client.posters
+      ._posterId(poster_id)
+      .comments._commentId(comment_id)
+      .$patch({ body: { comment: text } })
+    console.log("updateComment done", data)
+    clearInputPoster(state)
+    ;(document.querySelector("#poster-chat-input") as any)?.focus()
+  } catch (err) {
+    console.log(err)
+  }
 }
 
-export const sendPosterComment = (
+export const sendPosterComment = async (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   text: string
-): void => {
+): Promise<void> => {
   const pid = adjacentPoster(props, state).value?.id
   if (!pid) {
     return
   }
   console.log("Poster to comment on:", pid)
   const client = api(axiosClient(axios))
-  client.posters
-    ._posterId(pid)
-    .comments.$post({
-      body: {
-        user_id: props.myUserId,
-        comment: text,
-      },
-    })
-    .then(data => {
-      console.log("sendPosterComment done", data)
-      state.posterInputComment = ""
-    })
-    .catch(() => {
-      //
-    })
+  const data = await client.posters._posterId(pid).comments.$post({
+    body: {
+      user_id: props.myUserId,
+      comment: text,
+    },
+  })
+  console.log("sendPosterComment done", data)
+  state.posterInputComment = ""
 }
 
-export const doSubmitPosterComment = (
+export const doSubmitPosterComment = async (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
   text: string
-): void => {
+): Promise<void> => {
   if (state.editingOld) {
     const poster_id = adjacentPoster(props, state).value?.id
     if (poster_id) {
-      updatePosterComment(
+      await updatePosterComment(
         axios,
         props,
         state,
@@ -117,32 +109,26 @@ export const doSubmitPosterComment = (
       )
     }
   } else {
-    sendPosterComment(axios, props, state, text)
+    await sendPosterComment(axios, props, state, text)
     clearInputPoster(state)
     ;(document.querySelector("#poster-chat-input") as any)?.focus()
   }
 }
 
-export const doUploadPoster = (
+export const doUploadPoster = async (
   axios: AxiosStatic | AxiosInstance,
   file: File,
   poster_id: string
-): void => {
+): Promise<void> => {
   console.log(file, poster_id)
   const fd = new FormData()
   fd.append("file", file)
   console.log(fd)
-  axios
-    .post<{ ok: boolean; poster?: Poster }>(
-      "/posters/" + poster_id + "/file",
-      fd
-    )
-    .then(({ data }) => {
-      console.log(data)
-    })
-    .catch(err => {
-      console.error(err)
-    })
+  const { data } = await axios.post<{ ok: boolean; poster?: Poster }>(
+    "/posters/" + poster_id + "/file",
+    fd
+  )
+  console.log(data)
 }
 
 export const initPosterService = async (

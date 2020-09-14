@@ -1,11 +1,7 @@
 <template>
   <svg
     id="cells"
-    :style="{
-      opacity: hidden ? 0 : 1,
-      top: isMobile ? '0px' : undefined,
-      left: isMobile ? '3px' : undefined,
-    }"
+    :style="cssVars"
     :class="{ small: !!activePoster, normal: goBackToNormal }"
     viewBox="0 0 528 528"
   >
@@ -55,7 +51,7 @@
     </g>
     <g
       id="controller"
-      transform="translate (384 432)"
+      :transform="'translate (384 ' + 48 * (activePoster ? 4 : 9) + ')'"
       @mousedown="clickController"
       opacity="0.8"
     >
@@ -237,6 +233,17 @@ export default defineComponent({
       }
     }
 
+    const cssVars = {
+      opacity: computed(() => {
+        return props.hidden ? 0 : 1
+      }),
+      "--map_y_offset": computed(() => {
+        return props.myself ? 3 + props.myself.y - props.center.y : 3
+      }),
+      top: props.isMobile ? "0px" : undefined,
+      left: props.isMobile ? "3px" : undefined,
+    }
+
     watch(
       () => !!props.activePoster,
       () => {
@@ -262,6 +269,7 @@ export default defineComponent({
       peopleInMagMap,
       select,
       personAt,
+      cssVars,
     }
   },
 })
@@ -287,33 +295,71 @@ svg#cells {
 
 svg#cells.normal {
   animation-name: svg_scale_back;
-  animation-duration: 0.5s;
+  animation-duration: 1s;
   animation-direction: normal;
   animation-fill-mode: forwards;
 }
 
 svg#cells.small {
   animation-name: svg_scale;
-  animation-duration: 0.5s;
+  animation-duration: 1s;
   animation-direction: normal;
   animation-fill-mode: forwards;
+}
+
+svg#cells #controller {
+  transition: transform 0.5s linear 0.5s;
 }
 
 @keyframes svg_scale {
   0% {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
+    clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%);
+  }
+  50% {
+    transform: translate(0px, 0px) scale(var(--map_scale_normal));
+    clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
   }
   100% {
-    transform: translate(-133px, -133px) scale(var(--map_scale_small));
+    transform: translate(0px, calc(-48px * var(--map_y_offset)))
+      scale(var(--map_scale_normal));
+    clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
   }
 }
 
 @keyframes svg_scale_back {
   0% {
-    transform: translate(-133px, -133px) scale(var(--map_scale_small));
+    transform: translate(0px, calc(-48px * var(--map_y_offset)))
+      scale(var(--map_scale_normal));
+    clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
+  }
+  50% {
+    transform: translate(0px, 0px) scale(var(--map_scale_normal));
+    clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
   }
   100% {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
+    clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%);
   }
 }
 

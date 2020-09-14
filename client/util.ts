@@ -64,6 +64,7 @@ export function setUserInfo(
 export function deleteUserInfoOnLogout(): void {
   localStorage.removeItem("virtual-poster:user_id")
   localStorage.removeItem("virtual-poster:email")
+  localStorage.removeItem("virtual-poster:name")
   localStorage.removeItem("virtual-poster:admin")
   localStorage.removeItem("virtual-poster:jwt_hash")
 }

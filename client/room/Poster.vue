@@ -358,9 +358,14 @@ div#poster-container {
   height: 613px;
 }
 
+div#poster-comments-container {
+  top: 612px;
+}
+
 div#poster-comments-container.poster_active {
   /* height: calc(100% - 485px); */
-  top: 343px;
+  top: 320px;
+  transition: top 0.5s 0.5s;
 }
 
 .mobile div#poster-comments-container {

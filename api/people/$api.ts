@@ -39,9 +39,9 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
         $get: (option?: { query?: Methods1['get']['query'], config?: T }) =>
           fetch<Methods1['get']['resBody'], BasicHeaders, Methods1['get']['status']>(prefix, prefix0, GET, option).json().then(r => r.body),
         patch: (option?: { body?: Methods1['patch']['reqBody'], query?: Methods1['patch']['query'], config?: T }) =>
-          fetch<void, BasicHeaders, Methods1['patch']['status']>(prefix, prefix0, PATCH, option).send(),
+          fetch<Methods1['patch']['resBody'], BasicHeaders, Methods1['patch']['status']>(prefix, prefix0, PATCH, option).json(),
         $patch: (option?: { body?: Methods1['patch']['reqBody'], query?: Methods1['patch']['query'], config?: T }) =>
-          fetch<void, BasicHeaders, Methods1['patch']['status']>(prefix, prefix0, PATCH, option).send().then(r => r.body),
+          fetch<Methods1['patch']['resBody'], BasicHeaders, Methods1['patch']['status']>(prefix, prefix0, PATCH, option).json().then(r => r.body),
         $path: (option?: { method?: 'get'; query: Methods1['get']['query'] } | { method: 'patch'; query: Methods1['patch']['query'] }) =>
           `${prefix}${prefix0}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
       }

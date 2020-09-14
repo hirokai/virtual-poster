@@ -116,7 +116,7 @@ export default defineComponent({
     const onFileChange = (name: string, e) => {
       set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
     }
-    const submitClick = (name: string) => {
+    const submitClick = async (name: string) => {
       console.log("submitClick", state.files[name])
       try {
         const formData = new FormData()
@@ -126,28 +126,23 @@ export default defineComponent({
             "content-type": "multipart/form-data",
           },
         }
-        props.axios
-          .post("/admin/import/" + name, formData, config)
-          .then(res => {
-            console.log(res.data)
-            if (!res.data.ok) {
-              alert("エラー。" + (res.data.error || ""))
-            } else {
-              props.axios
-                .get("/maps")
-                .then(({ data }) => {
-                  state.rooms = keyBy(data, "id")
-                })
-                .catch(err => {
-                  console.error(err)
-                })
-              alert("登録完了")
-            }
-          })
-          .catch(err => {
-            console.error(err)
-            alert("ファイルの送信に失敗しました")
-          })
+        const res = await props.axios.post(
+          "/admin/import/" + name,
+          formData,
+          config
+        )
+        console.log(res.data)
+        if (!res.data.ok) {
+          alert("エラー。" + (res.data.error || ""))
+        } else {
+          try {
+            const { data } = await props.axios.get("/maps")
+            state.rooms = keyBy(data, "id")
+            alert("登録完了")
+          } catch (err) {
+            console.log(err)
+          }
+        }
         return true
       } catch (error) {
         alert("ファイルの送信に失敗しました")
@@ -179,26 +174,24 @@ export default defineComponent({
       return false
     }
 
-    const deleteRoom = (room_id: RoomId) => {
-      const s = prompt(
-        "本当に削除しますか？ 削除すると部屋と関連するポスター，コメントがすべて消去されます。削除する場合は部屋のIDを下記に入力してください。"
-      )
-      if (s != room_id) {
-        return
-      }
-      props.axios
-        .delete("/maps/" + room_id)
-        .then(res => {
-          console.log(res.data)
-          if (res.data.ok) {
-            Vue.delete(state.rooms, room_id)
-          } else {
-            alert("部屋の削除に失敗しました")
-          }
-        })
-        .catch(() => {
+    const deleteRoom = async (room_id: RoomId) => {
+      try {
+        const s = prompt(
+          "本当に削除しますか？ 削除すると部屋と関連するポスター，コメントがすべて消去されます。削除する場合は部屋のIDを下記に入力してください。"
+        )
+        if (s != room_id) {
+          return
+        }
+        const res = await props.axios.delete("/maps/" + room_id)
+        console.log(res.data)
+        if (res.data.ok) {
+          Vue.delete(state.rooms, room_id)
+        } else {
           alert("部屋の削除に失敗しました")
-        })
+        }
+      } catch (err) {
+        alert("部屋の削除に失敗しました")
+      }
     }
     return {
       ...toRefs(state),

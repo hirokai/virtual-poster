@@ -379,22 +379,23 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         const ds: ActiveUsersSocketData = [{ room, user, active: true }]
         io.to(room).emit("ActiveUsers", ds)
 
-        model.db
-          .query(`SELECT * FROM announce WHERE room=$1`, [room])
-          .then(rows => {
-            if (rows.length == 1) {
-              const d: Announcement = {
-                room: rows[0].room,
-                text: rows[0].text,
-                marquee: rows[0].marquee,
-                period: rows[0].period || 0,
-              }
-              emit.announce(d, socket)
-            }
-          })
-          .catch(err => {
-            //
-          })
+        const rows = await model.db.query<
+          {
+            room: string
+            text: string
+            marquee: boolean
+            period?: number
+          }[]
+        >(`SELECT * FROM announce WHERE room=$1`, [room])
+        if (rows.length == 1) {
+          const d: Announcement = {
+            room: rows[0].room,
+            text: rows[0].text,
+            marquee: rows[0].marquee,
+            period: rows[0].period || 0,
+          }
+          emit.announce(d, socket)
+        }
       })().catch(err => {
         log.error(err)
       })

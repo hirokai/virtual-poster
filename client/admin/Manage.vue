@@ -233,7 +233,7 @@ export default defineComponent({
     const onFileChange = (name: string, e) => {
       set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
     }
-    const submitClick = (name: string) => {
+    const submitClick = async (name: string) => {
       console.log("submitClick", state.files[name])
       try {
         const formData = new FormData()
@@ -243,20 +243,17 @@ export default defineComponent({
             "content-type": "multipart/form-data",
           },
         }
-        props.axios
-          .post("/admin/import/" + name, formData, config)
-          .then(res => {
-            console.log(res.data)
-            if (!res.data.ok) {
-              alert("エラー。" + (res.data.error || ""))
-            } else {
-              alert("登録完了")
-            }
-          })
-          .catch(err => {
-            console.error(err)
-            alert("ファイルの送信に失敗しました")
-          })
+        const res = await props.axios.post(
+          "/admin/import/" + name,
+          formData,
+          config
+        )
+        console.log(res.data)
+        if (!res.data.ok) {
+          alert("エラー。" + (res.data.error || ""))
+        } else {
+          alert("登録完了")
+        }
         return false
       } catch (error) {
         alert("ファイルの送信に失敗しました")

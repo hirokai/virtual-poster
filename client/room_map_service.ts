@@ -114,22 +114,18 @@ export const moveTo = (
   target?: UserId,
   immediate = false
 ): boolean => {
-  const from = { x: myself.x, y: myself.y }
-  const toCell = state.hallMap[to.y][to.x]
   if (state.batchMoveTimer) {
     clearInterval(state.batchMoveTimer)
   }
-  // console.log("moveTo", toCell)
-  if (["wall", "water", "poster"].includes(toCell.kind)) {
-    console.log("Destination not open", toCell)
+  const from = { x: myself.x, y: myself.y }
+  const toCell = state.hallMap[to.y][to.x]
+  const person = personAt(state.people, to)
+  const poster = posterAt(state.posters, to)
+  if (person || poster || ["wall", "water", "poster"].includes(toCell.kind)) {
+    console.info("Destination not open", { toCell, person, poster })
     return false
   }
-  if (
-    to &&
-    Math.abs(from.x - to.x) <= 1 &&
-    Math.abs(from.y - to.y) <= 1 &&
-    !personAt(state.people, to)
-  ) {
+  if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
     if (immediate) {
       moveOneStep(axios, props, state, myself.id, to, calcDirection(from, to))
     }
@@ -145,114 +141,121 @@ export const moveTo = (
           room: props.room_id,
           user: props.myUserId,
         }
-    console.log("moveTo() emitting", d)
     state.socket?.emit("Move", d)
     state.move_emitted = performance.now()
     return true
   } else {
-    const person = personAt(state.people, to)
-    const poster = posterAt(state.posters, to)
-    if (person || poster) {
-      console.info("Cannot move to an occupied cell", state.hallMap[to.y][to.x])
-      return false
-    }
-    const ti = performance.now()
-    let points: Point[] | null = null
-    for (const margin of [3, 5, 10, undefined]) {
-      points = findRoute(
-        props.myUserId,
-        state.hallMap,
-        Object.values(state.people),
-        from,
-        to,
-        margin
-      )
-      if (points) {
-        break
-      }
-    }
-    const tf = performance.now()
-    console.log(`Route finding in ${tf - ti} ms`)
-    if (!points) {
-      console.info("No route was found.")
-      return false
-    }
-    console.log("# of points on route", points.length)
-    let idx = 0
-    state.batchMovePoints = points
-    state.oneStepAccepted = true
-
-    state.batchMoveTimer = setInterval(() => {
-      console.log("batchMoveTimer")
-      if (!points) {
-        return
-      }
-      // if (state.liveMapChangedAfterMove && target) {
-      //   const to_person = state.people[target]
-      //   if (to_person.x != to.x || to_person.y != to.y) {
-      //     console.log(
-      //       "Target moved",
-      //       target,
-      //       pick(state.people[target], ["x", "y"]),
-      //       to
-      //     )
-      //     state.moveTo(
-      //       { x: state.people[target].x, y: state.people[target].y },
-      //       target
-      //     )
-      //   }
-      // }
-      // if (!state.oneStepAccepted) {
-      //   return
-      // }
-      idx += 1
-      state.batchMovePoints = points.slice(idx)
-      const p2 = points[idx]
-      if (p2) {
-        if (immediate) {
-          moveOneStep(
-            axios,
-            props,
-            state,
-            props.myUserId,
-            points[idx],
-            calcDirection(points[idx - 1], p2)
-          )
-        }
-        state.liveMapChangedAfterMove = false
-        const d: MoveSocketData = {
-          ...p2,
-          room: props.room_id,
-          user: props.myUserId,
-          debug_as: props.debug_as,
-        }
-        state.move_emitted = performance.now()
-        state.socket?.emit("Move", d)
-        if (idx == points.length - 1 && state.batchMoveTimer) {
-          clearInterval(state.batchMoveTimer)
-          state.batchMovePoints = []
-          if (state.chatAfterMove) {
-            state.selectedUsers = new Set([state.chatAfterMove])
-            startChat(props, state, axios)
-              .then(d => {
-                on_complete(d?.group)
-                if (d) {
-                  state.selectedUsers.clear()
-                }
-              })
-              .catch(() => {
-                //
-              })
-            state.chatAfterMove = null
-          } else {
-            on_complete(undefined)
-          }
-        }
-        state.oneStepAccepted = false
-      }
-    }, BATCH_MOVE_INTERVAL)
-    return true
+    return startBatchMove(props, state, axios, from, to, immediate, on_complete)
   }
+}
+
+function startBatchMove(
+  props: RoomAppProps,
+  state: RoomAppState,
+  axios: AxiosInstance | AxiosStatic,
+  from: Point,
+  to: Point,
+  immediate: boolean,
+  on_complete: (g: ChatGroup | undefined) => void = () => {
+    /* */
+  }
+): boolean {
+  const ti = performance.now()
+  let points: Point[] | null = null
+  for (const margin of [3, 5, 10, undefined]) {
+    points = findRoute(
+      props.myUserId,
+      state.hallMap,
+      Object.values(state.people),
+      from,
+      to,
+      margin
+    )
+    if (points) {
+      break
+    }
+  }
+  const tf = performance.now()
+  console.log(`Route finding in ${tf - ti} ms`)
+  if (!points) {
+    console.info("No route was found.")
+    return false
+  }
+  console.log("# of points on route", points.length)
+  let idx = 0
+  state.batchMovePoints = points
+  state.oneStepAccepted = true
+
+  state.batchMoveTimer = setInterval(() => {
+    console.log("batchMoveTimer")
+    if (!points) {
+      return
+    }
+    // if (state.liveMapChangedAfterMove && target) {
+    //   const to_person = state.people[target]
+    //   if (to_person.x != to.x || to_person.y != to.y) {
+    //     console.log(
+    //       "Target moved",
+    //       target,
+    //       pick(state.people[target], ["x", "y"]),
+    //       to
+    //     )
+    //     state.moveTo(
+    //       { x: state.people[target].x, y: state.people[target].y },
+    //       target
+    //     )
+    //   }
+    // }
+    // if (!state.oneStepAccepted) {
+    //   return
+    // }
+    idx += 1
+    state.batchMovePoints = points.slice(idx)
+    const p2 = points[idx]
+    if (p2) {
+      if (immediate) {
+        moveOneStep(
+          axios,
+          props,
+          state,
+          props.myUserId,
+          points[idx],
+          calcDirection(points[idx - 1], p2)
+        )
+      }
+      state.liveMapChangedAfterMove = false
+      const d: MoveSocketData = {
+        ...p2,
+        room: props.room_id,
+        user: props.myUserId,
+        debug_as: props.debug_as,
+      }
+      state.move_emitted = performance.now()
+      state.socket?.emit("Move", d)
+      if (idx == points.length - 1 && state.batchMoveTimer) {
+        clearInterval(state.batchMoveTimer)
+        state.batchMovePoints = []
+        if (state.chatAfterMove) {
+          state.selectedUsers = new Set([state.chatAfterMove])
+          startChat(props, state, axios)
+            .then(d => {
+              on_complete(d?.group)
+              if (d) {
+                state.selectedUsers.clear()
+              }
+            })
+            .catch(() => {
+              //
+            })
+          state.chatAfterMove = null
+        } else {
+          on_complete(undefined)
+        }
+      }
+      state.oneStepAccepted = false
+    }
+  }, BATCH_MOVE_INTERVAL)
+  return true
 }
 
 moveOneStep = (
@@ -503,20 +506,10 @@ export const initMapService = async (
       // location.reload()
     }
   })
-  socket.on("MoveRequest", d => {
+  socket.on("MoveRequest", async d => {
     console.log("MoveRequest", d)
     const p = state.posters[d.to_poster]
-    dblClickHandler(
-      props,
-      state,
-      axios
-    )({ x: p.x, y: p.y })
-      .then(() => {
-        //
-      })
-      .catch(() => {
-        //
-      })
+    await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
   })
   const data = await client.maps._roomId(props.room_id).$get()
   state.hallMap = data.cells
@@ -577,7 +570,7 @@ export const dblClickHandler = (
     }
     const poster_location = state.hallMap[p.y][p.x].poster_number
 
-    console.log("dblCliked", person, poster, poster_location)
+    console.log("dblClicked", person, poster, poster_location)
 
     if (state.people_typing[props.myUserId]) {
       const d: TypingSocketSendData = {
@@ -602,57 +595,60 @@ export const dblClickHandler = (
       console.log("take poster result", data)
     }
 
-    if (person || poster) {
-      if (Math.abs(p.x - me.x) <= 1 && Math.abs(p.y - me.y) <= 1) {
-        if (person) {
-          state.selectedUsers.add(person.id)
-          startChat(props, state, axios)
-            .then(d => {
-              if (d) {
-                state.encryption_possible_in_chat =
-                  !!state.privateKey && d.encryption_possible
-                state.selectedUsers.clear()
-              }
-              //
-            })
-            .catch(() => {
-              //
-            })
-        } else if (poster) {
-          state.selectedUsers.clear()
-        }
-      } else {
-        const dps = getClosestAdjacentPoints({ x: me.x, y: me.y }, p)
-        state.chatAfterMove = person ? person.id : poster ? poster.id : null
-        // Try to move to an adjacent open until it succeeds.
-        for (const p1 of dps) {
-          const r = moveTo(
-            axios,
-            props,
-            state,
-            me,
-            p1,
-            group => {
-              if (group) {
-                showMessage(
-                  props,
-                  state
-                )(
-                  "会話に加わりました。参加者：" +
-                    group.users.map(u => state.people[u].name).join(",")
-                )
-              }
-            },
-            person?.id
-          )
-          if (r) {
-            break
-          }
-        }
-      }
-    } else {
+    if (!person && !poster) {
       state.selectedUsers.clear()
       moveTo(axios, props, state, me, p)
+      return
+    }
+
+    if (Math.abs(p.x - me.x) <= 1 && Math.abs(p.y - me.y) <= 1) {
+      if (person) {
+        state.selectedUsers.add(person.id)
+        startChat(props, state, axios)
+          .then(d => {
+            if (d) {
+              state.encryption_possible_in_chat =
+                !!state.privateKey && d.encryption_possible
+              state.selectedUsers.clear()
+            }
+            //
+          })
+          .catch(() => {
+            //
+          })
+      } else if (poster) {
+        state.selectedUsers.clear()
+        state.posterLooking = true
+      }
+      return
+    } else {
+      const dps = getClosestAdjacentPoints({ x: me.x, y: me.y }, p)
+      state.chatAfterMove = person ? person.id : poster ? poster.id : null
+      // Try to move to an adjacent open until it succeeds.
+      for (const p1 of dps) {
+        const r = moveTo(
+          axios,
+          props,
+          state,
+          me,
+          p1,
+          group => {
+            if (group) {
+              showMessage(
+                props,
+                state
+              )(
+                "会話に加わりました。参加者：" +
+                  group.users.map(u => state.people[u].name).join(",")
+              )
+            }
+          },
+          person?.id
+        )
+        if (r) {
+          break
+        }
+      }
     }
   }
 }

@@ -150,6 +150,9 @@
 import { mapValues, intersection } from "../../common/util"
 
 import { AxiosStatic } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "../../api/$api"
+
 import { PersonWithEmailRooms, RoomId } from "@/@types/types"
 
 import Vue from "vue"
@@ -199,6 +202,7 @@ export default defineComponent({
       },
       peopleFiltered: Object.values(props.people),
     })
+    const client = api(axiosClient(props.axios))
     const editPerson = (user_id: string) => {
       const p = props.people[user_id]
       state.editing.person = JSON.parse(JSON.stringify(p))
@@ -207,7 +211,7 @@ export default defineComponent({
       set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
     }
 
-    const submitClick = (name: string) => {
+    const submitClick = async (name: string) => {
       console.log("submitClick", state.files[name])
       try {
         const formData = new FormData()
@@ -217,21 +221,18 @@ export default defineComponent({
             "content-type": "multipart/form-data",
           },
         }
-        props.axios
-          .post("/admin/import/" + name, formData, config)
-          .then(res => {
-            console.log(res.data)
-            if (!res.data.ok) {
-              alert("エラー。" + (res.data.error || ""))
-            } else {
-              alert("登録完了")
-              context.emit("loadData")
-            }
-          })
-          .catch(err => {
-            console.error(err)
-            alert("ファイルの送信に失敗しました")
-          })
+        const res = await props.axios.post(
+          "/admin/import/" + name,
+          formData,
+          config
+        )
+        console.log(res.data)
+        if (!res.data.ok) {
+          alert("エラー。" + (res.data.error || ""))
+        } else {
+          alert("登録完了")
+          context.emit("loadData")
+        }
         return false
       } catch (error) {
         alert("ファイルの送信に失敗しました")
@@ -239,7 +240,7 @@ export default defineComponent({
       }
     }
 
-    const finishEditPerson = (ok: boolean) => {
+    const finishEditPerson = async (ok: boolean) => {
       if (ok && state.editing.person) {
         const old_p = props.people[state.editing.person.id]
         const p = state.editing.person
@@ -256,15 +257,13 @@ export default defineComponent({
           obj.email = p.email
         }
         console.log(old_p, p, " -> putting", obj)
-        props.axios
-          .patch("/people/" + state.editing.person.id, obj)
-          .then(({ data }) => {
-            console.log(data)
-          })
-          .catch(console.error)
+        await client.people
+          ._userId(state.editing.person.id)
+          .$patch({ body: obj })
       }
       state.editing.person = null
     }
+
     const toggleRoom = (room_id: RoomId) => {
       if (state.selected_rooms[room_id]) {
         Vue.delete(state.selected_rooms, room_id)

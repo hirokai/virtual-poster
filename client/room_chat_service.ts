@@ -98,19 +98,16 @@ export async function doSendOrUpdateComment(
   }
 }
 
-export const deleteComment = (axios: AxiosStatic | AxiosInstance) => (
+export const deleteComment = (axios: AxiosStatic | AxiosInstance) => async (
   comment_id: string
-): void => {
-  const client = api(axiosClient(axios))
-  client.comments
-    ._commentId(comment_id)
-    .$delete()
-    .then(r => {
-      console.log(r)
-    })
-    .catch(e => {
-      console.error(e)
-    })
+): Promise<void> => {
+  try {
+    const client = api(axiosClient(axios))
+    const r = await client.comments._commentId(comment_id).$delete()
+    console.log(r)
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 export const decryptIfNeeded = async (
@@ -177,48 +174,54 @@ export const decryptIfNeeded = async (
   }
 }
 
-export const newComment = (
+export const newComment = async (
   props: RoomAppProps,
   state: RoomAppState,
   d: ChatComment,
   activePoster?: PosterId
-): void => {
+): Promise<void> => {
   console.log("newComment", d)
   if (state.enableEncryption && !state.privateKey) {
     console.warn("Private key not set.")
     return
   }
-  decryptIfNeeded(props.myUserId, state.people, d, state.privateKey)
-    .then(r => {
-      console.log("new (or updated) comment decrypt", r)
-      const d2: ChatCommentDecrypted = {
-        ...d,
-        texts: d.texts.map(a => {
-          return { to: a.to, encrypted: a.encrypted }
-        }),
-        text_decrypted: r.text || "（暗号化）",
-      }
-      if (
-        d2.kind == "poster" &&
-        activePoster &&
-        d2.texts.map(t => t.to).indexOf(activePoster) != -1
-      ) {
-        Vue.set(state.posterComments, d.id, d)
-      }
+  try {
+    const r = await decryptIfNeeded(
+      props.myUserId,
+      state.people,
+      d,
+      state.privateKey
+    )
+    console.log("new (or updated) comment decrypt", r)
+    const d2: ChatCommentDecrypted = {
+      ...d,
+      texts: d.texts.map(a => {
+        return { to: a.to, encrypted: a.encrypted }
+      }),
+      text_decrypted: r.text || "（暗号化）",
+    }
+    if (
+      d2.kind == "poster" &&
+      activePoster &&
+      d2.texts.map(t => t.to).indexOf(activePoster) != -1
+    ) {
+      Vue.set(state.posterComments, d.id, d)
+    }
 
-      Vue.set(state.comments, d.id, d2)
-      Vue.nextTick(() => {
-        let el = document.querySelector("#chat-local-history")
-        if (el) {
-          el.scrollTop = el.scrollHeight
-        }
-        el = document.querySelector("#poster-comments")
-        if (el) {
-          el.scrollTop = el.scrollHeight
-        }
-      })
+    Vue.set(state.comments, d.id, d2)
+    Vue.nextTick(() => {
+      let el = document.querySelector("#chat-local-history")
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
+      el = document.querySelector("#poster-comments")
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
     })
-    .catch(console.error)
+  } catch (err) {
+    console.error(err)
+  }
 }
 
 export const chatGroupOfUser = (
@@ -367,11 +370,11 @@ export const initChatService = async (
     // )
     // location.href = "/mypage?room=" + props.room_id + "#encrypt"
   }
-  socket.on("Comment", (d: ChatComment) => {
+  socket.on("Comment", async (d: ChatComment) => {
     const pid = activePoster.value?.id
-    console.log("comment", d)
+    console.log("Comment socket", d)
     if (d.room == props.room_id) {
-      newComment(props, state, d, pid)
+      await newComment(props, state, d, pid)
     }
   })
   socket.on("CommentRemove", (comment_id: string) => {

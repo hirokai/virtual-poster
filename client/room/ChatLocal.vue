@@ -119,7 +119,7 @@
               &#x27a1;
               <span
                 class="recipient"
-                v-for="t in notMyself(c.person, c.texts)"
+                v-for="t in notSender(c.person, c.texts)"
                 :key="t.to"
               >
                 {{ people[t.to] ? people[t.to].name : "" }}
@@ -447,7 +447,7 @@ export default defineComponent({
       }
     }
 
-    const notMyself = (
+    const notSender = (
       person: UserId,
       texts: { to: UserId }[]
     ): { to: UserId }[] => {
@@ -561,7 +561,7 @@ export default defineComponent({
       speechText,
       toggleDictation,
       is_chrome,
-      notMyself,
+      notSender,
       emojiIndex,
       selectEmoji,
       clickReaction,

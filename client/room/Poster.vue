@@ -23,8 +23,30 @@
         @mouseup="mouseUpPoster"
         @mousedown="mouseDownPoster"
         @mousemove="mouseMovePoster"
-        @mousewheel="mouseWheelPoster"
       >
+        <div id="poster-tools">
+          <img
+            @click="zoomIn"
+            class="toolbar-icon"
+            src="/img/zoom-in.png"
+            width="25px"
+            height="25px"
+          />
+          <img
+            @click="zoomOut"
+            class="toolbar-icon"
+            src="/img/zoom-out.png"
+            width="25px"
+            height="25px"
+          />
+          <img
+            @click="zoomFit"
+            class="toolbar-icon"
+            src="/img/maximize.png"
+            width="25px"
+            height="25px"
+          />
+        </div>
         <div
           id="poster-notfound"
           v-if="!!poster && posterStatus == 'not_found' && poster.author"
@@ -53,8 +75,7 @@
         id="poster-help"
         v-show="imageMag == 1 && imagePos.x == 0 && imagePos.y == 0"
       >
-        表示のスクロール：マウスのドラッグ。拡大縮小：ホイール（Mac:
-        トラックパッドの2本指スクロール）
+        マウスのドラッグで表示位置の移動。
       </div>
     </div>
     <div id="poster-chat-input-container">
@@ -182,6 +203,8 @@ export default defineComponent({
       imagePos: { x: 0, y: 0 },
       mouseDown: false,
       imageMag: 1,
+      imageMags: [0.1, 0.2, 0.3, 0.5, 0.67, 1, 1.2, 1.5, 2, 3, 4, 5],
+      imageMagIndex: 5,
     })
     const comments_sorted = computed(() => {
       return sortBy(Object.values(props.comments), c => c.timestamp)
@@ -265,6 +288,33 @@ export default defineComponent({
       state.inputText = ""
     }
 
+    const zoomIn = () => {
+      const idx = inRange(
+        state.imageMagIndex + 1,
+        0,
+        state.imageMags.length - 1
+      )
+      state.imageMag = state.imageMags[idx]
+      state.imageMagIndex = idx
+    }
+
+    const zoomOut = () => {
+      const idx = inRange(
+        state.imageMagIndex - 1,
+        0,
+        state.imageMags.length - 1
+      )
+      state.imageMag = state.imageMags[idx]
+      state.imageMagIndex = idx
+    }
+
+    const zoomFit = () => {
+      state.imageMagIndex = state.imageMags.indexOf(1)
+      state.imageMag = 1
+      state.imagePos.x = 0
+      state.imagePos.y = 0
+    }
+
     const movePosterImage = (delta: Point) => {
       const el = posterImage.value
       if (el) {
@@ -288,7 +338,6 @@ export default defineComponent({
       state.mouseDown = false
     }
     const mouseMovePoster = (ev: MouseEvent) => {
-      // console.log(ev)
       if (state.mouseDown) {
         const delta: Point = {
           x: ev.x - state.prevPos.x,
@@ -298,6 +347,7 @@ export default defineComponent({
         movePosterImage(delta)
       }
     }
+
     const mouseWheelPoster = (ev: MouseWheelEvent) => {
       console.log(ev.deltaMode, ev.deltaX, ev.deltaY)
       state.imageMag = inRange(state.imageMag + ev.deltaY * 0.01, 0.3, 3)
@@ -313,6 +363,10 @@ export default defineComponent({
       comments_sorted,
       clearInput,
       numInputRows,
+      zoomIn,
+      zoomOut,
+      zoomFit,
+      posterImage,
       ...CommonMixin,
     }
   },
@@ -423,7 +477,7 @@ h3 {
 #poster-help {
   position: absolute;
   right: 10px;
-  bottom: -20px;
+  bottom: -50px;
   font-size: 12px;
 }
 
@@ -455,5 +509,10 @@ textarea#poster-chat-input {
 
 .comment-content {
   padding: 0px 10px;
+}
+
+#poster-tools .toolbar-icon {
+  opacity: 0.5;
+  margin: 0px 3px;
 }
 </style>

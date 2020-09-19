@@ -550,8 +550,8 @@ export const commentTree = (
       const nodes: { [comment_id: string]: Tree<ChatCommentDecrypted> } = {}
       for (const c of Object.values(state.comments)) {
         if (!c.reply_to) {
-          const { node, created } = findOrMakeNode(c)
-          if (created) {
+          const { node } = findOrMakeNode(c)
+          if (!tree.children.find(child => child.node?.id == c.id)) {
             tree.children.push(node)
           }
         } else {
@@ -560,6 +560,10 @@ export const commentTree = (
             const { node: node_parent } = findOrMakeNode(p)
             const { node } = findOrMakeNode(c)
             node_parent.children.push(node)
+            //Assuming depth is only one. Otherwise, inserting to "tree" is not always correct.
+            if (!tree.children.find(child => child.node?.id == p.id)) {
+              tree.children.push(node_parent)
+            }
           } else {
             console.log("reply_to parent not found. This must be a bug.")
           }

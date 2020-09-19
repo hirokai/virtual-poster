@@ -51,7 +51,7 @@
     </g>
     <g
       id="controller"
-      :transform="'translate (384 ' + 48 * (activePoster ? 4 : 9) + ')'"
+      style="transform: translate(384px, 432px);"
       @mousedown="clickController"
       opacity="0.8"
     >
@@ -240,6 +240,13 @@ export default defineComponent({
       "--map_y_offset": computed(() => {
         return props.myself ? 3 + props.myself.y - props.center.y : 3
       }),
+      "--controller_y": computed(() => {
+        return (
+          "" +
+          48 * ((props.myself?.y || props.center.y) - props.center.y + 6) +
+          "px"
+        )
+      }),
       top: props.isMobile ? "0px" : undefined,
       left: props.isMobile ? "3px" : undefined,
     }
@@ -307,8 +314,42 @@ svg#cells.small {
   animation-fill-mode: forwards;
 }
 
-svg#cells #controller {
-  transition: transform 0.5s linear 0.5s;
+svg#cells.normal #controller {
+  animation-name: controller_translate_rev;
+  animation-duration: 1s;
+  animation-direction: normal;
+  animation-fill-mode: forwards;
+}
+
+svg#cells.small #controller {
+  animation-name: controller_translate;
+  animation-duration: 1s;
+  animation-direction: normal;
+  animation-fill-mode: forwards;
+}
+
+@keyframes controller_translate {
+  0% {
+    transform: translate(384px, 432px);
+  }
+  50% {
+    transform: translate(384px, var(--controller_y));
+  }
+  100% {
+    transform: translate(384px, var(--controller_y));
+  }
+}
+
+@keyframes controller_translate_rev {
+  0% {
+    transform: translate(384px, var(--controller_y));
+  }
+  50% {
+    transform: translate(384px, var(--controller_y));
+  }
+  100% {
+    transform: translate(384px, 432px);
+  }
 }
 
 @keyframes svg_scale {

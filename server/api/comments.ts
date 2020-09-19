@@ -4,8 +4,8 @@ import {
   PosterId,
   CommentEncryptedEntry,
   ChatComment,
-  UserId,
   ChatCommentDecrypted,
+  CommentId,
 } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
@@ -124,6 +124,49 @@ async function routes(
       emit.posterComment(comment_not_encrypted)
     }
     return { ok, comment: comment_actual, error }
+  })
+
+  fastify.post<any>("/comments/:commentId/reply", async req => {
+    const reply_to: CommentId = req.params.commentId
+    const comments_encrypted: CommentEncryptedEntry[] = req.body as CommentEncryptedEntry[]
+    const requester: string = req["requester"]
+    const timestamp = Date.now()
+    userLog({
+      userId: requester,
+      operation: "comment.new",
+      data: { text: comments_encrypted, reply_to },
+    })
+    const reply_to_comment = await model.chat.getComment(reply_to)
+    if (!reply_to_comment) {
+      throw { statusCode: 400, message: "Comment not found" }
+    }
+    const pos = { x: reply_to_comment.x, y: reply_to_comment.y }
+    const map = model.maps[reply_to_comment.room]
+    if (!map) {
+      throw { statusCode: 400, message: "Room not found" }
+    }
+    const to_users_original = reply_to_comment.texts.map(t => t.to)
+    const to_users_this = comments_encrypted.map(c => c.to)
+    if (!_.isEqual(to_users_original.sort(), to_users_this.sort())) {
+      throw { statusCode: 400, message: "Chat recipients are invalid" }
+    }
+    const e: ChatComment = {
+      id: model.chat.genCommentId(),
+      person: requester,
+      room: reply_to_comment.room,
+      x: pos.x,
+      y: pos.y,
+      texts: comments_encrypted,
+      timestamp,
+      last_updated: timestamp,
+      kind: "person",
+      reply_to,
+    }
+    const r = await model.chat.addCommentEncrypted(e)
+    if (r) {
+      emit.comment(e)
+    }
+    return { ok: true }
   })
 
   fastify.patch<any>("/comments/:commentId", async req => {

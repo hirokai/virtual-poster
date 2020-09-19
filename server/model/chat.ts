@@ -180,12 +180,21 @@ export function calcCenter(positions: Point[]): Point | null {
 async function deleteComment(comment_id: string): Promise<boolean> {
   try {
     await db.query("BEGIN")
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to=$1);`,
+      [comment_id]
+    )
     await db.query(`DELETE from comment_to_person where comment=$1;`, [
       comment_id,
     ])
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to=$1);`,
+      [comment_id]
+    )
     await db.query(`DELETE from comment_to_poster where comment=$1;`, [
       comment_id,
     ])
+    await db.query(`DELETE from comment WHERE reply_to=$1;`, [comment_id])
     await db.query(`DELETE from comment where id=$1;`, [comment_id])
     await db.query("COMMIT")
     return true
@@ -215,11 +224,11 @@ export async function getAllComments(
 ): Promise<ChatComment[]> {
   console.log("getAllComments()", room_id, user_id)
   const from_me = await db.query(
-    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment where c.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment where c.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [user_id, room_id]
   )
   const to_me = await db.query(
-    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment where cp.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment where cp.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [user_id, room_id]
   )
   const ds: ChatComment[] = from_me.concat(to_me).map(r => {
@@ -243,6 +252,7 @@ export async function getAllComments(
           return { to, text, encrypted }
         }
       ),
+      reply_to: r["reply_to"] || undefined,
     }
     return r2
   })
@@ -254,7 +264,7 @@ export async function getPosterComments(
   poster_id: PosterId
 ): Promise<ChatCommentDecrypted[]> {
   const rows = await db.query(
-    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c join comment_to_poster as cp on c.id=cp.comment where cp.poster=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c join comment_to_poster as cp on c.id=cp.comment where cp.poster=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     poster_id
   )
   const ds: ChatCommentDecrypted[] = rows.map(r => {
@@ -271,6 +281,7 @@ export async function getPosterComments(
         return { to, encrypted: false }
       }),
       kind: "poster",
+      reply_to: r["reply_to"] || undefined,
     }
     return r2
   })
@@ -340,6 +351,7 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
           timestamp: c.timestamp,
           last_updated: c.last_updated,
           kind: c.kind,
+          reply_to: c.reply_to,
         },
         null,
         "comment"
@@ -383,11 +395,11 @@ export async function getComment(
   comment_id: string
 ): Promise<ChatComment | null> {
   const from_me = await db.query(
-    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [comment_id]
   )
   const to_me = await db.query(
-    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     [comment_id]
   )
 
@@ -412,6 +424,7 @@ export async function getComment(
           return { to, text, encrypted }
         }
       ),
+      reply_to: r["reply_to"] || undefined,
     }
     return r2
   })

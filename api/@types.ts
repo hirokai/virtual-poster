@@ -63,6 +63,7 @@ export type ChatCommentDecrypted = {
     to: UserId | PosterId
   }[]
   kind: 'poster' | 'person'
+  reply_to?: string
 }
 
 export type CommentEncrypted = {
@@ -72,7 +73,7 @@ export type CommentEncrypted = {
 }
 
 export type ChatComment = {
-  id: string
+  id: CommentId
   timestamp: number
   last_updated: number
   room: RoomId
@@ -81,6 +82,7 @@ export type ChatComment = {
   person: UserId
   kind: 'poster' | 'person'
   texts: CommentEncrypted[]
+  reply_to?: string
 }
 
 export type Poster = {
@@ -114,3 +116,5 @@ export type PersonStat = {
   chat_count: number
   chat_char_count: number
 }
+
+export type CommentId = string

@@ -1184,6 +1184,8 @@ paths:
                     type: boolean
       description: "Release a poster slot the user reserved  "
       parameters: []
+      tags:
+        - poster
   /latency_report:
     post:
       summary: Submit a latency report
@@ -1322,6 +1324,7 @@ paths:
                   type: string
               required:
                 - blinded
+      description: Blind sign a message
   /blind_sign/verify:
     get:
       summary: Verify blind signature
@@ -1476,6 +1479,36 @@ paths:
               required:
                 - title
       description: Update poster info.
+  "/comments/{commentId}/reply":
+    parameters:
+      - schema:
+          type: string
+        name: commentId
+        in: path
+        required: true
+    post:
+      summary: Add a reply to a comment
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+      operationId: post-comments-commentId-reply
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CommentEncrypted"
+      description: "Add a comment reply  "
 components:
   parameters:
     debug_token:
@@ -1626,7 +1659,7 @@ components:
       x-tags:
         - types
     ChatCommentDecrypted:
-      title: ChatComment
+      title: ChatCommentDecrypted
       type: object
       description: Chat comment object
       x-tags:
@@ -1673,6 +1706,8 @@ components:
           enum:
             - poster
             - person
+        reply_to:
+          type: string
       required:
         - id
         - timestamp
@@ -1703,13 +1738,13 @@ components:
         - text
         - encrypted
     ChatComment:
-      title: ChatCommentEncrypted
+      title: ChatComment
       type: object
       x-tags:
         - types
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/CommentId"
         timestamp:
           type: integer
         last_updated:
@@ -1731,6 +1766,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CommentEncrypted"
+        reply_to:
+          type: string
       required:
         - id
         - timestamp
@@ -1834,6 +1871,9 @@ components:
         - people_encountered
         - chat_count
         - chat_char_count
+    CommentId:
+      title: CommentId
+      type: string
   securitySchemes:
     debugAs:
       type: apiKey

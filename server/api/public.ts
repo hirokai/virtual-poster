@@ -120,7 +120,9 @@ async function public_api_routes(
               )
               return reply
                 .setCookie("virtual_poster_session_id", sid, {
-                  expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+                  expires: new Date(
+                    Date.now() + 1000 * 60 * config.cookie_expires
+                  ),
                 })
                 .send({
                   ok: true,
@@ -156,7 +158,9 @@ async function public_api_routes(
           if (decodedToken.email_verified) {
             return reply
               .setCookie("virtual_poster_session_id", sid, {
-                expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+                expires: new Date(
+                  Date.now() + 1000 * 60 * config.cookie_expires
+                ),
               })
               .send({
                 ok: false,
@@ -166,7 +170,9 @@ async function public_api_routes(
           } else {
             return reply
               .setCookie("virtual_poster_session_id", sid, {
-                expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+                expires: new Date(
+                  Date.now() + 1000 * 60 * config.cookie_expires
+                ),
               })
               .send({
                 ok: false,

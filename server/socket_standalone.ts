@@ -109,7 +109,6 @@ function run() {
   // middleware
   io.use((socket, next) => {
     const cookie = socket.handshake.headers.cookie
-    socket.handshake.headers.cookie = cookie + "; hoge=1"
 
     log.debug(cookie)
     return next()

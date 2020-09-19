@@ -9,6 +9,7 @@ import {
   Direction,
   RoomId,
   PersonPos,
+  Tree,
 } from "@/@types/types"
 import fromPairs from "lodash/fromPairs"
 import minBy from "lodash/minBy"
@@ -571,4 +572,22 @@ export function mapValues<A, B>(
     res[k] = f(vs[k])
   }
   return res
+}
+
+export function flattenTree<T>(
+  root: Tree<T>,
+  depth = 0
+): (T & { __depth: number })[] {
+  return (root.node ? [{ ...root.node, __depth: depth }] : []).concat(
+    root.children.map(c => flattenTree<T>(c, depth + 1)).flat()
+  )
+}
+
+export function sortTree<T>(tree: Tree<T>, cmp: (a: T, b: T) => number): void {
+  for (const c of tree.children) {
+    sortTree(c, cmp)
+  }
+  tree.children.sort((a, b) =>
+    !a.node ? -1 : !b.node ? 1 : cmp(a.node, b.node)
+  )
 }

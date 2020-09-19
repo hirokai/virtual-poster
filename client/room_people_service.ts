@@ -33,8 +33,8 @@ const updatePerson = (
   }
   if (d.x != undefined && d.y != undefined && d.direction != undefined) {
     moveOneStep(axios, props, state, d.id, { x: d.x, y: d.y }, d.direction)
-    if (d.id != props.myUserId) {
-      state.liveMapChangedAfterMove = true
+    if (d.id != props.myUserId && state.batchMove) {
+      state.batchMove.liveMapChangedAfterMove = true
     }
   }
   const person: PersonInMap = {

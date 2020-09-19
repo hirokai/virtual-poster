@@ -152,78 +152,13 @@ export default defineComponent({
 
     onMounted(() => {
       firebase.initializeApp(firebaseConfig)
-      const uiConfig: firebaseui.auth.Config = {
-        callbacks: {
-          signInSuccessWithAuthResult: authResult => {
-            state.user = authResult.user
-            if (state.register_name == "") {
-              state.register_name = authResult.user.displayName
-            }
-            if (!state.user) {
-              return false
-            } else {
-              console.log("Email verified:", state.user.emailVerified)
-              if (state.user.emailVerified) {
-                authResult.user.getIdToken(true).then(idToken => {
-                  axios.defaults.headers.common = {
-                    Authorization: `Bearer ${idToken}`,
-                  }
-                  client.id_token
-                    .$post({ body: { token: idToken } })
-                    .then(data => {
-                      console.log("/id_token result", data)
-                      if (data.registered == "can_register") {
-                        state.nextAction = "register"
-                        location.href = "/register"
-                      } else if (data.registered == "registered") {
-                        state.nextAction = undefined
-                        location.href = "/"
-                      }
-                    })
-                    .catch(err => {
-                      console.error(err)
-                    })
-                })
-              } else {
-                state.nextAction = "verify"
-                const actionCodeSettings = {
-                  url: "/register",
-                }
-                state.user
-                  .sendEmailVerification(actionCodeSettings)
-                  .then(() => {
-                    console.log("Verification email sent")
-                  })
-                  .catch(function(error) {
-                    console.error(error)
-                  })
-              }
-              return state.user.emailVerified
-            }
-          },
-        },
-        signInOptions: [
-          {
-            provider: firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-            customParameters: {
-              prompt: "select_account",
-            },
-          },
-          firebase.auth.EmailAuthProvider.PROVIDER_ID,
-        ],
-        signInSuccessUrl: "/",
-        tosUrl: "<your-tos-url>",
-        privacyPolicyUrl: function() {
-          window.location.assign("<your-privacy-policy-url>")
-        },
-      }
       firebase.auth().onAuthStateChanged(user => {
         state.user = user
       })
     })
 
     console.log("state", state)
-    const submitRegistration = async ev => {
+    const submitRegistration = async () => {
       console.log(state.register_name)
       const data = await client.register.$post({
         body: {

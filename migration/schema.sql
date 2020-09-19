@@ -113,7 +113,8 @@ CREATE TABLE comment (
 	room text references room(id),
 	x integer,
 	y integer,
-	kind text
+	kind text,
+	reply_to text references comment(id)
 );
 
 CREATE TABLE comment_to_person (

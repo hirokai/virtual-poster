@@ -1,53 +1,50 @@
 // To parse this data:
 //
-//   import { Convert, Config, Server, Aws, CloudFront, S3 } from "./file";
+//   import { Convert, Config } from "./file";
 //
 //   const config = Convert.toConfig(json);
-//   const server = Convert.toServer(json);
-//   const aws = Convert.toAws(json);
-//   const cloudFront = Convert.toCloudFront(json);
-//   const s3 = Convert.toS3(json);
 //
 // These functions will throw an error if the JSON doesn't
 // match the expected interface, even if the JSON is valid.
 
 export interface Config {
-  api_server: Server
-  aws: Aws
-  certificate_folder: string
-  debug_token: string
-  default_rooms: string[]
   domain: string
-  firebase_auth_credential: string
-  postgresql: string
+  api_server: Server
   socket_server: Server
-  socket_url?: string
+  default_rooms: string[]
+  certificate_folder: string
+  postgresql: string
+  aws: Aws
+  firebase_auth_credential: string
   user_registration: boolean
+  cookie_expires: number
+  debug_token: string
 }
 
 export interface Server {
-  cluster: number
-  debug_log: boolean
-  http2: boolean
   port: number
   tls: boolean
+  http2: boolean
+  cluster: number
+  debug_log: boolean
 }
 
 export interface Aws {
   access_key_id: string
-  cloud_front: CloudFront
+  secret_access_key: string
   region: string
   s3: S3
-  secret_access_key: string
+  cloud_front: CloudFront
 }
 
 export interface CloudFront {
-  domain: string
   id: string
+  domain: string
 }
 
 export interface S3 {
-  bucket?: string
+  upload: boolean
+  bucket: string
   via_cdn: boolean
 }
 
@@ -60,38 +57,6 @@ export class Convert {
 
   public static configToJson(value: Config): string {
     return JSON.stringify(uncast(value, r("Config")), null, 2)
-  }
-
-  public static toServer(json: string): Server {
-    return cast(JSON.parse(json), r("Server"))
-  }
-
-  public static serverToJson(value: Server): string {
-    return JSON.stringify(uncast(value, r("Server")), null, 2)
-  }
-
-  public static toAws(json: string): Aws {
-    return cast(JSON.parse(json), r("Aws"))
-  }
-
-  public static awsToJson(value: Aws): string {
-    return JSON.stringify(uncast(value, r("Aws")), null, 2)
-  }
-
-  public static toCloudFront(json: string): CloudFront {
-    return cast(JSON.parse(json), r("CloudFront"))
-  }
-
-  public static cloudFrontToJson(value: CloudFront): string {
-    return JSON.stringify(uncast(value, r("CloudFront")), null, 2)
-  }
-
-  public static toS3(json: string): S3 {
-    return cast(JSON.parse(json), r("S3"))
-  }
-
-  public static s3ToJson(value: S3): string {
-    return JSON.stringify(uncast(value, r("S3")), null, 2)
   }
 }
 
@@ -247,56 +212,57 @@ function r(name: string) {
 const typeMap: any = {
   Config: o(
     [
-      { json: "api_server", js: "api_server", typ: r("Server") },
-      { json: "aws", js: "aws", typ: r("Aws") },
-      { json: "certificate_folder", js: "certificate_folder", typ: "" },
-      { json: "debug_token", js: "debug_token", typ: "" },
-      { json: "default_rooms", js: "default_rooms", typ: a("") },
       { json: "domain", js: "domain", typ: "" },
+      { json: "api_server", js: "api_server", typ: r("Server") },
+      { json: "socket_server", js: "socket_server", typ: r("Server") },
+      { json: "default_rooms", js: "default_rooms", typ: a("") },
+      { json: "certificate_folder", js: "certificate_folder", typ: "" },
+      { json: "postgresql", js: "postgresql", typ: "" },
+      { json: "aws", js: "aws", typ: r("Aws") },
       {
         json: "firebase_auth_credential",
         js: "firebase_auth_credential",
         typ: "",
       },
-      { json: "postgresql", js: "postgresql", typ: "" },
-      { json: "socket_server", js: "socket_server", typ: r("Server") },
-      { json: "socket_url", js: "socket_url", typ: u(undefined, "") },
       { json: "user_registration", js: "user_registration", typ: true },
+      { json: "cookie_expires", js: "cookie_expires", typ: 0 },
+      { json: "debug_token", js: "debug_token", typ: "" },
     ],
-    "any"
+    false
   ),
   Server: o(
     [
-      { json: "cluster", js: "cluster", typ: 3.14 },
-      { json: "debug_log", js: "debug_log", typ: true },
-      { json: "http2", js: "http2", typ: true },
-      { json: "port", js: "port", typ: 3.14 },
+      { json: "port", js: "port", typ: 0 },
       { json: "tls", js: "tls", typ: true },
+      { json: "http2", js: "http2", typ: true },
+      { json: "cluster", js: "cluster", typ: 0 },
+      { json: "debug_log", js: "debug_log", typ: true },
     ],
-    "any"
+    false
   ),
   Aws: o(
     [
       { json: "access_key_id", js: "access_key_id", typ: "" },
-      { json: "cloud_front", js: "cloud_front", typ: r("CloudFront") },
+      { json: "secret_access_key", js: "secret_access_key", typ: "" },
       { json: "region", js: "region", typ: "" },
       { json: "s3", js: "s3", typ: r("S3") },
-      { json: "secret_access_key", js: "secret_access_key", typ: "" },
+      { json: "cloud_front", js: "cloud_front", typ: r("CloudFront") },
     ],
-    "any"
+    false
   ),
   CloudFront: o(
     [
-      { json: "domain", js: "domain", typ: "" },
       { json: "id", js: "id", typ: "" },
+      { json: "domain", js: "domain", typ: "" },
     ],
-    "any"
+    false
   ),
   S3: o(
     [
-      { json: "bucket", js: "bucket", typ: u(undefined, "") },
+      { json: "upload", js: "upload", typ: true },
+      { json: "bucket", js: "bucket", typ: "" },
       { json: "via_cdn", js: "via_cdn", typ: true },
     ],
-    "any"
+    false
   ),
 }

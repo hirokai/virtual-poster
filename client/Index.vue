@@ -57,13 +57,12 @@ import {
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
-import { Room, UserId, PostIdTokenResponse } from "../@types/types"
+import { Room, UserId } from "../@types/types"
 
 import axios from "axios"
 import * as encryption from "./encryption"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-import jsSHA from "jssha"
 import firebaseConfig from "../firebaseConfig"
 import { deleteUserInfoOnLogout } from "./util"
 
@@ -164,7 +163,7 @@ export default defineComponent({
           const data = await client.public_key.$get()
           console.log("/public_key result", data)
 
-          const r2 = await encryption.setupEncryption(
+          await encryption.setupEncryption(
             axios,
             state.myUserId,
             data.public_key

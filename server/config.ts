@@ -1,7 +1,6 @@
 import fs from "fs"
 import yaml from "js-yaml"
 import { Config, Convert } from "./parse_config"
-import path from "path"
 
 let _config: Config
 try {

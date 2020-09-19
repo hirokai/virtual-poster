@@ -140,11 +140,6 @@ import {
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
 
-const API_ROOT = "/api"
-const axios = axiosDefault.create({
-  baseURL: API_ROOT,
-})
-
 export default defineComponent({
   props: {
     poster: {

@@ -642,12 +642,13 @@ export class MapModel {
   ): Promise<RoomId[] | undefined> {
     // If it has non-existent room ID, return undefined
     const rooms = code.split(":")
+    const rooms_ok: RoomId[] = []
     for (const rid of rooms) {
       const mm = model.maps[rid]
-      if (!mm) {
-        return undefined
+      if (mm) {
+        rooms_ok.push(rid)
       }
     }
-    return rooms.concat(DEFAULT_ROOMS)
+    return rooms_ok.concat(DEFAULT_ROOMS)
   }
 }

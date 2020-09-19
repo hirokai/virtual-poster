@@ -6,6 +6,7 @@ import { RoomId, PersonInMap, PersonUpdate } from "@/@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
 import fs from "fs"
+import { config } from "../config"
 
 const serviceAccount = JSON.parse(
   fs.readFileSync(
@@ -188,7 +189,7 @@ async function routes(
       }
       return await res
         .setCookie("virtual_poster_session_id", sid, {
-          expires: new Date(Date.now() + 1000 * 60 * 60 * 6),
+          expires: new Date(Date.now() + 1000 * 60 * config.cookie_expires),
         })
         .send(r)
     } else {

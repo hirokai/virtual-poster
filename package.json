@@ -40,6 +40,7 @@
     "bunyan": "^1.8.12",
     "cors": "^2.8.5",
     "dotenv": "^8.2.0",
+    "emoji-mart-vue-fast": "^7.0.4",
     "express": "^4.17.1",
     "fastify": "^3.0.3",
     "fastify-cookie": "^4.0.2",

@@ -28,4 +28,5 @@ aws:
     domain: cdn.example.com
 firebase_auth_credential: xxxxx.json
 user_registration: true
+cookie_expires: 1440
 debug_token: xxxxx

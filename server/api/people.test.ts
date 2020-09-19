@@ -5,7 +5,6 @@ import { exec } from "child_process"
 import { promisify } from "util"
 import { random_str } from "../test_util"
 import { config } from "../config"
-import * as model from "../model"
 
 const execAsync = promisify(exec)
 jest.setTimeout(10000)

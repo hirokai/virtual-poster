@@ -66,7 +66,7 @@ export async function init(): Promise<void> {
 
 // Stats fields may be updated frequently during development,
 // so the data from DB is normalized upon loading.
-function normalizeStats(obj: Record<string, any>): PersonStat {
+function _normalizeStats(obj: Record<string, any>): PersonStat {
   const res: PersonStat = {
     walking_steps: obj?.walking_steps || 0,
     chat_char_count: obj?.chat_char_count || 0,
@@ -638,7 +638,7 @@ export function randomAvatar(): string {
   return avatar
 }
 
-function randomDirection(): Direction {
+function _randomDirection(): Direction {
   return ["up", "down", "right", "left"][
     Math.floor(Math.random() * 4)
   ] as Direction
@@ -658,7 +658,8 @@ export async function createSessionId(
       .replace("/", "_")
       .replace(/=+$/, "")
   console.log("Setting session ID", user_id, sid)
-  const expires_in = type == "pre_registration" ? 60 * 60 : 60 * 60 * 6
+  const expires_in =
+    type == "pre_registration" ? 60 * 60 : 60 * config.cookie_expires
   await redis.sessions.setex("cookie:value:" + user_id, expires_in, sid)
   await redis.sessions.setex("cookie:email:" + sid, expires_in, email)
   await redis.sessions.setex("cookie:type:" + sid, expires_in, type)
@@ -667,29 +668,6 @@ export async function createSessionId(
   }
   return sid
 }
-
-/*
-export async function createPreRegistrationSessionId(
-  email: string
-): Promise<string> {
-  const bs = crypto.randomBytes(32)
-  const sid =
-    "P_" +
-    bs
-      .toString("base64")
-      .replace("+", "-")
-      .replace("/", "_")
-      .replace(/=+$/, "")
-  console.log("Setting pre-registration session ID", email, sid)
-  await redis.sessions.setex("cookie:email:" + sid, 60 * 60 * 6, email)
-  await redis.sessions.setex(
-    "cookie:type:" + sid,
-    60 * 60 * 6,
-    "pre_registration"
-  )
-  return sid
-}
-*/
 
 export async function removePerson(
   user_id: UserId

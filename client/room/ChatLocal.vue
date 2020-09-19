@@ -25,6 +25,7 @@
         placeholder="Shift+Enterで送信"
         :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
       ></textarea>
+
       <span
         id="show-encrypt"
         :class="{
@@ -53,6 +54,7 @@
       >
         {{ dictation.running ? "音声入力中" : "音声入力" }}
       </button>
+
       <button
         id="leave-chat"
         @click="$emit('leave-chat')"
@@ -93,11 +95,21 @@
           hidden: contentHidden,
         }"
       >
+        <Picker
+          v-if="showEmojiPicker && showEmojiPicker == c.id"
+          set="apple"
+          style="position: absolute"
+          :data="emojiIndex"
+          @select="emoji => selectEmoji(c, emoji)"
+        />
         <div v-if="c.event == 'new_date'" class="date_event">
           <hr />
           <span> {{ c.date_str }} </span>
         </div>
-        <div v-if="c.event == 'comment'">
+        <div
+          v-if="c.event == 'comment'"
+          :style="{ 'margin-left': '' + (c.__depth - 1) * 20 + 'px' }"
+        >
           <div class="local-entry-header">
             <span class="comment-name">
               {{ people[c.person] ? people[c.person].name : null }}
@@ -107,12 +119,19 @@
               &#x27a1;
               <span
                 class="recipient"
-                v-for="t in notMyself(c.texts)"
+                v-for="t in notMyself(c.person, c.texts)"
                 :key="t.to"
               >
                 {{ people[t.to] ? people[t.to].name : "" }}
               </span>
               <span v-if="c.encrypted_for_all">&#x1F512; </span>
+            </span>
+            <span
+              class="comment-entry-tool"
+              id="show_emoji_picker"
+              @click="showEmojiPicker = showEmojiPicker ? undefined : c.id"
+            >
+              😀
             </span>
             <span
               class="comment-entry-tool"
@@ -141,6 +160,22 @@
               v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
             ></span>
           </div>
+          <div
+            class="reactions"
+            v-if="c.reactions && Object.keys(c.reactions).length > 0"
+          >
+            <span
+              :class="{
+                'reaction-entry': true,
+                'my-reaction': !!r[myself.id],
+              }"
+              v-for="(r, reaction) in c.reactions"
+              :key="reaction"
+              @click="clickReaction(c, r[myself.id], reaction)"
+              >{{ reaction }}
+              <span class="count">{{ Object.keys(r).length }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -153,11 +188,12 @@ import {
   ChatCommentDecrypted,
   Poster as PosterTyp,
   UserId,
-  RoomId,
+  CommentId,
+  Tree,
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
-import { sortBy } from "../../common/util"
+import { sortBy, flattenTree } from "../../common/util"
 
 import Vue from "vue"
 import {
@@ -170,6 +206,12 @@ import {
 } from "@vue/composition-api"
 import VueCompositionApi from "@vue/composition-api"
 Vue.use(VueCompositionApi)
+
+import data from "emoji-mart-vue-fast/data/all.json"
+import { Picker, EmojiIndex } from "emoji-mart-vue-fast"
+import "emoji-mart-vue-fast/css/emoji-mart.css"
+
+const emojiIndex = new EmojiIndex(data)
 
 interface CommentHistoryEntry {
   event: string
@@ -188,6 +230,10 @@ interface CommentEvent extends CommentHistoryEntry {
     to: UserId
   }[]
   person: UserId
+  __depth: number
+  reactions?: {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
 }
 
 interface DateEvent extends CommentHistoryEntry {
@@ -196,6 +242,9 @@ interface DateEvent extends CommentHistoryEntry {
 }
 
 export default defineComponent({
+  components: {
+    Picker,
+  },
   props: {
     poster: {
       type: Object as PropType<PosterTyp>,
@@ -237,6 +286,10 @@ export default defineComponent({
       type: Object as PropType<{ [index: string]: ChatCommentDecrypted }>,
       required: true,
     },
+    commentTree: {
+      type: Object as PropType<Tree<ChatCommentDecrypted>>,
+      required: true,
+    },
     isMobile: {
       type: Boolean,
       required: true,
@@ -252,6 +305,7 @@ export default defineComponent({
         text: undefined as string | undefined,
       },
       recognition: null as any | null,
+      showEmojiPicker: undefined as CommentId | undefined,
     })
     const numInputRows = computed((): number => {
       if (state.inputText == "") {
@@ -322,22 +376,17 @@ export default defineComponent({
     }
 
     const localCommentHistory = computed((): CommentHistoryEntry[] => {
-      const comments = sortBy(
-        Object.values(props.comments)
-          .filter(c => {
-            return c.kind == "person"
-          })
-          .map(c => {
-            return {
-              ...c,
-              event: "comment",
-              encrypted_for_all: c.texts.every(t => t.encrypted),
-            } as CommentEvent
-          }),
-        c => {
-          return c.timestamp
-        }
-      ) as CommentHistoryEntry[]
+      const comments = flattenTree(props.commentTree)
+        .filter(c => {
+          return c.kind == "person"
+        })
+        .map(c => {
+          return {
+            ...c,
+            event: "comment",
+            encrypted_for_all: c.texts.every(t => t.encrypted),
+          } as CommentEvent
+        })
 
       const comments_with_date: CommentHistoryEntry[] = []
       if (comments.length > 0) {
@@ -346,25 +395,32 @@ export default defineComponent({
           date_str: formatDate(comments[0].timestamp),
         } as DateEvent)
       }
+      let prev_toplevel = 0
       for (let i = 0; i < comments.length; i++) {
-        comments_with_date.push(comments[i])
+        const toplevel = comments[i].__depth == 1
         if (
-          i < comments.length - 1 &&
-          !sameDate(comments[i + 1].timestamp, comments[i].timestamp)
+          toplevel &&
+          !sameDate(comments[prev_toplevel].timestamp, comments[i].timestamp)
         ) {
           comments_with_date.push({
             event: "new_date",
-            date_str: formatDate(comments[i + 1].timestamp),
-            timestamp: comments[i + 1].timestamp - 1,
+            date_str: formatDate(comments[i].timestamp),
+            timestamp: comments[i].timestamp - 1,
           } as DateEvent)
+        }
+        comments_with_date.push(comments[i])
+        if (toplevel) {
+          prev_toplevel = i
         }
       }
 
       return comments_with_date
     })
+
     const clearInput = () => {
       state.inputText = ""
     }
+
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)
       state.inputText = props.comments[cid].text_decrypted
@@ -391,8 +447,11 @@ export default defineComponent({
       }
     }
 
-    const notMyself = (texts: { to: UserId }[]): { to: UserId }[] => {
-      return texts.filter(t => t.to != props.myself?.id)
+    const notMyself = (
+      person: UserId,
+      texts: { to: UserId }[]
+    ): { to: UserId }[] => {
+      return texts.filter(t => t.to != person)
     }
 
     const startDictation = () => {
@@ -461,11 +520,36 @@ export default defineComponent({
       window.speechSynthesis.speak(utter)
     }
 
-    context.parent?.$on("clear-chat-input", ev => {
+    context.parent?.$on("clear-chat-input", () => {
       state.inputText = ""
     })
 
     const is_chrome = !!window["chrome"]
+
+    const selectEmoji = (c: ChatCommentDecrypted, emoji: any) => {
+      const me = props.myself
+      if (!me) {
+        console.error("Myself not set")
+        return
+      }
+      console.log(emoji)
+      const reaction: string = emoji.native
+      const reaction_id: string | undefined = c.reactions
+        ? c.reactions[reaction]
+          ? c.reactions[reaction][me.id]
+          : undefined
+        : undefined
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction)
+      state.showEmojiPicker = undefined
+    }
+
+    const clickReaction = (
+      c: ChatCommentDecrypted,
+      reaction_id: CommentId,
+      reaction: string
+    ) => {
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction)
+    }
 
     return {
       ...toRefs(state),
@@ -478,6 +562,9 @@ export default defineComponent({
       toggleDictation,
       is_chrome,
       notMyself,
+      emojiIndex,
+      selectEmoji,
+      clickReaction,
     }
   },
 })
@@ -611,6 +698,14 @@ button#dictation {
   vertical-align: 7px;
 }
 
+button#show_emoji_picker {
+  font-size: 20px;
+  width: 40px;
+  height: 26px;
+  margin-left: 10px;
+  vertical-align: -1px;
+}
+
 .person-in-local.typing {
   color: blue;
   font-weight: bold;
@@ -688,5 +783,27 @@ button#leave-chat {
   background-color: #888;
   height: 1px;
   border: 0;
+}
+
+.reactions {
+  height: 20px;
+}
+
+.reaction-entry {
+  cursor: pointer;
+  font-size: 14px;
+  background-color: rgba(29, 28, 29, 0.04);
+  border-radius: 6px;
+  margin: 0px 3px;
+  padding: 1px 3px;
+}
+
+.my-reaction {
+  background: rgba(29, 155, 209, 0.1);
+  box-shadow: rgb(29, 155, 209) 0px 0px 0px 0.8px inset;
+}
+
+.reaction-entry .count {
+  font-size: 10px;
 }
 </style>

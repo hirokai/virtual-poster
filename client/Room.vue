@@ -132,6 +132,7 @@
       :myself="myself"
       :contentHidden="hidden"
       :comments="comments"
+      :commentTree="commentTree"
       :people="people"
       :editingOld="editingOld"
       :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
@@ -148,6 +149,7 @@
       @onInputTextChange="onInputTextChange"
       @on-focus-input="onFocusInput"
       @set-encryption="setEncryption"
+      @add-emoji-reaction="addEmojiReaction"
     />
     <Poster
       v-if="!botActive"
@@ -225,11 +227,11 @@ import {
   ChatCommentDecrypted,
   UserId,
   Poster as PosterTyp,
-  PosterId,
   TypingSocketSendData,
   SocketMessageFromUser,
   HttpMethod,
-  RoomAppProps,
+  CommentId,
+  Tree,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -237,20 +239,16 @@ import MiniMap from "./room/MiniMap.vue"
 import Poster from "./room/Poster.vue"
 import CellInfo from "./room/CellInfo.vue"
 import ChatLocal from "./room/ChatLocal.vue"
-import { inRange } from "../common/util"
+import { inRange, sortTree } from "../common/util"
 
-import axiosDefault, { AxiosInstance } from "axios"
+import { AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
-
+import jsSHA from "jssha"
 import io from "socket.io-client"
 import { keyBy } from "../common/util"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-import * as encryption from "./encryption"
-import jsSHA from "jssha"
-import Peer from "skyway-js"
-import { MeshRoom, SfuRoom } from "skyway-js"
 import { initPeopleService } from "./room_people_service"
 
 import {
@@ -259,6 +257,7 @@ import {
   initChatService,
   chatGroupOfUser,
   myChatGroup as _myChatGroup,
+  commentTree as _commentTree,
 } from "./room_chat_service"
 
 import {
@@ -488,7 +487,6 @@ export default defineComponent({
 
       selectedUsers: new Set<UserId>(),
       selectedPos: null as { x: number; y: number } | null,
-      chatAfterMove: null as UserId | PosterId | null,
 
       editingOld: null as string | null,
 
@@ -501,9 +499,6 @@ export default defineComponent({
       } | null,
 
       move_emitted: null as number | null,
-      batchMovePoints: [] as Point[],
-      batchMoveTimer: null as NodeJS.Timeout | null,
-      liveMapChangedAfterMove: false,
 
       people_typing: {} as { [index: string]: boolean },
 
@@ -547,7 +542,7 @@ export default defineComponent({
               }
             }
           })().catch(err => {
-            //
+            console.log(err)
           })
         }
       }
@@ -905,6 +900,35 @@ export default defineComponent({
       }
     }
 
+    const addEmojiReaction = async (
+      cid: CommentId,
+      reaction_id: CommentId,
+      emoji: string
+    ) => {
+      console.log("addEmojiReaction", cid, reaction_id, emoji)
+      const c = state.comments[cid]
+      if (!c) {
+        return
+      }
+      if (
+        c.reactions &&
+        c.reactions[emoji] &&
+        c.reactions[emoji][props.myUserId] != undefined
+      ) {
+        await client.comments._commentId(reaction_id).$delete()
+      } else {
+        await client.comments._commentId(cid).reply.$post({
+          body: c.texts.map(t => {
+            return {
+              encrypted: false,
+              text: "\\reaction " + emoji,
+              to: t.to,
+            }
+          }),
+        })
+      }
+    }
+
     const hideMessage = () => {
       state.message.hide = true
     }
@@ -1031,8 +1055,10 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
+      commentTree: _commentTree(state),
       signOut,
       setEncryption,
+      addEmojiReaction,
       adjacentPosters,
       leaveChat,
       uploadPoster,

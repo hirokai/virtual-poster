@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { Poster, ChatComment, ChatCommentDecrypted } from "@/@types/types"
+import { Poster, ChatCommentDecrypted } from "@/@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
@@ -172,7 +172,7 @@ async function routes(
       await writeFile(out_path, data)
       await model.posters.set(poster)
       if (S3_BUCKET) {
-        const s3_url = await uploadFileToS3(out_path)
+        const _s3_url = await uploadFileToS3(out_path)
         await deleteFile(out_path)
       }
       return { ok: true }
@@ -226,7 +226,7 @@ async function routes(
           }
         })
       })
-      const s3_url = await uploadFileToS3(out_path)
+      const _s3_url = await uploadFileToS3(out_path)
       return r
     }
   }

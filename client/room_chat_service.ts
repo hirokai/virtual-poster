@@ -16,8 +16,9 @@ import {
   Person,
   MySocketObject,
   CommentEncryptedEntry,
+  Tree,
 } from "../@types/types"
-import { keyBy, compact } from "../common/util"
+import { keyBy, compact, sortTree } from "../common/util"
 import * as encryption from "./encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
@@ -127,9 +128,9 @@ export const decryptIfNeeded = async (
     return { text: null, ok: false, error: "Does not have a message to me" }
   }
   const text_for_me = comment.texts[to_me_idx]
-  console.log("decryptIfNeeded", {
-    public_keys: JSON.parse(JSON.stringify(public_keys)),
-  })
+  // console.log("decryptIfNeeded", {
+  //   public_keys: JSON.parse(JSON.stringify(public_keys)),
+  // })
   if (!text_for_me.encrypted) {
     return { text: text_for_me.text, encrypted: false, ok: true }
   }
@@ -257,8 +258,8 @@ export const startChat = async (
     state.selectedUsers.clear()
     return undefined
   }
-  if (state.batchMoveTimer) {
-    clearInterval(state.batchMoveTimer)
+  if (state.batchMove) {
+    state.batchMove.stop()
   }
   if (to_groups.length == 1) {
     const data = await client.maps
@@ -463,7 +464,7 @@ export const initChatService = async (
       c,
       state.privateKey
     )
-    console.log("decryptIfNeeded() result", r)
+    // console.log("decryptIfNeeded() result", r)
     const comment_decr: ChatCommentDecrypted = {
       id: c.id,
       timestamp: c.timestamp,
@@ -477,6 +478,7 @@ export const initChatService = async (
       y: c.y,
       person: c.person,
       kind: c.kind,
+      reply_to: c.reply_to,
     }
     // comment.encrypted = r.encrypted || false
     decrypted.push(comment_decr)
@@ -484,3 +486,89 @@ export const initChatService = async (
   state.comments = keyBy(decrypted, "id")
   return true
 }
+
+export function countItems(
+  vs: { reaction: string; user: UserId; id: CommentId }[]
+): {
+  [reaction: string]: { [user_id: string]: CommentId }
+} {
+  const obj = {} as {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
+  for (const v of vs) {
+    if (obj[v.reaction] == undefined) {
+      obj[v.reaction] = {}
+    }
+    obj[v.reaction][v.user] = v.id
+  }
+  return obj
+}
+
+function summarizeReactions(tree: Tree<ChatCommentDecrypted>): void {
+  for (const c of tree.children) {
+    summarizeReactions(c)
+  }
+  const ss = tree.children
+    .map(c => {
+      if (c.node) {
+        const txt = c.node.text_decrypted
+        const m = txt.match(/^\\reaction (\S+)$/)
+        return m ? { reaction: m[1], user: c.node.person, id: c.node.id } : null
+      } else {
+        return null
+      }
+    })
+    .filter(Boolean) as { reaction: string; user: UserId; id: CommentId }[]
+  if (tree.node) {
+    tree.node.reactions = countItems(ss)
+    tree.children = tree.children.filter(c => {
+      const txt = c.node?.text_decrypted
+      const m = txt ? txt.match(/^\\reaction (\S+)$/) : null
+      return !m
+    })
+  }
+}
+
+export const commentTree = (
+  state: RoomAppState
+): ComputedRef<Tree<ChatCommentDecrypted>> =>
+  computed(
+    (): Tree<ChatCommentDecrypted> => {
+      const findOrMakeNode = (
+        c: ChatCommentDecrypted
+      ): { node: Tree<ChatCommentDecrypted>; created: boolean } => {
+        const node = nodes[c.id]
+        if (node) {
+          return { node, created: false }
+        } else {
+          const node = { node: c, children: [] }
+          nodes[c.id] = node
+          return { node, created: true }
+        }
+      }
+      const tree: Tree<ChatCommentDecrypted> = { children: [] }
+      const nodes: { [comment_id: string]: Tree<ChatCommentDecrypted> } = {}
+      for (const c of Object.values(state.comments)) {
+        if (!c.reply_to) {
+          const { node, created } = findOrMakeNode(c)
+          if (created) {
+            tree.children.push(node)
+          }
+        } else {
+          const p: ChatCommentDecrypted | undefined = state.comments[c.reply_to]
+          if (p) {
+            const { node: node_parent } = findOrMakeNode(p)
+            const { node } = findOrMakeNode(c)
+            node_parent.children.push(node)
+          } else {
+            console.log("reply_to parent not found. This must be a bug.")
+          }
+        }
+      }
+      summarizeReactions(tree)
+      sortTree(tree, (a, b) =>
+        a.timestamp < b.timestamp ? -1 : a.timestamp == b.timestamp ? 0 : 1
+      )
+      return tree
+    }
+  )

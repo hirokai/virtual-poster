@@ -3,7 +3,7 @@ import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
 import { SocketIOEmitter } from "socket.io-emitter"
 import { ComputedRef } from "@vue/composition-api"
-
+import { BatchMove } from "../client/room_map_service"
 export type Point = { x: number; y: number }
 
 export type Direction = "none" | "up" | "left" | "right" | "down"
@@ -93,6 +93,11 @@ declare class MySocketObject {
   connect(url: string): WebSocket
 }
 
+type Tree<T> = {
+  node?: T
+  children: Tree<T>[]
+}
+
 type RoomAppState = {
   socket: SocketIO.Socket | MySocketObject | null
   peer: Peer | null
@@ -135,7 +140,6 @@ type RoomAppState = {
 
   selectedUsers: Set<UserId>
   selectedPos: { x: number; y: number } | null
-  chatAfterMove: UserId | PosterId | null
 
   editingOld: string | null
 
@@ -148,9 +152,7 @@ type RoomAppState = {
   } | null
 
   move_emitted: number | null
-  batchMovePoints: Point[]
-  batchMoveTimer: NodeJS.Timeout | null
-  liveMapChangedAfterMove: boolean
+  batchMove?: BatchMove
 
   people_typing: { [index: string]: boolean }
 
@@ -208,6 +210,7 @@ export type ChatComment = {
   texts: CommentEncryptedEntry[]
   person: UserId
   kind: "poster" | "person"
+  reply_to?: CommentId
 }
 
 type CommentEncryptedEntry = {
@@ -230,6 +233,10 @@ export type ChatCommentDecrypted = {
   }[]
   person: UserId
   kind: "poster" | "person"
+  reply_to?: CommentId
+  reactions?: {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
 }
 
 export type ChatGroup = {

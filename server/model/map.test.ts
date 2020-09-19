@@ -1,7 +1,6 @@
 import { initData, dbWith, resetDb } from "."
 import * as model from "."
 import { mkMapData, mkWrongMapData } from "../test_util"
-import { UserId } from "@/@types/types"
 import _ from "lodash"
 import {
   random_str,
@@ -68,6 +67,8 @@ describe("Add a map and person", () => {
       "reject"
     )
     expect(user).toBeDefined()
+    expect(ok).toBeTruthy()
+    expect(error).toBeUndefined()
 
     const r = await mm.deleteRoomFromDB()
     expect(r).toBe(true)
@@ -189,7 +190,7 @@ test("Cannot move during a chat", async () => {
   const { error } = await model.chat.startChat(mm.room_id, p.id, [p2.id])
   expect(error).toBeUndefined()
   const pos3 = rand_adjacent(pos2, rows, cols)
-  const { error: error2, result } = await mm.tryToMove(pos2, {
+  const { error: error2 } = await mm.tryToMove(pos2, {
     ...pos3,
     user: p.id,
   })
@@ -198,8 +199,6 @@ test("Cannot move during a chat", async () => {
 
 describe("Posters", () => {
   test("Assign a poster", async () => {
-    const rows = 10
-    const cols = 10
     const map_data = "....\n....\n..P."
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room " + random_str(3),
@@ -211,6 +210,8 @@ describe("Posters", () => {
     console.log(JSON.stringify((await mm.getStaticMap()).cells))
     const p = await createUser(mm.room_id)
     const { ok, poster, error } = await mm.assignPosterLocation(1, p.id, false)
+    expect(ok).toBeTruthy()
+    expect(poster).toBeDefined()
     expect(error).toBeUndefined()
   })
 })

@@ -1,7 +1,7 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { RoomId, MapEnterResponse, Announcement } from "@/@types/types"
+import { RoomId, MapEnterResponse } from "@/@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 

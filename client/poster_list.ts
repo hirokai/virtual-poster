@@ -46,10 +46,7 @@ firebase.auth().onAuthStateChanged(user => {
             idToken,
             socketURL,
           }
-          createApp({
-            render: h => h(PosterList, { props: propsData }),
-            el: "#app",
-          })
+          createApp(PosterList, propsData).mount("#app")
         }
       }
     }

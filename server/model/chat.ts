@@ -181,6 +181,18 @@ async function deleteComment(comment_id: string): Promise<boolean> {
   try {
     await db.query("BEGIN")
     await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1))));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1)));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1));`,
+      [comment_id]
+    )
+    await db.query(
       `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to=$1);`,
       [comment_id]
     )
@@ -188,12 +200,36 @@ async function deleteComment(comment_id: string): Promise<boolean> {
       comment_id,
     ])
     await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1))));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1)));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to=$1));`,
+      [comment_id]
+    )
+    await db.query(
       `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to=$1);`,
       [comment_id]
     )
     await db.query(`DELETE from comment_to_poster where comment=$1;`, [
       comment_id,
     ])
+    await db.query(
+      `DELETE from comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to=$1)));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to=$1));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE from comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to=$1);`,
+      [comment_id]
+    )
     await db.query(`DELETE from comment WHERE reply_to=$1;`, [comment_id])
     await db.query(`DELETE from comment where id=$1;`, [comment_id])
     await db.query("COMMIT")
@@ -455,6 +491,7 @@ export async function updateComment(
       kind: "person",
       texts: comments_encrypted,
       last_updated,
+      reply_to: comment.reply_to,
     }
     try {
       await db.query(`BEGIN`)
@@ -583,22 +620,7 @@ export async function getGroupIdOfUser(
     return null
   }
 }
-export async function startChat(
-  room_id: RoomId,
-  from_user: UserId,
-  to_users: UserId[]
-): Promise<{ ok: boolean; group?: ChatGroup; error?: string }> {
-  log.debug("startChat", room_id, from_user, to_users)
-  const currentGroups = _.compact(
-    await Promise.all(
-      [from_user].concat(to_users).map(u => getGroupIdOfUser(room_id, u))
-    )
-  )
-  if (currentGroups.length > 0) {
-    return { ok: false, error: "Currently in chat" }
-  }
-  return await newGroup(room_id, [from_user].concat(to_users))
-}
+
 async function positionsOfPeopleInChat(): Promise<{
   [user_id: string]: Point
 }> {
@@ -612,6 +634,7 @@ async function positionsOfPeopleInChat(): Promise<{
     "id"
   )
 }
+
 export async function newGroup(
   room_id: RoomId,
   users: UserId[]
@@ -681,6 +704,24 @@ export async function newGroup(
   await db.query("COMMIT")
   return { ok: true, group }
 }
+
+export async function startChat(
+  room_id: RoomId,
+  from_user: UserId,
+  to_users: UserId[]
+): Promise<{ ok: boolean; group?: ChatGroup; error?: string }> {
+  log.debug("startChat", room_id, from_user, to_users)
+  const currentGroups = _.compact(
+    await Promise.all(
+      [from_user].concat(to_users).map(u => getGroupIdOfUser(room_id, u))
+    )
+  )
+  if (currentGroups.length > 0) {
+    return { ok: false, error: "Currently in chat" }
+  }
+  return await newGroup(room_id, [from_user].concat(to_users))
+}
+
 export async function joinChat(
   room_id: RoomId,
   from_user: UserId,

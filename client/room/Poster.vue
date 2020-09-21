@@ -1,83 +1,91 @@
 <template>
   <div>
-    <div id="poster-container">
-      <h2>
-        {{
-          poster
-            ? people[poster.author]
-              ? people[poster.author].name
+    <transition name="fade">
+      <div id="poster-container" v-if="poster">
+        <h2>
+          {{
+            poster
+              ? people[poster.author]
+                ? people[poster.author].name
+                : ""
               : ""
-            : ""
-        }}: {{ poster ? poster.title : "" }}
-      </h2>
-      <div
-        id="poster"
-        ref="posterImage"
-        :class="{ inactive: !poster }"
-        :style="{
-          'background-image':
-            'url(data:image/png;base64,' + posterDataURI + ')',
-          'background-position': '' + imagePos.x + 'px ' + imagePos.y + 'px',
-          'background-size': '' + imageMag * 100 + '%',
-        }"
-        @mouseup="mouseUpPoster"
-        @mousedown="mouseDownPoster"
-        @mousemove="mouseMovePoster"
-      >
-        <div id="poster-tools">
-          <img
-            @click="zoomIn"
-            class="toolbar-icon"
-            src="/img/zoom-in.png"
-            width="25px"
-            height="25px"
-          />
-          <img
-            @click="zoomOut"
-            class="toolbar-icon"
-            src="/img/zoom-out.png"
-            width="25px"
-            height="25px"
-          />
-          <img
-            @click="zoomFit"
-            class="toolbar-icon"
-            src="/img/maximize.png"
-            width="25px"
-            height="25px"
-          />
-        </div>
+          }}: {{ poster ? poster.title : "" }}
+        </h2>
         <div
-          id="poster-notfound"
-          v-if="!!poster && posterStatus == 'not_found' && poster.author"
+          id="poster"
+          ref="posterImage"
+          :class="{ inactive: !poster }"
+          :style="{
+            'background-image':
+              'url(data:image/png;base64,' + posterDataURI + ')',
+            'background-position': '' + imagePos.x + 'px ' + imagePos.y + 'px',
+            'background-size': '' + imageMag * 100 + '%',
+          }"
+          @mouseup="mouseUpPoster"
+          @mousedown="mouseDownPoster"
+          @mousemove="mouseMovePoster"
         >
-          {{
-            people[poster.author] ? people[poster.author].name : "（不明）"
-          }}さんのポスター（未アップロード）
-          <div class="note" v-if="poster.author == myself.id">
-            アップロードするには，マップ中の木札のアイコンにPNGまたはPDFを<br />ドラッグ＆ドロップするか，マイページ（人型のアイコン）を開きます。
+          <div id="poster-tools">
+            <img
+              @click="zoomIn"
+              class="toolbar-icon"
+              src="/img/icon/zoom-in.png"
+              width="25"
+              height="25"
+            />
+            <img
+              @click="zoomOut"
+              class="toolbar-icon"
+              src="/img/icon/zoom-out.png"
+              width="25"
+              height="25"
+            />
+            <img
+              @click="zoomFit"
+              class="toolbar-icon"
+              src="/img/icon/maximize.png"
+              width="25"
+              height="25"
+            />
           </div>
+          <div
+            id="poster-notfound"
+            v-if="!!poster && posterStatus == 'not_found' && poster.author"
+            :class="{ dragover: dragOver }"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
+          >
+            {{
+              people[poster.author] ? people[poster.author].name : "（不明）"
+            }}さんのポスター（未アップロード）
+            <div class="note" v-if="poster.author == myself.id">
+              以下のいずれかの方法でファイル（PNGあるいはPDF）をアップロードできます。
+              <ul>
+                <li>この枠内にPNGまたはPDFをドラッグ＆ドロップする</li>
+                <li>マップ中の木札のアイコンにドラッグ＆ドロップする</li>
+                <li>
+                  マイページ（画面上部の人型のアイコン）→ポスター
+                  でドラッグ＆ドロップする
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div
+            id="poster-notfound"
+            v-if="!!poster && posterStatus == 'checking' && poster.author"
+          >
+            {{
+              people[poster.author] ? people[poster.author].name : "（不明）"
+            }}さんのポスターをロード中...
+          </div>
+          <div id="poster-inactive" v-if="!poster">
+            ポスターに近づくと表示されます
+          </div>
+          <div id="detail"></div>
         </div>
-        <div
-          id="poster-notfound"
-          v-if="!!poster && posterStatus == 'checking' && poster.author"
-        >
-          {{
-            people[poster.author] ? people[poster.author].name : "（不明）"
-          }}さんのポスターをロード中...
-        </div>
-        <div id="poster-inactive" v-if="!poster">
-          ポスターに近づくと表示されます
-        </div>
-        <div id="detail"></div>
       </div>
-      <div
-        id="poster-help"
-        v-show="imageMag == 1 && imagePos.x == 0 && imagePos.y == 0"
-      >
-        マウスのドラッグで表示位置の移動。
-      </div>
-    </div>
+    </transition>
     <div id="poster-chat-input-container">
       <h3>ポスターにコメント書き込み（参加者全員が読めます）</h3>
       <textarea
@@ -94,45 +102,53 @@
       <button
         id="submit-poster-comment"
         @click="$emit('submit-poster-comment', inputText)"
+        :disabled="inputText == ''"
       >
-        {{ editingOld ? "保存" : "送信" }}
+        <img
+          class="icon"
+          src="/img/icon/right-arrow.png"
+          :alt="editingOld ? '保存' : '送信'"
+        />
       </button>
     </div>
-    <div
-      id="poster-comments-container"
-      :class="{ poster_active: !!poster }"
-      :style="{
-        width: isMobile ? '520px' : undefined,
-        bottom: '' + (120 + numInputRows * 20) + 'px',
-      }"
-    >
-      <div id="poster-comments">
-        <div
-          v-for="c in comments_sorted"
-          class="poster-comment-entry"
-          :key="c.timestamp + c.person + c.to + c.kind"
-        >
-          <span class="comment-name">{{ people[c.person].name }}</span>
-          <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
-          <span
-            v-if="myself && c.person == myself.id"
-            class="comment-delete"
-            @click="$emit('delete-comment', c.id)"
-            >削除</span
-          >
-          <span
-            v-if="myself && c.person == myself.id"
-            class="comment-edit"
-            @click="startUpdateComment(c.id)"
-            >編集</span
-          >
+    <transition name="fade">
+      <div
+        id="poster-comments-container"
+        :class="{ poster_active: !!poster }"
+        :style="{
+          width: isMobile ? '520px' : undefined,
+          bottom: '' + (120 + numInputRows * 20) + 'px',
+        }"
+        v-if="poster"
+      >
+        <div id="poster-comments">
           <div
-            class="comment-content"
-            v-html="c.text_decrypted.replace(/[\r\n]/g, '<br>')"
-          ></div>
+            v-for="c in comments_sorted"
+            class="poster-comment-entry"
+            :key="c.timestamp + c.person + c.to + c.kind"
+          >
+            <span class="comment-name">{{ people[c.person].name }}</span>
+            <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
+            <span
+              v-if="myself && c.person == myself.id"
+              class="comment-delete"
+              @click="$emit('delete-comment', c.id)"
+              >削除</span
+            >
+            <span
+              v-if="myself && c.person == myself.id"
+              class="comment-edit"
+              @click="startUpdateComment(c.id)"
+              >編集</span
+            >
+            <div
+              class="comment-content"
+              v-html="c.text_decrypted.replace(/[\r\n]/g, '<br>')"
+            ></div>
+          </div>
         </div>
       </div>
-    </div>
+    </transition>
   </div>
 </template>
 
@@ -202,6 +218,7 @@ export default defineComponent({
       imageMag: 1,
       imageMags: [0.1, 0.2, 0.3, 0.5, 0.67, 1, 1.2, 1.5, 2, 3, 4, 5],
       imageMagIndex: 5,
+      dragOver: false,
     })
     const comments_sorted = computed(() => {
       return sortBy(Object.values(props.comments), c => c.timestamp)
@@ -350,6 +367,30 @@ export default defineComponent({
       state.imageMag = inRange(state.imageMag + ev.deltaY * 0.01, 0.3, 3)
     }
 
+    const onDropMyPoster = (event, poster_id) => {
+      state.dragOver = false
+      const fileList: File[] = event.target.files
+        ? event.target.files
+        : event.dataTransfer.files
+      if (fileList.length == 0) {
+        return false
+      }
+      const files: File[] = []
+      for (let i = 0; i < fileList.length; i++) {
+        files.push(fileList[i])
+      }
+      console.log(files)
+
+      const file = files[0]
+      if (!file) {
+        console.error("File not found")
+      } else if (file.type != "image/png" && file.type != "application/pdf") {
+        console.error("File type invalid")
+      } else {
+        context.emit("upload-poster", file, poster_id)
+      }
+    }
+
     return {
       ...toRefs(state),
       mouseDownPoster,
@@ -364,6 +405,7 @@ export default defineComponent({
       zoomOut,
       zoomFit,
       posterImage,
+      onDropMyPoster,
       ...CommonMixin,
     }
   },
@@ -378,12 +420,19 @@ h3 {
   background: #ccc;
 }
 #poster-notfound {
+  height: 100%;
   padding-top: 300px;
   text-align: center;
 }
 
+#poster-notfound.dragover {
+  background: #cec;
+}
+
 #poster-notfound .note {
   font-size: 14px;
+  text-align: left;
+  margin-left: 60px;
 }
 
 #poster-inactive {
@@ -394,14 +443,30 @@ h3 {
 div#poster-container {
   position: absolute;
   background: white;
-  right: 10px;
+  left: 540px;
   top: 0px;
-  min-width: 600px;
-  min-height: 780px;
+  min-width: 400px;
+  min-height: 600px;
   width: calc(95vh / 1.4);
-  height: 95vh;
+  height: calc(100vh - 20px);
   z-index: 200;
-  height: 613px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s 0.5s linear;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+div#poster {
+  min-width: 400px;
+  width: calc((100vh - 52px) / 1.414);
+  min-height: 560px;
+  height: calc(100vh - 52px);
 }
 
 div#poster-comments-container {
@@ -409,9 +474,7 @@ div#poster-comments-container {
 }
 
 div#poster-comments-container.poster_active {
-  /* height: calc(100% - 485px); */
   top: 320px;
-  transition: top 0.5s 0.5s;
 }
 
 .mobile div#poster-comments-container {
@@ -422,12 +485,6 @@ div#poster-comments-container.poster_active {
 .mobile div#poster-comments-container.poster_active {
   top: 280px;
   height: calc(100% - 400px);
-}
-
-@media (max-width: 1270px) {
-  div#poster-container {
-    left: 550px;
-  }
 }
 
 .comment-edit,
@@ -441,8 +498,8 @@ div#poster {
   background-size: 200%;
   background-repeat: no-repeat;
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.7));
-  width: 100%;
-  height: calc(100% - 5px);
+  max-width: 100%;
+  max-height: calc(100% - 5px);
   transition: 0.3s linear background-color;
 }
 
@@ -467,6 +524,10 @@ div#poster-comments {
   margin: 0px 0px 0px 0px;
 }
 
+#submit-poster-comment {
+  margin-left: 0px;
+}
+
 h3 {
   margin: 0px;
 }
@@ -484,9 +545,9 @@ textarea#poster-chat-input {
   font-family: "Lato", sans-serif;
 
   line-height: 20px;
-  width: calc(100% - 20px);
+  width: 100%;
   /* height: 28px; */
-  margin: 10px 10px 20px 10px;
+  margin: 0px 0px 10px 0px;
   resize: none;
   display: inline-block;
   vertical-align: -12px;
@@ -497,10 +558,11 @@ textarea#poster-chat-input {
 #poster-chat-input-container {
   position: absolute;
   bottom: 20px;
-  background: white;
   width: 528px;
   border: 1px solid #ccc;
   z-index: 100 !important;
+  background: white;
+  padding: 10px;
   box-shadow: 1px 1px 2px #222;
 }
 

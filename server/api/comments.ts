@@ -19,11 +19,6 @@ async function routes(
 
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.get<any>("/maps/:roomId/comments", async req => {
     return model.chat.getAllComments(req.params.roomId, req["requester"])
   })

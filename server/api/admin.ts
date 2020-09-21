@@ -30,11 +30,6 @@ async function routes(
     }
   )
 
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.get("/admin/export/people", async (req, res) => {
     const people = await model.people.getAllPeopleList(null, true)
     await res.type("application/json")
@@ -102,9 +97,9 @@ async function routes(
         rooms: RoomId[]
         posters: { room: RoomId; loc: number; title?: string }[]
       }[] = _.compact(
-        Papa.parse(text)
+        Papa.parse<string[]>(text)
           .data.slice(1)
-          .map(row => {
+          .map((row: string[]) => {
             try {
               const r2 = row[2] as string
               const r3 = row[3] as string
@@ -221,7 +216,7 @@ async function routes(
       }
       const csv_string = new TextDecoder().decode(req["file"].buffer)
       const posters = _.filter(
-        Papa.parse(csv_string, {
+        Papa.parse<string[]>(csv_string, {
           skipEmptyLines: true,
         })
           .data.slice(1)

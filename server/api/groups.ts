@@ -13,11 +13,6 @@ async function routes(
 
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.post<any>("/maps/:roomId/groups/:groupId/join", async req => {
     const { ok, error, joinedGroup } = await model.chat.joinChat(
       req.params.roomId,

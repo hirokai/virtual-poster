@@ -182,7 +182,7 @@ export default defineComponent({
       context.emit("select", p)
     }
     const uploadPoster = (file: File, poster_id: PosterId) => {
-      context.emit("uploadPoster", file, poster_id)
+      context.emit("upload-poster", file, poster_id)
     }
     const personAt = (pos: Point): PersonInMap | undefined => {
       return Object.values(props.people).find(p => {
@@ -354,8 +354,8 @@ svg#cells.small #controller {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * calc(var(--map_y_offset) + 5)),
-      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -364,8 +364,8 @@ svg#cells.small #controller {
       scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * calc(var(--map_y_offset) + 5)),
-      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -377,8 +377,14 @@ svg#cells.small #controller {
       scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * calc(var(--map_y_offset) + 5)),
-      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
+    -webkit-clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -386,14 +392,21 @@ svg#cells.small #controller {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * calc(var(--map_y_offset) + 5)),
-      100% calc(48px * calc(var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * var(--map_y_offset))
+    );
+    -webkit-clip-path: polygon(
+      0% calc(48px * var(--map_y_offset)),
+      0% calc(48px * (var(--map_y_offset) + 5)),
+      100% calc(48px * (var(--map_y_offset) + 5)),
       100% calc(48px * var(--map_y_offset))
     );
   }
   100% {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%);
+    -webkit-clip-path: polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%);
   }
 }
 

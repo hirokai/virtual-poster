@@ -5,14 +5,21 @@
       width: isMobile
         ? '510px'
         : poster
-        ? 'calc(100% - max(68vh,600px) - 600px)'
-        : 'calc(100% -  600px)',
-      left: isMobile ? '10px' : undefined,
+        ? 'calc(100% - max(68vh,570px) - 569px)'
+        : 'calc(100% - 570px)',
+      left: isMobile
+        ? '10px'
+        : poster
+        ? 'calc(550px + max(400px, 95vh / 1.4))'
+        : '550px',
       top: isMobile ? '550px' : undefined,
       height: isMobile ? 'calc(100% - 550px)' : undefined,
     }"
   >
-    <div id="chat-input-container">
+    <div
+      id="chat-input-container"
+      :class="{ replying: !!replying, editing: !!editingOld }"
+    >
       <textarea
         id="local-chat-input"
         ref="input"
@@ -20,10 +27,13 @@
         :rows="numInputRows"
         @compositionstart="composing = true"
         @compositionend="composing = false"
+        @keydown.enter="onKeyDownEnterChatInput($event)"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
         placeholder="Shift+Enterで送信"
-        :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
+        :disabled="
+          !replying && !editingOld && (!chatGroup || chatGroup.length == 0)
+        "
       ></textarea>
 
       <span
@@ -33,50 +43,90 @@
           impossible: !encryptionPossibleInChat,
         }"
         ><img
-          src="/img/lock-152879_1280.png"
-          height="30px"
+          src="/img/icon/lock-152879_1280.png"
+          height="25"
           alt="暗号化"
           @click="$emit('set-encryption', !enableEncryption)"
       /></span>
       <button
         id="submit"
-        @click="$emit('submit-comment', inputText)"
-        :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
+        @click="clickSubmit(localCommentHistory[replying?.id]?.__depth)"
+        :disabled="
+          (!replying && !editingOld && (!chatGroup || chatGroup.length == 0)) ||
+            inputText == ''
+        "
       >
-        {{ editingOld ? "保存" : "送信" }}
+        <img
+          class="icon"
+          src="/img/icon/enter-arrow.png"
+          alt="保存"
+          v-if="editingOld"
+        />
+        <img class="icon" src="/img/icon/right-arrow.png" alt="送信" v-else />
       </button>
       <button
         v-if="is_chrome"
         id="dictation"
+        class="chat-tool-button"
         :class="{ running: dictation.running }"
         @click="toggleDictation"
         :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
       >
-        {{ dictation.running ? "音声入力中" : "音声入力" }}
+        <img
+          class="icon"
+          id="voice-input"
+          src="/img/icon/microphone.png"
+          :alt="dictation.running ? '音声入力中' : '音声入力'"
+        />
+        <span v-if="dictation.running">入力中</span>
       </button>
-
       <button
         id="leave-chat"
+        class="chat-tool-button"
         @click="$emit('leave-chat')"
         :disabled="!chatGroup || chatGroup.length == 0"
       >
-        会話から離脱
+        <img class="icon" src="/img/icon/departures.png" alt="会話から離脱" />
       </button>
-      <h2 v-if="chatGroup && chatGroup.length > 0">
-        <div id="participants">
-          <span>会話の参加者：</span>
+      <button
+        v-if="replying"
+        id="abort-reply"
+        class="chat-tool-button"
+        @click="replying = undefined"
+      >
+        返信中止
+      </button>
+      <h2>
+        <div
+          id="participants"
+          v-if="!replying && chatGroup && chatGroup.length > 0"
+        >
+          <span :style="{ color: editing ? 'red' : 'black' }"
+            >{{ editing ? "編集中" : "" }} 会話の参加者：
+          </span>
           <span
             class="person-in-local"
-            v-for="p in chatGroup"
+            v-for="p in replying
+              ? comments[replying.id].texts.map(t => t.to)
+              : chatGroup"
             :key="p"
             :class="{ typing: people_typing[p] }"
           >
             {{ people[p] ? people[p].name : "" }}
           </span>
         </div>
-      </h2>
-      <h2 v-else>
-        <div id="participants">
+        <div id="participants" v-else-if="!!replying">
+          <span>返信あて先： </span>
+          <span
+            class="person-in-local"
+            v-for="t in notSender(myself.id, comments[replying.id].texts)"
+            :key="t.to"
+            :class="{ typing: people_typing[t.to] }"
+          >
+            {{ people[t.to] ? people[t.to].name : "" }}
+          </span>
+        </div>
+        <div id="participants" v-else>
           会話に参加していません
         </div>
       </h2>
@@ -84,14 +134,16 @@
     <div
       class="chat-history"
       id="chat-local-history"
-      :style="{ height: 'calc(100% - ' + (120 + numInputRows * 22) + 'px)' }"
+      :style="{ height: 'calc(100% - ' + (142 + numInputRows * 22) + 'px)' }"
     >
       <div
         v-for="c in localCommentHistory"
         :key="'' + c.timestamp + c.person + c.to + c.kind"
         :class="{
           'comment-entry': c.event == 'comment',
-          'date-entry': c.event == 'comment',
+          'date-entry': c.event == 'new_date',
+          replying: replying && c.id == replying.id,
+          editing: editingOld && c.id == editingOld,
           hidden: contentHidden,
         }"
       >
@@ -113,7 +165,10 @@
         </div>
         <div
           v-if="c.event == 'comment'"
-          :style="{ 'margin-left': '' + (c.__depth - 1) * 20 + 'px' }"
+          :style="{
+            'margin-left': '' + inRange(c.__depth - 1, 0, 5) * 30 + 'px',
+            replying: replying?.id == c.id,
+          }"
         >
           <div class="local-entry-header">
             <span class="comment-name">
@@ -138,6 +193,12 @@
             >
               😀
             </span>
+            <span
+              v-if="c.__depth <= 3"
+              class="comment-entry-tool"
+              @click="startReply(c)"
+              >返信</span
+            >
             <span
               class="comment-entry-tool"
               @click="speechText(c.text_decrypted || '')"
@@ -198,7 +259,7 @@ import {
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
-import { flattenTree } from "../../common/util"
+import { flattenTree, inRange } from "../../common/util"
 
 import {
   defineComponent,
@@ -265,10 +326,6 @@ export default defineComponent({
     chatGroup: {
       type: Array as PropType<string[]>,
     },
-    inputTextFromParent: {
-      type: String,
-      required: true,
-    },
     people: {
       type: Object as PropType<{ [index: string]: Person }>,
       required: true,
@@ -302,6 +359,7 @@ export default defineComponent({
   },
   setup(props, context) {
     const state = reactive({
+      composing: false,
       inputText: "",
       voice: null as SpeechSynthesisVoice | null,
       inputTextWithoutDictation: undefined as string | undefined,
@@ -311,6 +369,7 @@ export default defineComponent({
       },
       recognition: null as any | null,
       showEmojiPicker: undefined as CommentId | undefined,
+      replying: undefined as CommentEvent | undefined,
     })
     const numInputRows = computed((): number => {
       if (state.inputText == "") {
@@ -331,12 +390,6 @@ export default defineComponent({
       () => state.inputText,
       (t: string) => {
         context.emit("onInputTextChange", t)
-      }
-    )
-    watch(
-      () => props.inputTextFromParent,
-      (t: string) => {
-        state.inputText = t
       }
     )
     watch(
@@ -434,6 +487,7 @@ export default defineComponent({
 
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)
+      state.replying = undefined
       state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#local-chat-input"
@@ -534,14 +588,10 @@ export default defineComponent({
       window.speechSynthesis.speak(utter)
     }
 
-    context["parent"]?.$on("clear-chat-input", () => {
-      state.inputText = ""
-    })
-
     const is_chrome = !!window["chrome"]
 
     const clickShowEmoji = (c: ChatCommentDecrypted) => {
-      state.showEmojiPicker = state.showEmojiPicker ? undefined : c.id
+      state.showEmojiPicker = state.showEmojiPicker == c.id ? undefined : c.id
     }
 
     const selectEmoji = (c: ChatCommentDecrypted, emoji: any) => {
@@ -569,10 +619,53 @@ export default defineComponent({
       context.emit("add-emoji-reaction", c.id, reaction_id, reaction)
     }
 
+    const startReply = (c: CommentEvent) => {
+      console.log("startReply", c)
+      state.replying = c
+      context.emit("set-editing-old", undefined)
+      state.inputText = ""
+      const el = document.querySelector(
+        "#local-chat-input"
+      ) as HTMLTextAreaElement
+      if (el) {
+        el.value = state.inputText
+        el.focus()
+      }
+    }
+
+    const clickSubmit = () => {
+      context.emit(
+        "submit-comment",
+        state.inputText,
+        state.replying
+          ? {
+              id: state.replying.id,
+              depth: state.replying.__depth,
+            }
+          : undefined
+      )
+      state.inputText = ""
+    }
+
+    const onKeyDownEnterChatInput = (ev: KeyboardEvent) => {
+      // console.log(ev);
+      if (ev.shiftKey) {
+        if (state.composing) {
+          state.composing = false
+        } else {
+          clickSubmit()
+          ev.preventDefault()
+          return true
+        }
+        return false
+      }
+    }
+
     return {
       ...toRefs(state),
       ...CommonMixin,
       localCommentHistory,
+      onKeyDownEnterChatInput,
       clearInput,
       startUpdateComment,
       numInputRows,
@@ -584,6 +677,9 @@ export default defineComponent({
       clickShowEmoji,
       selectEmoji,
       clickReaction,
+      clickSubmit,
+      startReply,
+      inRange,
     }
   },
 })
@@ -591,23 +687,44 @@ export default defineComponent({
 
 <style lang="css">
 @import url("https://fonts.googleapis.com/css2?family=Lato&display=swap");
+
+button.chat-tool-button {
+  width: 40px;
+  height: 26px;
+}
+
+img.icon {
+  /* display: inline; */
+  margin: 0px;
+  height: 20px;
+  vertical-align: -5px;
+}
+
+button:disabled img.icon {
+  opacity: 0.4;
+}
+
+.running img#voice-input {
+  filter: invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg)
+    brightness(95%) contrast(112%);
+}
+
 #participants {
   display: inline-block;
   font-size: 12px;
-  margin: 0px;
+  margin: 0px 0px 5px 10px;
 }
 
 #chat-local {
   position: absolute;
   top: 10px;
-  left: 550px;
   min-width: 250px;
-  width: calc(100% - 68vh - 600px);
   height: calc(100% - 20px);
   font-family: "Lato", sans-serif;
 }
 
 #chat-input-container {
+  box-sizing: border-box;
   position: absolute;
   bottom: 10px;
   background: white;
@@ -615,14 +732,23 @@ export default defineComponent({
   border: 1px solid #ccc;
   z-index: 100 !important;
   box-shadow: 1px 1px 2px #222;
+  border: 2px solid rgba(0, 0, 0, 0);
+}
+
+#chat-input-container.replying {
+  border: 2px solid #00f;
+}
+
+#chat-input-container.editing {
+  border: 2px solid rgb(162, 87, 7);
 }
 
 #chat-local-history {
   position: absolute;
-  top: 10px;
+  top: 22px;
   margin-bottom: 100px;
   /* min-height: 580px; */
-  height: calc(100% - 120px);
+  height: calc(100% - 152px);
   width: 100%;
   /* width: 790px; */
   /* z-index: -100; */
@@ -704,16 +830,20 @@ button#dictation.running {
 }
 
 button#submit {
-  width: 60px;
-  height: 26px;
   margin-left: 10px;
   vertical-align: 7px;
 }
 
 button#dictation {
-  width: 90px;
-  height: 26px;
+  width: 80px;
   margin-left: 10px;
+  vertical-align: 7px;
+}
+
+button#abort-reply {
+  width: 90px;
+  float: right;
+  margin-right: 10px;
   vertical-align: 7px;
 }
 
@@ -747,9 +877,8 @@ button#show_emoji_picker {
 }
 
 button#leave-chat {
-  width: 120px;
-  height: 26px;
-  margin-left: 20px;
+  float: right;
+  margin-right: 10px;
   vertical-align: 7px;
 }
 #show-encrypt {
@@ -799,7 +928,7 @@ button#leave-chat {
 
 .date_event hr {
   margin: 10px 0px 0px 0px;
-  background-color: #888;
+  background-color: #ccc;
   height: 1px;
   border: 0;
 }
@@ -824,5 +953,20 @@ button#leave-chat {
 
 .reaction-entry .count {
   font-size: 10px;
+}
+
+div.comment-entry {
+  border: 2px solid rgba(0, 0, 0, 0);
+  border-radius: 3px;
+}
+
+div.comment-entry.replying {
+  border: 2px solid #00f;
+  border-radius: 3px;
+}
+
+div.comment-entry.editing {
+  border: 2px solid rgb(162, 87, 7);
+  border-radius: 3px;
 }
 </style>

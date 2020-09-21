@@ -12,11 +12,6 @@ const DEBUG_TOKEN = config.debug_token
 async function public_api_routes(
   fastify: FastifyInstance<any, any, any, any>
 ): Promise<void> {
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.get<any>("/init_admin", async req => {
     const email = req.query.email
     if (email) {

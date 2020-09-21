@@ -27,24 +27,14 @@ import Peer from "skyway-js"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 
-export async function doSendOrUpdateComment(
-  axios: AxiosStatic | AxiosInstance,
-  skywayRoom: MeshRoom | SfuRoom | null,
-  room_id: RoomId,
-  text: string,
-  encrypting: boolean,
+async function makeEncrypted(
   to_users: UserId[],
   privateKey: CryptoKey | null,
   public_keys: { [user_id: string]: { public_key?: string } },
-  editingOld?: CommentId,
-  groupId?: ChatGroupId
-): Promise<{ ok: boolean; data?: any }> {
+  encrypting: boolean,
+  text: string
+) {
   const comments_encrypted: CommentEncryptedEntry[] = []
-  const client = api(axiosClient(axios))
-  if (encrypting && !privateKey) {
-    console.log("Private key import failed")
-    return { ok: false }
-  }
   for (const u of to_users) {
     const k = public_keys[u]?.public_key
     if (k) {
@@ -69,11 +59,40 @@ export async function doSendOrUpdateComment(
       comments_encrypted.push(e)
     }
   }
+  return comments_encrypted
+}
+
+export async function sendComment(
+  axios: AxiosStatic | AxiosInstance,
+  skywayRoom: MeshRoom | SfuRoom | null,
+  room_id: RoomId,
+  text: string,
+  encrypting: boolean,
+  to_users: UserId[],
+  privateKey: CryptoKey | null,
+  public_keys: { [user_id: string]: { public_key?: string } },
+  groupId?: ChatGroupId,
+  reply_to?: CommentId
+): Promise<{ ok: boolean; data?: any }> {
+  const client = api(axiosClient(axios))
+  if (encrypting && !privateKey) {
+    console.log("Private key import failed")
+    return { ok: false }
+  }
+  const comments_encrypted = await makeEncrypted(
+    to_users,
+    privateKey,
+    public_keys,
+    encrypting,
+    text
+  )
   console.log(comments_encrypted)
-  if (!editingOld) {
-    if (!groupId) {
-      return { ok: false }
-    }
+  if (reply_to) {
+    await client.comments
+      ._commentId(reply_to)
+      .reply.$post({ body: comments_encrypted })
+    return { ok: true }
+  } else if (groupId) {
     const data = await client.maps
       ._roomId(room_id)
       .groups._groupId(groupId)
@@ -86,16 +105,45 @@ export async function doSendOrUpdateComment(
         comments_encrypted,
         room_id: room_id,
       })
+    } else {
+      return { ok: true, data }
     }
-    return { ok: true, data }
-  } else {
-    const data = await client.comments._commentId(editingOld).$patch({
-      body: {
-        comments: comments_encrypted,
-      },
-    })
-    return { ok: true, data }
   }
+
+  return { ok: false }
+}
+
+export async function updateComment(
+  axios: AxiosStatic | AxiosInstance,
+  skywayRoom: MeshRoom | SfuRoom | null,
+  room_id: RoomId,
+  text: string,
+  encrypting: boolean,
+  to_users: UserId[],
+  privateKey: CryptoKey | null,
+  public_keys: { [user_id: string]: { public_key?: string } },
+  editingOld: CommentId
+): Promise<{ ok: boolean; data?: any }> {
+  const client = api(axiosClient(axios))
+  if (encrypting && !privateKey) {
+    console.log("Private key import failed")
+    return { ok: false }
+  }
+  const comments_encrypted = await makeEncrypted(
+    to_users,
+    privateKey,
+    public_keys,
+    encrypting,
+    text
+  )
+  console.log(comments_encrypted)
+
+  const data = await client.comments._commentId(editingOld).$patch({
+    body: {
+      comments: comments_encrypted,
+    },
+  })
+  return { ok: true, data }
 }
 
 export const deleteComment = (axios: AxiosStatic | AxiosInstance) => async (
@@ -207,20 +255,25 @@ export const newComment = async (
     ) {
       //Vue.set
       state.posterComments[d.id] = d2
+      await nextTick(() => {
+        const el = document.querySelector("#poster-comments")
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      })
+    } else {
+      const is_new_latest = !state.comments[d.id] && !d2.reply_to
+      //Vue.set
+      state.comments[d.id] = d2
+      if (is_new_latest) {
+        await nextTick(() => {
+          const el = document.querySelector("#chat-local-history")
+          if (el) {
+            el.scrollTop = el.scrollHeight
+          }
+        })
+      }
     }
-
-    //Vue.set
-    state.comments[d.id] = d2
-    await nextTick(() => {
-      let el = document.querySelector("#chat-local-history")
-      if (el) {
-        el.scrollTop = el.scrollHeight
-      }
-      el = document.querySelector("#poster-comments")
-      if (el) {
-        el.scrollTop = el.scrollHeight
-      }
-    })
   } catch (err) {
     console.error(err)
   }
@@ -565,8 +618,10 @@ export const commentTree = (
             const { node: node_parent } = findOrMakeNode(p)
             const { node } = findOrMakeNode(c)
             node_parent.children.push(node)
-            //Assuming depth is only one. Otherwise, inserting to "tree" is not always correct.
-            if (!tree.children.find(child => child.node?.id == p.id)) {
+            if (
+              !p.reply_to &&
+              !tree.children.find(child => child.node?.id == p.id)
+            ) {
               tree.children.push(node_parent)
             }
           } else {

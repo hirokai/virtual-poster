@@ -68,11 +68,6 @@ async function protected_api_routes(
 
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.post<any, any>(
     "/latency_report",
     async (req: FastifyRequest<any, any, any>) => {

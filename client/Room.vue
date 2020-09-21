@@ -19,7 +19,7 @@
       <img
         class="toolbar-icon"
         @click="signOut"
-        src="/img/logout.png"
+        src="/img/icon/logout.png"
         width="25"
         height="25"
       />
@@ -35,7 +35,7 @@
         "
         target="_blank"
       >
-        <img width="25" height="25" src="/img/user.png" alt="マイページ" />
+        <img width="25" height="25" src="/img/icon/user.png" alt="マイページ" />
       </a>
       <a
         class="icon-link"
@@ -45,7 +45,7 @@
         <img
           width="25"
           height="25"
-          src="/img/promotion.png"
+          src="/img/icon/promotion.png"
           alt="ポスターリスト"
         />
       </a>
@@ -53,7 +53,7 @@
         class="toolbar-icon"
         :class="{ disabled: !enableMiniMap }"
         @click="enableMiniMap = !enableMiniMap"
-        src="/img/globe.png"
+        src="/img/icon/globe.png"
         alt="マップのON/OFF"
         width="25"
         height="25"
@@ -63,7 +63,7 @@
         class="toolbar-icon"
         :class="{ disabled: !enableMiniMap }"
         @click="toggleBot"
-        src="/img/user.png"
+        src="/img/icon/user.png"
         width="25"
         height="25"
       />
@@ -106,7 +106,7 @@
       :avatarImages="avatarImages"
       @select="updateSelectedPos"
       @dblClick="dblClick"
-      @uploadPoster="uploadPoster"
+      @upload-poster="uploadPoster"
       @inputArrowKey="inputArrowKey"
     />
     <MiniMap
@@ -128,7 +128,6 @@
       ref="chatLocal"
       v-show="isMobile ? !enableMiniMap && !posterLooking : true"
       :isMobile="isMobile"
-      :inputTextFromParent="''"
       :myself="myself"
       :contentHidden="hidden"
       :comments="comments"
@@ -167,6 +166,7 @@
       @delete-comment="deleteComment"
       @set-editing-old="setEditingOld"
       @on-focus-input="onFocusInput"
+      @upload-poster="uploadPoster"
       v-show="posterLooking"
     />
     <button
@@ -250,7 +250,8 @@ import "firebase/auth"
 import { initPeopleService } from "./room_people_service"
 
 import {
-  doSendOrUpdateComment,
+  sendComment,
+  updateComment,
   deleteComment,
   initChatService,
   chatGroupOfUser,
@@ -394,6 +395,8 @@ export default defineComponent({
     })
 
     let REPORT_LATENCY = false
+
+    const ChatLocal = ref()
 
     props.axios.interceptors.response.use(response => {
       const latency = Math.round(
@@ -628,20 +631,43 @@ export default defineComponent({
       text: string,
       encrypting: boolean,
       to_users: UserId[],
-      updating = false
+      updating = false,
+      reply_to?: { id: CommentId; depth: number }
     ) => {
-      const { ok } = await doSendOrUpdateComment(
-        props.axios,
-        state.skywayRoom,
-        props.room_id,
-        text,
-        encrypting,
-        to_users,
-        state.privateKey,
-        state.people,
-        updating ? state.editingOld || undefined : undefined,
-        myChatGroup.value || undefined
-      )
+      if (reply_to && reply_to.depth > 3) {
+        console.warn("Reply depth too deep")
+        return
+      }
+      let ok = false
+      if (updating) {
+        const r = await updateComment(
+          props.axios,
+          state.skywayRoom,
+          props.room_id,
+          text,
+          encrypting,
+          to_users,
+          state.privateKey,
+          state.people,
+          state.editingOld!
+        )
+        ok = r.ok
+      } else {
+        const r = await sendComment(
+          props.axios,
+          state.skywayRoom,
+          props.room_id,
+          text,
+          encrypting,
+          to_users,
+          state.privateKey,
+          state.people,
+          reply_to ? undefined : myChatGroup.value || undefined,
+          reply_to?.id
+        )
+        ok = r.ok
+      }
+
       if (ok) {
         ;(document.querySelector("#local-chat-input") as any)?.focus()
         clearInput()
@@ -649,8 +675,11 @@ export default defineComponent({
       }
     }
 
-    const submitComment = async (text: string) => {
-      console.log("submitComment", text)
+    const submitComment = async (
+      text: string,
+      reply_to?: { id: CommentId; depth: number }
+    ) => {
+      console.log("submitComment", text, reply_to)
       if (state.editingOld) {
         await sendOrUpdateComment(
           text,
@@ -659,11 +688,26 @@ export default defineComponent({
           true
         )
       } else {
-        if (!myChatGroup.value) {
-          return
+        if (reply_to) {
+          const to_users = state.comments[reply_to.id].texts.map(t => t.to)
+          await sendOrUpdateComment(
+            text,
+            state.enableEncryption,
+            to_users,
+            false,
+            reply_to
+          )
+        } else if (myChatGroup.value) {
+          const to_users = state.chatGroups[myChatGroup.value].users
+          await sendOrUpdateComment(
+            text,
+            state.enableEncryption,
+            to_users,
+            false
+          )
+        } else {
+          return false
         }
-        const to_users = state.chatGroups[myChatGroup.value].users
-        await sendOrUpdateComment(text, state.enableEncryption, to_users)
         ;(document.querySelector("#local-chat-input") as any)?.focus()
       }
     }
@@ -691,6 +735,7 @@ export default defineComponent({
         return true
       }
     }
+
     const handleGlobalKeyDown = (ev: KeyboardEvent) => {
       if (
         ["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown"].indexOf(ev.key) !=
@@ -718,18 +763,7 @@ export default defineComponent({
               state.composing = false
             } else {
               const t: HTMLTextAreaElement = ev.target as HTMLTextAreaElement
-              if (t?.id == "local-chat-input") {
-                submitComment(t.value)
-                  .then(() => {
-                    //
-                  })
-                  .catch(() => {
-                    //
-                  })
-                // Vue.nextTick(() => {
-                //   console.log('nextTick')
-                //   app.clearInput()
-              } else if (t?.id == "poster-chat-input") {
+              if (t?.id == "poster-chat-input") {
                 doSubmitPosterComment(props.axios, props, state, t.value)
                   .then(() => {
                     //
@@ -822,7 +856,7 @@ export default defineComponent({
           !!state.privateKey && other_users_encryptions
 
         const me = myself.value
-        if (me && me.x && me.y) {
+        if (me && me.x != undefined && me.y != undefined) {
           state.center = {
             x: inRange(me.x, 5, state.cols - 6),
             y: inRange(me.y, 5, state.rows - 6),
@@ -1122,7 +1156,7 @@ html {
 
 body {
   font-family: "YuGothic", Loto, sans-serif;
-  min-width: 1220px;
+  min-width: 800px;
 }
 
 #header {
@@ -1182,10 +1216,10 @@ button#leave-chat-on-map {
 
 button#enter-poster-on-map {
   position: absolute;
-  width: 120px;
+  width: 150px;
   height: 26px;
-  left: 400px;
-  top: 60px;
+  left: 370px;
+  top: 90px;
 }
 
 div#poster-preview {
@@ -1194,7 +1228,7 @@ div#poster-preview {
   width: 180px;
   /* height: 100px; */
   left: 340px;
-  top: 90px;
+  top: 120px;
   font-size: 14px;
   background: rgba(255, 255, 255, 0.6);
 }
@@ -1204,7 +1238,7 @@ button#leave-poster-on-map {
   width: 150px;
   height: 26px;
   left: 370px;
-  top: 60px;
+  top: 90px;
 }
 
 .user-select {
@@ -1233,7 +1267,7 @@ button#leave-poster-on-map {
 }
 
 .comment-content {
-  font-size: 12px;
+  font-size: 14px;
   color: #1d1c1d;
   line-height: 1.3em;
 }

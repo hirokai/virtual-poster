@@ -27,11 +27,6 @@ async function routes(
 
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.setSerializerCompiler(({ schema }) => {
-    fastify.log.info(schema)
-    return data => JSON.stringify(data)
-  })
-
   fastify.get<any>("/people", async req => {
     try {
       const with_email = req["requester_type"] == "admin" && !!req.query.email

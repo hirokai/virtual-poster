@@ -47,15 +47,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  onMounted,
-  toRefs,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, reactive, onMounted, toRefs } from "vue"
 
 import { Room, UserId } from "../@types/types"
 

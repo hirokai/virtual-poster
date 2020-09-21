@@ -1,0 +1,4 @@
+zoom-in.png	https://www.flaticon.com/free-icon/zoom-in_545651?term=zoom&page=1&position=3
+zoom_out.png	https://www.flaticon.com/free-icon/zoom-out_545652?term=zoom%20out&page=1&position=4
+zoom-fit.png	https://www.flaticon.com/free-icon/maximize_1141984?term=zoom&page=2&position=12
+maximize.png	https://www.flaticon.com/free-icon/maximize_1141984?term=zoom&page=2&position=12

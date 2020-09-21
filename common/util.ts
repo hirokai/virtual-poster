@@ -18,6 +18,59 @@ import groupBy from "lodash/groupBy"
 import * as bunyan from "bunyan"
 const log = bunyan.createLogger({ name: "util", src: true, level: 1 })
 
+// Native
+function sortByHelper<T>(keyFunc: (T) => number) {
+  return (a: T, b: T) =>
+    keyFunc(a) > keyFunc(b) ? 1 : keyFunc(b) > keyFunc(a) ? -1 : 0
+}
+
+// The native sort modifies the array in place. `_.orderBy` and `_.sortBy` do not, so we use `.concat()` to
+// copy the array, then sort.
+export function sortBy<T>(vs: T[], keyFunc: (T) => number): T[] {
+  return vs.concat().sort(sortByHelper(keyFunc))
+}
+
+export function chunk<T>(input, size: number): T[][] {
+  return input.reduce((arr, item, idx) => {
+    return idx % size === 0
+      ? [...arr, [item]]
+      : [...arr.slice(0, -1), [...arr.slice(-1)[0], item]]
+  }, [])
+}
+
+export const randomInt = (a = 1, b = 0): number => {
+  const lower = Math.ceil(Math.min(a, b))
+  const upper = Math.floor(Math.max(a, b))
+  return Math.floor(lower + Math.random() * (upper - lower))
+}
+
+export function range(from: number, to: number): number[] {
+  return Array.from({ length: to - from }, (_, i) => i + from)
+}
+
+export function compact<T>(vs: T[]): T[] {
+  return vs.filter(Boolean)
+}
+
+export function intersection<T>(vss: T[][]): T[] {
+  return vss.reduce(function(a, b) {
+    return a.filter(function(value) {
+      return b.includes(value)
+    })
+  })
+}
+
+export function mapValues<A, B>(
+  vs: { [index: string]: A },
+  f: (A) => B
+): { [index: string]: B } {
+  const res = {} as { [index: string]: B }
+  for (const k in vs) {
+    res[k] = f(vs[k])
+  }
+  return res
+}
+
 export const mkKey = (room_id: RoomId, x: number, y: number): string => {
   return room_id + ":" + x + "." + y
 }
@@ -519,59 +572,6 @@ export function pickBy<T>(object: {
     }
   }
   return obj
-}
-
-export function chunk<T>(input, size: number): T[][] {
-  return input.reduce((arr, item, idx) => {
-    return idx % size === 0
-      ? [...arr, [item]]
-      : [...arr.slice(0, -1), [...arr.slice(-1)[0], item]]
-  }, [])
-}
-
-export const randomInt = (a = 1, b = 0): number => {
-  const lower = Math.ceil(Math.min(a, b))
-  const upper = Math.floor(Math.max(a, b))
-  return Math.floor(lower + Math.random() * (upper - lower))
-}
-
-export function range(from: number, to: number): number[] {
-  return Array.from({ length: to - from }, (_, i) => i + from)
-}
-
-// Native
-function sortByHelper<T>(keyFunc: (T) => number) {
-  return (a: T, b: T) =>
-    keyFunc(a) > keyFunc(b) ? 1 : keyFunc(b) > keyFunc(a) ? -1 : 0
-}
-
-// The native sort modifies the array in place. `_.orderBy` and `_.sortBy` do not, so we use `.concat()` to
-// copy the array, then sort.
-export function sortBy<T>(vs: T[], keyFunc: (T) => number): T[] {
-  return vs.concat().sort(sortByHelper(keyFunc))
-}
-
-export function compact<T>(vs: T[]): T[] {
-  return vs.filter(Boolean)
-}
-
-export function intersection<T>(vss: T[][]): T[] {
-  return vss.reduce(function(a, b) {
-    return a.filter(function(value) {
-      return b.includes(value)
-    })
-  })
-}
-
-export function mapValues<A, B>(
-  vs: { [index: string]: A },
-  f: (A) => B
-): { [index: string]: B } {
-  const res = {} as { [index: string]: B }
-  for (const k in vs) {
-    res[k] = f(vs[k])
-  }
-  return res
 }
 
 export function flattenTree<T>(

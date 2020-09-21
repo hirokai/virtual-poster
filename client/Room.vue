@@ -20,8 +20,8 @@
         class="toolbar-icon"
         @click="signOut"
         src="/img/logout.png"
-        width="25px"
-        height="25px"
+        width="25"
+        height="25"
       />
 
       <a
@@ -35,7 +35,7 @@
         "
         target="_blank"
       >
-        <img width="25px" height="25px" src="/img/user.png" alt="マイページ" />
+        <img width="25" height="25" src="/img/user.png" alt="マイページ" />
       </a>
       <a
         class="icon-link"
@@ -43,8 +43,8 @@
         target="_blank"
       >
         <img
-          width="25px"
-          height="25px"
+          width="25"
+          height="25"
           src="/img/promotion.png"
           alt="ポスターリスト"
         />
@@ -55,8 +55,8 @@
         @click="enableMiniMap = !enableMiniMap"
         src="/img/globe.png"
         alt="マップのON/OFF"
-        width="25px"
-        height="25px"
+        width="25"
+        height="25"
       />
       <img
         v-if="bot_mode"
@@ -64,8 +64,8 @@
         :class="{ disabled: !enableMiniMap }"
         @click="toggleBot"
         src="/img/user.png"
-        width="25px"
-        height="25px"
+        width="25"
+        height="25"
       />
       <div style="clear:both;"></div>
     </div>
@@ -203,7 +203,6 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
@@ -214,9 +213,9 @@ import {
   computed,
   PropType,
   ComputedRef,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+  nextTick,
+} from "vue"
+
 import {
   RoomAppState,
   PersonInMap,
@@ -231,7 +230,6 @@ import {
   SocketMessageFromUser,
   HttpMethod,
   CommentId,
-  Tree,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -239,7 +237,7 @@ import MiniMap from "./room/MiniMap.vue"
 import Poster from "./room/Poster.vue"
 import CellInfo from "./room/CellInfo.vue"
 import ChatLocal from "./room/ChatLocal.vue"
-import { inRange, sortTree } from "../common/util"
+import { inRange } from "../common/util"
 
 import { AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
@@ -320,7 +318,7 @@ class MySocketObject {
   }
   connect(url: string): WebSocket {
     console.log("Connecting WS: ", url)
-    var ws = new WebSocket(url)
+    const ws = new WebSocket(url)
     ws.onopen = () => {
       console.log("WebSocket server connected")
     }
@@ -354,15 +352,6 @@ export default defineComponent({
     ChatLocal,
   },
 
-  /*
-  editingOldPoster: string | null = null
-  talking = false
-*/
-
-  /*
-  @Prop() public idToken!: string
-  @Prop() public axios!: AxiosStatic | AxiosInstance
-*/
   props: {
     room_id: {
       type: String,
@@ -398,23 +387,22 @@ export default defineComponent({
     if (props.isMobile) {
       document.body.style.minWidth = "0px"
     }
-    const axios = props.axios
-    const client = api(axiosClient(axios))
-    axios.interceptors.request.use(request => {
+    const client = api(axiosClient(props.axios))
+    props.axios.interceptors.request.use(request => {
       request["ts"] = performance.now()
       return request
     })
 
     let REPORT_LATENCY = false
 
-    axios.interceptors.response.use(response => {
+    props.axios.interceptors.response.use(response => {
       const latency = Math.round(
         Number(performance.now() - response.config["ts"])
       )
       const url = response.request.responseURL
       console.log()
       if (url.indexOf("/latency_report") == -1 && REPORT_LATENCY) {
-        addLatencyLog(axios, {
+        addLatencyLog(props.axios, {
           url,
           method: response.config.method as HttpMethod,
           latency,
@@ -436,7 +424,7 @@ export default defineComponent({
     })
 
     console.log(props)
-    // axios.defaults.headers.common = {
+    // props.axios.defaults.headers.common = {
     //   Authorization: `Bearer ${props.idToken}`,
     // }
 
@@ -509,7 +497,7 @@ export default defineComponent({
       publicKeyString: null as string | null,
       publicKey: null as CryptoKey | null,
     })
-    axios.interceptors.request.use(config => {
+    props.axios.interceptors.request.use(config => {
       if (props.debug_as) {
         config.params = config.params || {}
         config.params["debug_as"] = props.debug_as
@@ -519,7 +507,7 @@ export default defineComponent({
         return config
       }
     })
-    axios.interceptors.response.use(
+    props.axios.interceptors.response.use(
       response => {
         return response
       },
@@ -634,6 +622,8 @@ export default defineComponent({
       })
     }
 
+    const myChatGroup = _myChatGroup(props, state)
+
     const sendOrUpdateComment = async (
       text: string,
       encrypting: boolean,
@@ -641,7 +631,7 @@ export default defineComponent({
       updating = false
     ) => {
       const { ok } = await doSendOrUpdateComment(
-        axios,
+        props.axios,
         state.skywayRoom,
         props.room_id,
         text,
@@ -658,8 +648,6 @@ export default defineComponent({
         state.editingOld = null
       }
     }
-
-    const myChatGroup = _myChatGroup(props, state)
 
     const submitComment = async (text: string) => {
       console.log("submitComment", text)
@@ -695,7 +683,7 @@ export default defineComponent({
         }
         return true
       } else {
-        const { error } = moveByArrow(axios, props, state, me, key)
+        const { error } = moveByArrow(props.axios, props, state, me, key)
         if (error == "during_chat") {
           showMessage("会話中は動けません。動くためには一度退出してください。")
         }
@@ -717,7 +705,7 @@ export default defineComponent({
     }
 
     const submitPosterComment = async (t: string) => {
-      await doSubmitPosterComment(axios, props, state, t)
+      await doSubmitPosterComment(props.axios, props, state, t)
     }
 
     onMounted(() => {
@@ -742,7 +730,7 @@ export default defineComponent({
                 //   console.log('nextTick')
                 //   app.clearInput()
               } else if (t?.id == "poster-chat-input") {
-                doSubmitPosterComment(axios, props, state, t.value)
+                doSubmitPosterComment(props.axios, props, state, t.value)
                   .then(() => {
                     //
                   })
@@ -783,7 +771,7 @@ export default defineComponent({
           return
         }
         // let socket_url = "http://localhost:5000/"
-        let socket_url = data.socket_url
+        const socket_url = data.socket_url
         if (!socket_url) {
           alert("WebSocketの設定が見つかりません")
           location.href = "/"
@@ -804,19 +792,25 @@ export default defineComponent({
 
         setupSocketHandlers(state.socket)
         // We have to get public keys of users first.
-        await initPeopleService(axios, state.socket, props, state)
+        await initPeopleService(props.axios, state.socket, props, state)
         // Then chat comments, map data, poster data.
         await Promise.all([
-          initMapService(axios, state.socket, props, state),
+          initMapService(props.axios, state.socket, props, state),
           initChatService(
-            axios,
+            props.axios,
             state.socket,
             props,
             state,
             adjacentPoster,
             data?.public_key
           ),
-          initPosterService(axios, state.socket, props, state, adjacentPoster),
+          initPosterService(
+            props.axios,
+            state.socket,
+            props,
+            state,
+            adjacentPoster
+          ),
         ])
         const other_users_encryptions = myChatGroup.value
           ? state.chatGroups[myChatGroup.value!].users
@@ -827,14 +821,13 @@ export default defineComponent({
         state.encryption_possible_in_chat =
           !!state.privateKey && other_users_encryptions
 
-        state.hidden = false
-
         const me = myself.value
         if (me && me.x && me.y) {
           state.center = {
             x: inRange(me.x, 5, state.cols - 6),
             y: inRange(me.y, 5, state.rows - 6),
           }
+          state.hidden = false
         }
       })().catch(err => {
         console.error(err)
@@ -844,6 +837,21 @@ export default defineComponent({
 
       // window.setInterval(state.refreshToken, 1000 * 60 * 59)
     })
+
+    watch(
+      () => myself,
+      async () => {
+        const me = myself.value!
+        state.center = {
+          x: inRange(me.x, 5, state.cols - 6),
+          y: inRange(me.y, 5, state.rows - 6),
+        }
+        console.log("center updated", state.center)
+        await nextTick(() => {
+          // state.hidden = false
+        })
+      }
+    )
 
     watch(
       () => state.enableEncryption,
@@ -934,7 +942,7 @@ export default defineComponent({
     }
 
     const dblClick = async (p: Point) => {
-      await dblClickHandler(props, state, axios)(p)
+      await dblClickHandler(props, state, props.axios)(p)
     }
 
     const selected = computed((): Cell | undefined => {
@@ -968,7 +976,7 @@ export default defineComponent({
     }
 
     const uploadPoster = async (file: File, poster_id: string) => {
-      await doUploadPoster(axios, file, poster_id)
+      await doUploadPoster(props.axios, file, poster_id)
     }
 
     const onFocusInput = (focused: boolean) => {
@@ -991,7 +999,7 @@ export default defineComponent({
         const dir = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"][
           Math.floor(Math.random() * 4)
         ] as ArrowKey
-        moveByArrow(axios, props, state, me, dir)
+        moveByArrow(props.axios, props, state, me, dir)
         if (!state.botActive) {
           window.clearInterval(id)
         }
@@ -1020,11 +1028,13 @@ export default defineComponent({
             console.log(data)
             if (data.ok) {
               if (data.leftGroup) {
-                Vue.set(state.chatGroups, group_id, data.leftGroup)
+                //Vue.set
+                state.chatGroups[group_id] = data.leftGroup
               }
               showMessage("会話から離脱しました。")
               state.encryption_possible_in_chat = !!state.privateKey
-              Vue.set(state.people_typing, props.myUserId, false)
+              //Vue.set
+              state.people_typing[props.myUserId] = false
               if (state.skywayRoom) {
                 state.skywayRoom.close()
                 state.skywayRoom = null
@@ -1062,7 +1072,7 @@ export default defineComponent({
       adjacentPosters,
       leaveChat,
       uploadPoster,
-      deleteComment: deleteComment(axios),
+      deleteComment: deleteComment(props.axios),
       onInputTextChange,
       cellsMag: cellsMag(state),
       hideMessage,

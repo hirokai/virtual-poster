@@ -24,12 +24,7 @@
             </form>
           </td>
           <td>
-            <button
-              @click="
-                downloadUrl('/admin/export/map.text', 'map.txt')
-                return false
-              "
-            >
+            <button @click="downloadUrl('/admin/export/map.text', 'map.txt')">
               ダウンロード
             </button>
           </td>
@@ -73,17 +68,7 @@ import { AxiosStatic } from "axios"
 import { keyBy } from "../../common/util"
 const API_ROOT = "/api"
 
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  onMounted,
-  set,
-  toRefs,
-  PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, reactive, onMounted, toRefs, PropType } from "vue"
 
 export default defineComponent({
   props: {
@@ -114,7 +99,8 @@ export default defineComponent({
         })
     })
     const onFileChange = (name: string, e) => {
-      set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
+      //Vue.set
+      state.files[name] = (e.target.files || e.dataTransfer.files)[0]
     }
     const submitClick = async (name: string) => {
       console.log("submitClick", state.files[name])
@@ -185,7 +171,8 @@ export default defineComponent({
         const res = await props.axios.delete("/maps/" + room_id)
         console.log(res.data)
         if (res.data.ok) {
-          Vue.delete(state.rooms, room_id)
+          //Vue.delete
+          delete state.rooms[room_id]
         } else {
           alert("部屋の削除に失敗しました")
         }

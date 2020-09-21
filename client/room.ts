@@ -1,4 +1,4 @@
-import Vue from "vue"
+import { createApp } from "vue"
 import Room from "./Room.vue"
 import * as firebase from "firebase/app"
 import "firebase/auth"
@@ -14,8 +14,6 @@ if (!isMobile && mobile_agent) {
   url.searchParams.set("mobile", "true")
   location.href = url.toString()
 }
-
-Vue.config.productionTip = true
 
 const API_ROOT = "/api"
 const axios = axiosDefault.create({
@@ -38,16 +36,7 @@ const debug_token: string | undefined =
 
 const bot_mode = url.searchParams.get("bot_mode") == "1"
 
-declare module "vue/types/vue" {
-  interface Vue {
-    composing: boolean
-    submitComment(s: string): void
-    submitPosterComment(s: string): void
-    handleGlobalKeyDown(ev: KeyboardEvent): boolean
-  }
-}
-
-// firebase.auth().onAuthStateChanged(user => {
+  // firebase.auth().onAuthStateChanged(user => {
 ;(async () => {
   const user = { emailVerified: true, email: "hoge" }
   // console.log("User:", user, debug_as)
@@ -64,10 +53,8 @@ declare module "vue/types/vue" {
       axios,
       isMobile,
     }
-    new Vue({
-      render: h => h(Room, { props: propsData }),
-      el: "#app",
-    })
+    createApp(Room, propsData).mount("#app")
+
     return
   }
   if (!user) {
@@ -97,10 +84,7 @@ declare module "vue/types/vue" {
         }
         console.log("Initializing...", data, user?.email, propsData)
         // app.$props.socket = app.$mount("#app")
-        new Vue<typeof Room>({
-          render: h => h(Room, { props: propsData }),
-          el: "#app",
-        })
+        createApp(Room, propsData).mount("#app")
       }
     }
   }

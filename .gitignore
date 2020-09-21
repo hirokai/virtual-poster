@@ -29,3 +29,4 @@ rust-server/target/
 *.secret.json
 /dist_server
 virtual_poster.yaml
+test-servers

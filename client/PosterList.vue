@@ -33,17 +33,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  onMounted,
-  set,
-  toRefs,
-  computed,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, reactive, onMounted, toRefs, computed } from "vue"
 import {
   Person,
   PersonInMap,
@@ -89,6 +79,7 @@ export default defineComponent({
       required: true,
     },
   },
+
   setup(props) {
     const client = api(axiosClient(axios))
     const state = reactive({
@@ -100,6 +91,24 @@ export default defineComponent({
       inputText: "",
       inputFocused: false,
     })
+    const setPerson = (d: PersonUpdate) => {
+      console.log("setPerson", d)
+      const p = state.people[d.id]
+      const person: PersonInMap = {
+        id: d.id,
+        name: d.name || p.name,
+        last_updated: d.last_updated,
+        avatar: d.avatar || p.avatar,
+        room: d.room || p.room,
+        x: d.x == undefined ? p.x : d.x,
+        y: d.y == undefined ? p.y : d.y,
+        moving: d.moving || p.moving,
+        direction: d.direction || p.direction,
+        stats: d.stats || p.stats,
+      }
+      //Vue.set
+      state.people[d.id] = person
+    }
     const shaObj = new jsSHA("SHA-256", "TEXT", {
       encoding: "UTF8",
     })
@@ -126,7 +135,8 @@ export default defineComponent({
     })
     state.socket.on("poster", (d: PosterTyp) => {
       console.log("socket poster", d)
-      set(state.posters, d.id, d)
+      //Vue.set
+      state.posters[d.id] = d
     })
 
     state.socket.on("greeting", () => {
@@ -165,23 +175,6 @@ export default defineComponent({
       return sortBy(Object.values(state.posters), p => p.poster_number)
     })
 
-    const setPerson = (d: PersonUpdate) => {
-      console.log("setPerson", d)
-      const p = state.people[d.id]
-      const person: PersonInMap = {
-        id: d.id,
-        name: d.name || p.name,
-        last_updated: d.last_updated,
-        avatar: d.avatar || p.avatar,
-        room: d.room || p.room,
-        x: d.x == undefined ? p.x : d.x,
-        y: d.y == undefined ? p.y : d.y,
-        moving: d.moving || p.moving,
-        direction: d.direction || p.direction,
-        stats: d.stats || p.stats,
-      }
-      set(state.people, d.id, person)
-    }
     const myself = computed(
       (): Person => {
         return state.people[props.myUserId]

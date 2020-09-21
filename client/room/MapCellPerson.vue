@@ -89,16 +89,7 @@
 
 <script lang="ts">
 import { PersonInMap } from "../../@types/types"
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  computed,
-  PropType,
-  toRefs,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, reactive, computed, PropType, toRefs } from "vue"
 
 export default defineComponent({
   props: {

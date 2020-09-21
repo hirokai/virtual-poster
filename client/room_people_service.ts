@@ -1,9 +1,6 @@
-import Vue from "vue"
-
 import {
   RoomAppState,
   RoomAppProps,
-  Person,
   PersonInMap,
   PersonUpdate,
   ActiveUsersSocketData,
@@ -51,7 +48,8 @@ const updatePerson = (
     public_key: d.public_key || p.public_key,
     connected: d.connected != undefined ? d.connected : p.connected,
   }
-  Vue.set(state.people, d.id, person)
+  //Vue.set
+  state.people[d.id] = person
 }
 
 export const initPeopleService = async (
@@ -60,10 +58,11 @@ export const initPeopleService = async (
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
-  socket.on("PersonNew", (ps: Person[]) => {
+  socket.on("PersonNew", (ps: PersonInMap[]) => {
     for (const p of ps) {
       console.log("socket PersonNew", p)
-      Vue.set(state.people, p.id, p)
+      //Vue.set
+      state.people[p.id] = p
     }
   })
   socket.on("PersonUpdate", (ps: PersonUpdate[]) => {
@@ -75,7 +74,8 @@ export const initPeopleService = async (
   socket.on("PersonRemove", (uids: UserId[]) => {
     console.log({ msg: "PersonRemove", uids })
     for (const uid of uids) {
-      Vue.delete(state.people, uid)
+      //Vue.delete
+      delete state.people[uid]
     }
   })
   socket.on("person_multi", ds => {
@@ -87,17 +87,19 @@ export const initPeopleService = async (
   socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
     console.log("ActiveUsers socket", ds)
     for (const d of ds) {
-      const person: Person = {
+      const person: PersonInMap = {
         ...state.people[d.user],
         connected: d.active,
       }
-      Vue.set(state.people, d.user, person)
+      //Vue.set
+      state.people[d.user] = person
     }
   })
 
   socket.on("chat_typing", (d: TypingSocketData) => {
     if (d.room == props.room_id) {
-      Vue.set(state.people_typing, d.user, d.typing)
+      //Vue.set
+      state.people_typing[d.user] = d.typing
     }
     console.log("chat_typing", state.people_typing)
   })
@@ -118,10 +120,11 @@ export const initPeopleService = async (
     "id"
   )
   // Adhoc fix
-  Vue.set(state.people, props.myUserId, {
+  //Vue.set
+  state.people[props.myUserId] = {
     ...state.people[props.myUserId],
     connected: true,
-  })
+  }
 
   // console.log("posters", r_posters)
   state.connectedUsers = Object.values(state.people)

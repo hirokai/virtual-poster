@@ -66,7 +66,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
+import { defineComponent, reactive, toRefs, onMounted } from "vue"
 import {
   PersonInMap,
   Point,
@@ -112,350 +112,388 @@ const diffSet = function<T>(setA: Set<T>, setB: Set<T>) {
   return diff
 }
 
-export default class App extends Vue {
-  socketURL: string | null = null
-  socket: SocketIO.Socket | null = null
-  people: { [index: string]: PersonInMap } = {}
-  idToken: string | null = null
-  jwt_hash = ""
-  room_id = room_id
-  lastUpdated: number | null = null
-  user: firebase.User | null = null
-  hallMap = { cells: [] as Cell[][], numCols: 0, numRows: 0 }
-  posters: { [index: string]: Poster } = {}
-  connectedUsers: string[] = []
-  hidden = true
-  comments: { [index: string]: ChatComment } = {}
-  chatGroups: {
-    [groupId: string]: ChatGroup
-  } = {}
-  myUserId: string | null = null
-  started: {
-    randomOneStepMove: Set<UserId>
-    randomBatchMove: Set<UserId>
-  } = { randomOneStepMove: new Set(), randomBatchMove: new Set() }
-  announcement: { text: string; marquee: boolean; period: number } | null = null
-  keyQueue: { key: ArrowKey; timestamp: number } | null = null
-  timers: { [key: string]: NodeJS.Timeout } = {}
-  points: { [index: string]: Point[] | null } = {}
-  point_idx: { [index: string]: number } = {}
-  axios = axios
-  mounted(): void {
-    firebase.initializeApp(firebaseConfig)
+export default defineComponent({
+  setup: () => {
+    const state = reactive({
+      socketURL: null as string | null,
+      socket: null as SocketIO.Socket | null,
+      people: {} as { [index: string]: PersonInMap },
+      idToken: null as string | null,
+      jwt_hash: "",
+      room_id: room_id,
+      lastUpdated: null as number | null,
+      user: null as firebase.User | null,
+      hallMap: { cells: [] as Cell[][], numCols: 0, numRows: 0 },
+      posters: {} as { [index: string]: Poster },
+      connectedUsers: [] as string[],
+      hidden: true,
+      comments: {} as { [index: string]: ChatComment },
+      chatGroups: {} as {
+        [groupId: string]: ChatGroup
+      },
+      myUserId: null as string | null,
+      started: { randomOneStepMove: new Set(), randomBatchMove: new Set() } as {
+        randomOneStepMove: Set<UserId>
+        randomBatchMove: Set<UserId>
+      },
+      announcement: null as {
+        text: string
+        marquee: boolean
+        period: number
+      } | null,
+      keyQueue: null as { key: ArrowKey; timestamp: number } | null,
+      timers: {} as { [key: string]: NodeJS.Timeout },
+      points: {} as { [index: string]: Point[] | null },
+      point_idx: {} as { [index: string]: number },
+      axios: axios,
+    })
 
-    // console.log("User", firebase.auth().currentUser)
+    const on_socket_move = (s: string): void => {
+      // console.log("socket moved", s)
+      const pos = decodeMoved(s, state.room_id)
+      if (
+        !pos ||
+        !state.people ||
+        !state.hallMap ||
+        pos.y >= state.hallMap.cells.length ||
+        pos.x >= state.hallMap.cells[0].length
+      ) {
+        return
+      }
 
-    firebase.auth().onAuthStateChanged(user => {
-      ;(async () => {
-        console.log("onAuthStateChanged", user)
-        this.user = user
-        if (!user) {
-          location.href = "/"
-        } else {
-          const idToken = await user.getIdToken()
-          this.idToken = idToken
-          const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
-          shaObj.update(idToken)
-          this.jwt_hash = shaObj.getHash("HEX")
-          axios.defaults.headers.common = {
-            Authorization: `Bearer ${idToken}`,
-          }
-
-          this.socketURL = (await client.socket_url.$get()).socket_url || null
-
-          this.socket = io(this.socketURL, { path: "/socket.io" })
-          if (!this.socket) {
-            console.error("Socket IO init error")
-            return
-          }
-          this.socket.on("person", d => {
-            console.log("socket person", d)
-            this.$set(this.people, d.id, d)
-          })
-          this.socket.on("moved", (s: string) => {
-            this.on_socket_move(s)
-          })
-          this.socket.on("moved_multi", (s: string) => {
-            const ss = s.split(";")
-            for (const s of ss) {
-              this.on_socket_move(s)
-            }
-          })
-
-          const data = await client.id_token.$post({
-            body: {
-              token: idToken,
-              debug_from: "LoadTesting",
-            },
-          })
-          console.log(data)
-          if (!data.ok) {
-            location.reload()
-          }
-          if (!data.admin) {
-            location.href = "/"
-          }
-          this.myUserId = data.user_id || null
-          this.reload()
+      const p = state.people[pos.user]
+      if (p) {
+        //Vue.set
+        state.people[p.id] = {
+          ...p,
+          x: pos.x,
+          y: pos.y,
+          direction: pos.direction,
         }
+      }
+    }
+
+    const reload = (): void => {
+      state.lastUpdated = Date.now()
+      if (!state.room_id) {
+        alert("部屋IDが指定されていません")
+        return
+      }
+      ;(async () => {
+        const [data_p, data_g, data_m, data_posters] = await Promise.all([
+          client.maps._roomId(state.room_id!).people.$get(),
+          client.groups.$get(),
+          client.maps._roomId(state.room_id!).$get(),
+          client.posters.$get(),
+        ])
+        state.people = keyBy(data_p, "id")
+        state.chatGroups = keyBy(data_g, "id")
+        state.hallMap = data_m
+        state.posters = keyBy(data_posters, "id")
       })().catch(err => {
         console.error(err)
       })
-    })
-  }
-  checkUser(uid: UserId, start: boolean, kind: "batch" | "step"): void {
-    if (start) {
-      this.startRandomMove([uid], kind)
-    } else {
-      this.stopRandomMove([uid])
-    }
-  }
-  startRandomMoveForAll(kind: "batch" | "step"): void {
-    const uids = difference(
-      Object.keys(this.people),
-      this.myUserId ? [this.myUserId] : []
-    )
-    this.startRandomMove(uids, kind)
-  }
-  on_socket_move(s: string): void {
-    // console.log("socket moved", s)
-    const pos = decodeMoved(s, this.room_id)
-    if (
-      !pos ||
-      !this.people ||
-      !this.hallMap ||
-      pos.y >= this.hallMap.cells.length ||
-      pos.x >= this.hallMap.cells[0].length
-    ) {
-      return
     }
 
-    const p = this.people[pos.user]
-    if (p) {
-      this.$set(this.people, p.id, {
-        ...p,
-        x: pos.x,
-        y: pos.y,
-        direction: pos.direction,
-      })
-    }
-  }
-  setLiveObjects(x: number, y: number, objects: string[]): void {
-    this.$set(this.hallMap.cells[y][x], "objects", objects)
-  }
+    onMounted(() => {
+      firebase.initializeApp(firebaseConfig)
 
-  reload(): void {
-    this.lastUpdated = Date.now()
-    if (!this.room_id) {
-      alert("部屋IDが指定されていません")
-      return
-    }
-    ;(async () => {
-      const [data_p, data_g, data_m, data_posters] = await Promise.all([
-        client.maps._roomId(this.room_id!).people.$get(),
-        client.groups.$get(),
-        client.maps._roomId(this.room_id!).$get(),
-        client.posters.$get(),
-      ])
-      this.people = keyBy(data_p, "id")
-      this.chatGroups = keyBy(data_g, "id")
-      this.hallMap = data_m
-      this.posters = keyBy(data_posters, "id")
-    })().catch(err => {
-      console.error(err)
-    })
-  }
-  stopAll(): void {
-    this.started.randomOneStepMove = new Set()
-    this.started.randomBatchMove = new Set()
-  }
-  moveTo(user_id: UserId, to: Point): void {
-    console.log("moveTo", user_id, to)
-    const person = this.people[user_id]
-    const from = { x: person.x, y: person.y }
-    if (!to) {
-      console.error("moveTo point missing")
-      return
-    }
-    if (to.x < 0 || to.y < 0) {
-      console.error("moveTo: ", to, "out of range")
-      return
-    }
-    delete this.timers[user_id]
-    if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
-      this.socket!.emit("move", {
-        ...to,
-        user: person.id,
-        token: this.jwt_hash,
-      })
-      this.$set(this.people[user_id], "moving", false)
-    } else {
-      const ti = Date.now()
-      this.points[user_id] = findRoute(
-        user_id,
-        this.hallMap.cells,
-        Object.values(this.people),
-        from,
-        to
-      )
-      const tf = Date.now()
-      if (!this.points[user_id]) {
-        console.info("No route was found.")
-        return
-      }
-      console.log(
-        `Finding route of ${this.points[user_id]?.length} points, in ${tf -
-          ti} ms (${user_id})`
-      )
-      console.debug("# of points on route", this.points[user_id]?.length)
-      // const group = await model.chat.getGroupOfUser(user_id)
-      // if (group) {
-      //   await model.chat.leaveChat(user_id)
-      // }
-      this.point_idx[user_id] = 0
-      this.$set(this.people[user_id], "moving", true)
-      if (this.timers[user_id]) {
-        clearInterval(this.timers[user_id])
-        console.log("Timer ID deleted: ", this.timers[user_id])
-        delete this.timers[user_id]
-      }
-      this.timers[user_id] = setInterval(() => {
-        this.point_idx[user_id] += 1
-        const to_step = (this.points[user_id] || {})[this.point_idx[user_id]]
-        console.log(this.point_idx[user_id], this.points[user_id]?.length)
-        if (this.point_idx[user_id] >= (this.points[user_id]?.length || 0)) {
-          console.log("Batch move done.")
-          this.$set(this.people[user_id], "moving", false)
-          clearInterval(this.timers[user_id])
-          console.log("Timer ID deleted: ", this.timers[user_id])
-          return
-        }
-        if (!to_step) {
-          console.error(
-            "moveTo(): point missing, aborting",
-            this.point_idx[user_id]
-          )
-          this.$set(this.people[user_id], "moving", false)
-          this.points[user_id] = null
-          clearInterval(this.timers[user_id])
-          console.log("Timer ID deleted: ", this.timers[user_id])
-          delete this.timers[user_id]
-          return
-        }
-        this.socket!.emit("move", {
-          ...to_step,
-          user: user_id,
-          token: this.jwt_hash,
+      // console.log("User", firebase.auth().currentUser)
+
+      firebase.auth().onAuthStateChanged(user => {
+        ;(async () => {
+          console.log("onAuthStateChanged", user)
+          state.user = user
+          if (!user) {
+            location.href = "/"
+          } else {
+            const idToken = await user.getIdToken()
+            state.idToken = idToken
+            const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
+            shaObj.update(idToken)
+            state.jwt_hash = shaObj.getHash("HEX")
+            axios.defaults.headers.common = {
+              Authorization: `Bearer ${idToken}`,
+            }
+
+            state.socketURL =
+              (await client.socket_url.$get()).socket_url || null
+
+            state.socket = io(state.socketURL, { path: "/socket.io" })
+            if (!state.socket) {
+              console.error("Socket IO init error")
+              return
+            }
+            state.socket.on("person", (d: PersonInMap) => {
+              console.log("socket person", d)
+              //Vue.set
+              state.people[d.id] = d
+            })
+            state.socket.on("moved", (s: string) => {
+              on_socket_move(s)
+            })
+            state.socket.on("moved_multi", (s: string) => {
+              const ss = s.split(";")
+              for (const s of ss) {
+                on_socket_move(s)
+              }
+            })
+
+            const data = await client.id_token.$post({
+              body: {
+                token: idToken,
+                debug_from: "LoadTesting",
+              },
+            })
+            console.log(data)
+            if (!data.ok) {
+              location.reload()
+            }
+            if (!data.admin) {
+              location.href = "/"
+            }
+            state.myUserId = data.user_id || null
+            reload()
+          }
+        })().catch(err => {
+          console.error(err)
         })
-      }, 500)
-      console.log("Timer ID created: ", this.timers[user_id])
-    }
-  }
-  canMoveTo(p: Point): boolean {
-    if (
-      p.x < 0 ||
-      p.y < 0 ||
-      p.x >= this.hallMap.numCols ||
-      p.y >= this.hallMap.numRows
-    ) {
-      return false
+      })
+    })
+
+    const startRandomMove = (uids: UserId[], kind: "batch" | "step"): void => {
+      console.log("startRandomMove", uids)
+      if (kind == "batch") {
+        state.started.randomBatchMove = unionSet(
+          state.started.randomBatchMove,
+          new Set(uids)
+        )
+        state.started.randomOneStepMove = diffSet(
+          state.started.randomOneStepMove,
+          new Set(uids)
+        )
+      } else {
+        state.started.randomOneStepMove = unionSet(
+          state.started.randomOneStepMove,
+          new Set(uids)
+        )
+        state.started.randomBatchMove = diffSet(
+          state.started.randomBatchMove,
+          new Set(uids)
+        )
+      }
+
+      const canMoveTo = (p: Point): boolean => {
+        if (
+          p.x < 0 ||
+          p.y < 0 ||
+          p.x >= state.hallMap.numCols ||
+          p.y >= state.hallMap.numRows
+        ) {
+          return false
+        }
+
+        return true
+      }
+
+      const moveTo = (user_id: UserId, to: Point): void => {
+        console.log("moveTo", user_id, to)
+        const person = state.people[user_id]
+        const from = { x: person.x, y: person.y }
+        if (!to) {
+          console.error("moveTo point missing")
+          return
+        }
+        if (to.x < 0 || to.y < 0) {
+          console.error("moveTo: ", to, "out of range")
+          return
+        }
+        delete state.timers[user_id]
+        if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
+          state.socket!.emit("move", {
+            ...to,
+            user: person.id,
+            token: state.jwt_hash,
+          })
+          //Vue.set
+          state.people[user_id].moving = false
+        } else {
+          const ti = Date.now()
+          state.points[user_id] = findRoute(
+            user_id,
+            state.hallMap.cells,
+            Object.values(state.people),
+            from,
+            to
+          )
+          const tf = Date.now()
+          if (!state.points[user_id]) {
+            console.info("No route was found.")
+            return
+          }
+          console.log(
+            `Finding route of ${state.points[user_id]?.length} points, in ${tf -
+              ti} ms (${user_id})`
+          )
+          console.debug("# of points on route", state.points[user_id]?.length)
+          // const group = await model.chat.getGroupOfUser(user_id)
+          // if (group) {
+          //   await model.chat.leaveChat(user_id)
+          // }
+          state.point_idx[user_id] = 0
+          //Vue.set
+          state.people[user_id].moving = true
+          if (state.timers[user_id]) {
+            clearInterval(state.timers[user_id])
+            console.log("Timer ID deleted: ", state.timers[user_id])
+            delete state.timers[user_id]
+          }
+          state.timers[user_id] = setInterval(() => {
+            state.point_idx[user_id] += 1
+            const to_step = (state.points[user_id] || {})[
+              state.point_idx[user_id]
+            ]
+            console.log(state.point_idx[user_id], state.points[user_id]?.length)
+            if (
+              state.point_idx[user_id] >= (state.points[user_id]?.length || 0)
+            ) {
+              console.log("Batch move done.")
+              //Vue.set
+              state.people[user_id].moving = false
+              clearInterval(state.timers[user_id])
+              console.log("Timer ID deleted: ", state.timers[user_id])
+              return
+            }
+            if (!to_step) {
+              console.error(
+                "moveTo(): point missing, aborting",
+                state.point_idx[user_id]
+              )
+              //Vue.set
+              state.people[user_id].moving = false
+              state.points[user_id] = null
+              clearInterval(state.timers[user_id])
+              console.log("Timer ID deleted: ", state.timers[user_id])
+              delete state.timers[user_id]
+              return
+            }
+            state.socket!.emit("move", {
+              ...to_step,
+              user: user_id,
+              token: state.jwt_hash,
+            })
+          }, 500)
+          console.log("Timer ID created: ", state.timers[user_id])
+        }
+      }
+
+      const moveRandom = (user_id: UserId, kind: "batch" | "step"): boolean => {
+        if (kind == "batch" && !state.started.randomBatchMove.has(user_id)) {
+          return false
+        }
+        if (kind == "step" && !state.started.randomOneStepMove.has(user_id)) {
+          return false
+        }
+        const p = state.people[user_id]
+        let nx = -1
+        let ny = -1
+        let count = 0
+        if (kind == "batch") {
+          while (!canMoveTo({ x: nx, y: ny })) {
+            nx = randomInt(0, state.hallMap.numCols)
+            ny = randomInt(0, state.hallMap.numRows)
+            count += 1
+            if (count >= 100) {
+              throw "Move failed 100 times."
+            }
+          }
+        } else {
+          while (!canMoveTo({ x: nx, y: ny })) {
+            nx = p.x + randomInt(-1, 1)
+            ny = p.y + randomInt(-1, 1)
+            count += 1
+            if (count >= 100) {
+              throw "Move failed 100 times."
+            }
+          }
+        }
+        moveTo(user_id, { x: nx, y: ny })
+        return true
+      }
+
+      const loop = (kind: "batch" | "step", user_id: UserId) => {
+        console.log("loop", user_id, kind)
+        const [minInterval, maxInterval] =
+          kind == "batch" ? [1000, 5000] : [200, 200]
+        const rand =
+          Math.round(Math.random() * (maxInterval - minInterval)) + minInterval
+        const active =
+          (kind == "batch" && state.started.randomBatchMove.has(user_id)) ||
+          (kind == "step" && state.started.randomOneStepMove.has(user_id))
+        if (active) {
+          const action = function() {
+            let r = false
+            try {
+              moveRandom(user_id, kind)
+              r = true
+            } catch (err) {
+              console.log("Move aborted", user_id, kind, "Reason: " + err)
+            }
+            if (r) {
+              loop(kind, user_id)
+            }
+          }
+          // action()
+          setTimeout(action, rand)
+        } else {
+          console.log(
+            "Move aborted",
+            user_id,
+            kind,
+            "Reason: Stopped by client"
+          )
+        }
+      }
+
+      for (const u of uids) {
+        loop(kind, u)
+      }
     }
 
-    return true
-  }
-  startRandomMove(uids: UserId[], kind: "batch" | "step"): void {
-    console.log("startRandomMove", uids)
-    if (kind == "batch") {
-      this.started.randomBatchMove = unionSet(
-        this.started.randomBatchMove,
-        new Set(uids)
-      )
-      this.started.randomOneStepMove = diffSet(
-        this.started.randomOneStepMove,
-        new Set(uids)
-      )
-    } else {
-      this.started.randomOneStepMove = unionSet(
-        this.started.randomOneStepMove,
-        new Set(uids)
-      )
-      this.started.randomBatchMove = diffSet(
-        this.started.randomBatchMove,
-        new Set(uids)
-      )
+    const stopRandomMove = (uids: UserId[]): void => {
+      for (const uid of uids) {
+        state.started.randomOneStepMove.delete(uid)
+        state.started.randomBatchMove.delete(uid)
+      }
     }
-    const moveRandom = (user_id: UserId, kind: "batch" | "step"): boolean => {
-      if (kind == "batch" && !this.started.randomBatchMove.has(user_id)) {
-        return false
-      }
-      if (kind == "step" && !this.started.randomOneStepMove.has(user_id)) {
-        return false
-      }
-      const p = this.people[user_id]
-      let nx = -1
-      let ny = -1
-      let count = 0
-      if (kind == "batch") {
-        while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = randomInt(0, this.hallMap.numCols)
-          ny = randomInt(0, this.hallMap.numRows)
-          count += 1
-          if (count >= 100) {
-            throw "Move failed 100 times."
-          }
-        }
+
+    const checkUser = (
+      uid: UserId,
+      start: boolean,
+      kind: "batch" | "step"
+    ): void => {
+      if (start) {
+        startRandomMove([uid], kind)
       } else {
-        while (!this.canMoveTo({ x: nx, y: ny })) {
-          nx = p.x + randomInt(-1, 1)
-          ny = p.y + randomInt(-1, 1)
-          count += 1
-          if (count >= 100) {
-            throw "Move failed 100 times."
-          }
-        }
-      }
-      this.moveTo(user_id, { x: nx, y: ny })
-      return true
-    }
-    const loop = (kind: "batch" | "step", user_id: UserId) => {
-      console.log("loop", user_id, kind)
-      const [minInterval, maxInterval] =
-        kind == "batch" ? [1000, 5000] : [200, 200]
-      const rand =
-        Math.round(Math.random() * (maxInterval - minInterval)) + minInterval
-      const active =
-        (kind == "batch" && this.started.randomBatchMove.has(user_id)) ||
-        (kind == "step" && this.started.randomOneStepMove.has(user_id))
-      if (active) {
-        const action = function() {
-          let r = false
-          try {
-            moveRandom(user_id, kind)
-            r = true
-          } catch (err) {
-            console.log("Move aborted", user_id, kind, "Reason: " + err)
-          }
-          if (r) {
-            loop(kind, user_id)
-          }
-        }
-        // action()
-        setTimeout(action, rand)
-      } else {
-        console.log("Move aborted", user_id, kind, "Reason: Stopped by client")
+        stopRandomMove([uid])
       }
     }
-    for (const u of uids) {
-      loop(kind, u)
+    const startRandomMoveForAll = (kind: "batch" | "step"): void => {
+      const uids = difference(
+        Object.keys(state.people),
+        state.myUserId ? [state.myUserId] : []
+      )
+      startRandomMove(uids, kind)
     }
-  }
-  stopRandomMove(uids: UserId[]): void {
-    for (const uid of uids) {
-      this.started.randomOneStepMove.delete(uid)
-      this.started.randomBatchMove.delete(uid)
+
+    const stopAll = (): void => {
+      state.started.randomOneStepMove = new Set()
+      state.started.randomBatchMove = new Set()
     }
-  }
-}
+
+    return { ...toRefs(state), startRandomMoveForAll, checkUser, stopAll }
+  },
+})
 </script>
 
 <style>

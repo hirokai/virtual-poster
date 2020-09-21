@@ -1,5 +1,4 @@
-import Vue from "vue"
-import { computed, ComputedRef } from "@vue/composition-api"
+import { computed, ComputedRef, nextTick } from "vue"
 
 import {
   UserId,
@@ -206,11 +205,13 @@ export const newComment = async (
       activePoster &&
       d2.texts.map(t => t.to).indexOf(activePoster) != -1
     ) {
-      Vue.set(state.posterComments, d.id, d)
+      //Vue.set
+      state.posterComments[d.id] = d2
     }
 
-    Vue.set(state.comments, d.id, d2)
-    Vue.nextTick(() => {
+    //Vue.set
+    state.comments[d.id] = d2
+    await nextTick(() => {
       let el = document.querySelector("#chat-local-history")
       if (el) {
         el.scrollTop = el.scrollHeight
@@ -380,7 +381,8 @@ export const initChatService = async (
   })
   socket.on("CommentRemove", (comment_id: string) => {
     console.log("CommentRemove", comment_id, state.comments[comment_id])
-    Vue.delete(state.comments, comment_id)
+    //Vue.delete
+    delete state.comments[comment_id]
   })
 
   socket.on("PosterCommentRemove", (comment_id: string) => {
@@ -389,12 +391,14 @@ export const initChatService = async (
       comment_id,
       state.posterComments[comment_id]
     )
-    Vue.delete(state.posterComments, comment_id)
+    //Vue.delete
+    delete state.posterComments[comment_id]
   })
 
   socket.on("Group", d => {
     console.log("socket group", d)
-    Vue.set(state.chatGroups, d.id, d)
+    // Vue.set
+    state.chatGroups[d.id] = d
     const group = myChatGroup(props, state).value
     console.log("myChatGroup", group)
     if (group) {
@@ -438,7 +442,8 @@ export const initChatService = async (
   })
   socket.on("GroupRemove", id => {
     console.log("GroupRemove", id)
-    Vue.delete(state.chatGroups, id)
+    // Vue.delete
+    delete state.chatGroups[id]
     const group = myChatGroup(props, state).value
     if (!group) {
       if (state.skywayRoom) {
@@ -534,6 +539,7 @@ export const commentTree = (
 ): ComputedRef<Tree<ChatCommentDecrypted>> =>
   computed(
     (): Tree<ChatCommentDecrypted> => {
+      const nodes: { [comment_id: string]: Tree<ChatCommentDecrypted> } = {}
       const findOrMakeNode = (
         c: ChatCommentDecrypted
       ): { node: Tree<ChatCommentDecrypted>; created: boolean } => {
@@ -547,7 +553,6 @@ export const commentTree = (
         }
       }
       const tree: Tree<ChatCommentDecrypted> = { children: [] }
-      const nodes: { [comment_id: string]: Tree<ChatCommentDecrypted> } = {}
       for (const c of Object.values(state.comments)) {
         if (!c.reply_to) {
           const { node } = findOrMakeNode(c)

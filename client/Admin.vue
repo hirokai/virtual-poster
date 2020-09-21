@@ -88,6 +88,7 @@
         :posters="posters"
         :people="people"
         :jwt_hash="jwt_hash"
+        @update-poster="updatePoster"
       />
       <div v-if="tab == 'socket'">
         <h1>Socket.IO</h1>
@@ -116,18 +117,14 @@ import {
 import { decodeMoved } from "../common/util"
 import { AxiosInstance } from "axios"
 
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
   onMounted,
   watch,
-  set,
   toRefs,
   computed,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+} from "vue"
 
 import Manage from "./admin/Manage.vue"
 import ManageRooms from "./admin/ManageRooms.vue"
@@ -228,7 +225,8 @@ export default defineComponent({
       email?: string
     }) => {
       const obj = pickBy(p)
-      set(state.people, p.id, { ...state.people[p.id], ...obj })
+      //Vue.set
+      state.people[p.id] = { ...state.people[p.id], ...obj }
     }
     const on_socket_move = (s: string) => {
       const pos = decodeMoved(s)
@@ -278,14 +276,17 @@ export default defineComponent({
           .catch(console.error)
       } else if (msg == "group") {
         const group = data as ChatGroup
-        set(state.chatGroups, group.id, group)
+        //Vue.set
+        state.chatGroups[group.id] = group
       } else if (msg == "group.remove") {
         const group_id = data as string
-        Vue.delete(state.chatGroups, group_id)
+        //Vue.delete
+        delete state.chatGroups[group_id]
       } else if (msg == "poster") {
         const poster = data as Poster
         console.log(poster)
-        set(state.posters, poster.id, poster)
+        //Vue.set
+        state.posters[poster.id] = poster
       } else if (msg == "posters.reset") {
         //
       } else if (msg == "active_users") {
@@ -296,7 +297,8 @@ export default defineComponent({
             ...state.people[d.user],
             connected: d.active,
           }
-          set(state.people, d.user, person)
+          //Vue.set
+          state.people[d.user] = person
         }
       }
     }
@@ -335,6 +337,10 @@ export default defineComponent({
       })
     }
 
+    const updatePoster = (poster: Poster) => {
+      state.posters[poster.id] = poster
+    }
+
     const notInChat = computed(() => {
       const inChat = flatten(
         Object.values(state.chatGroups).map(g => g.users)
@@ -344,12 +350,14 @@ export default defineComponent({
         inChat
       )
     })
+
     watch(
       () => state.tab,
       (newTab: string) => {
         location.hash = newTab
       }
     )
+
     onMounted(() => {
       const client = api(axiosClient(axios))
       client.socket_url
@@ -468,6 +476,7 @@ export default defineComponent({
       notInChat,
       signOut,
       submitAnnouncement,
+      updatePoster,
     }
   },
 })

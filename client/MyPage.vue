@@ -84,10 +84,7 @@
             <div>
               <button
                 v-if="editingTitle != poster.id"
-                @click="
-                  editingTitleText = poster.title
-                  editingTitle = poster.id
-                "
+                @click="onClickEditTitle(poster)"
               >
                 タイトルを変更
               </button>
@@ -255,7 +252,6 @@
   </div>
 </template>
 <script lang="ts">
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
@@ -263,10 +259,8 @@ import {
   onMounted,
   computed,
   toRefs,
-  set,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+  nextTick,
+} from "vue"
 
 import axiosDefault from "axios"
 import axiosClient from "@aspida/axios"
@@ -551,7 +545,8 @@ export default defineComponent({
         ._userId(state.myUserId)
         .$patch({ body: { avatar: n } })
       if (data.ok) {
-        Vue.set(state.people[state.myUserId], "avatar", n)
+        //Vue.set
+        state.people[state.myUserId].avatar = n
       }
     }
     const setPerson = (d: PersonUpdate) => {
@@ -564,7 +559,8 @@ export default defineComponent({
         avatar: d.avatar || p.avatar,
         stats: d.stats || p.stats,
       }
-      set(state.people, d.id, person)
+      //Vue.set
+      state.people[d.id] = person
     }
     const saveName = async (ev: KeyboardEvent & MouseEvent) => {
       if (ev.keyCode && ev.keyCode !== 13) return
@@ -584,7 +580,8 @@ export default defineComponent({
         ._userId(state.myUserId)
         .$patch({ body: { name: new_name } })
       console.log(data)
-      set(state.people[state.myUserId], "name", new_name)
+      //Vue.set
+      state.people[state.myUserId].name = new_name
       state.editing.name = null
     }
     const signOut = async () => {
@@ -601,14 +598,23 @@ export default defineComponent({
         ._posterId(pid)
         .$patch({ body: { title } })
       if (data.ok) {
-        Vue.nextTick(() => {
-          Vue.set(state.posters[pid], "title", title)
+        await nextTick(() => {
+          //Vue.set
+          state.posters[pid].title = title
         })
-        Vue.nextTick(() => {
+        await nextTick(() => {
           state.editingTitle = null
         })
       }
     }
+
+    const onClickEditTitle = (poster: Poster) => {
+      if (poster.title) {
+        state.editingTitleText = poster.title
+      }
+      state.editingTitle = poster.id
+    }
+
     const onDrop = async (event: any, poster_id: PosterId) => {
       state.dragover[poster_id] = false
       const fileList: File[] = event.target.files
@@ -639,15 +645,18 @@ export default defineComponent({
 
         const { data } = await axios.post("/posters/" + poster_id + "/file", fd)
         console.log(data)
-        set(state.posters, poster_id, data.poster)
+        //Vue.set
+        state.posters[poster_id] = data.poster
       }
     }
     const removePosterFile = async (poster_id: PosterId) => {
       const data = await client.posters._posterId(poster_id).file.$delete()
       console.log(data)
       if (data.ok && data.poster) {
-        set(state.posters, data.poster.id, data.poster)
-        set(state.dataURI, data.poster.id, "")
+        //Vue.set
+        state.posters[data.poster.id] = data.poster
+        //Vue.set
+        state.dataURI[data.poster.id] = ""
       }
     }
 
@@ -679,10 +688,12 @@ export default defineComponent({
             }
           })
           socket.on("Poster", (p: Poster) => {
-            Vue.set(state.posters, p.id, p)
+            //Vue.set
+            state.posters[p.id] = p
           })
           socket.on("PosterRemove", (pid: PosterId) => {
-            Vue.delete(state.posters, pid)
+            //Vue.delete
+            delete state.posters[pid]
           })
         })
         .catch(err => {
@@ -788,7 +799,8 @@ export default defineComponent({
                   ""
                 )
               )
-              set(state.dataURI, poster.id, "data:image/png;base64," + image)
+              //Vue.set
+              state.dataURI[poster.id] = "data:image/png;base64," + image
             })
             .catch(() => {
               //
@@ -913,20 +925,16 @@ export default defineComponent({
       })
       if (!data2.ok) {
         alert("投票コード取得済みです")
-        set(
-          state.vote,
-          "message_sent",
+        //Vue.set
+        state.vote.message_sent =
           localStorage[
             "virtual-poster:" + state.myUserId + ":vote:message_sent"
           ] || ""
-        )
-        set(
-          state.vote,
-          "unblinded",
+        //Vue.set
+        state.vote.unblinded =
           localStorage[
             "virtual-poster:" + state.myUserId + ":vote:unblinded"
           ] || ""
-        )
         return
       }
 
@@ -952,8 +960,10 @@ export default defineComponent({
       })
       if (result) {
         console.log("Alice: Signatures verify!")
-        set(state.vote, "unblinded", unblinded)
-        set(state.vote, "message_sent", state.vote.message)
+        //Vue.set
+        state.vote.unblinded = unblinded
+        //Vue.set
+        state.vote.message_sent = state.vote.message
       } else {
         console.log("Alice: Invalid signature")
         alert("投票コードが取得できませんでした。")
@@ -993,7 +1003,7 @@ export default defineComponent({
         localStorage.removeItem("virtual-poster:name")
         localStorage.removeItem("virtual-poster:admin")
 
-        var arr = [] as string[]
+        const arr = [] as string[]
         for (let i = 0; i < localStorage.length; i++) {
           if (
             localStorage.key(i)?.indexOf("virtual-poster:" + state.myUserId) ==
@@ -1007,7 +1017,7 @@ export default defineComponent({
         }
 
         // Iterate over arr and remove the items by key
-        for (var i = 0; i < arr.length; i++) {
+        for (let i = 0; i < arr.length; i++) {
           localStorage.removeItem(arr[i])
         }
         location.href = "/login"
@@ -1052,6 +1062,7 @@ export default defineComponent({
       signOut,
       reload,
       setTitle,
+      onClickEditTitle,
       clickAvatar,
       saveName,
       onDrop,

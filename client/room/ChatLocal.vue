@@ -95,12 +95,17 @@
           hidden: contentHidden,
         }"
       >
-        <Picker
+        <!-- <Picker
           v-if="showEmojiPicker && showEmojiPicker == c.id"
           set="apple"
           style="position: absolute"
           :data="emojiIndex"
           @select="emoji => selectEmoji(c, emoji)"
+        /> -->
+        <MyPicker
+          v-if="showEmojiPicker && showEmojiPicker == c.id"
+          @select="emoji => selectEmoji(c, emoji)"
+          @close-emoji-picker="showEmojiPicker = undefined"
         />
         <div v-if="c.event == 'new_date'" class="date_event">
           <hr />
@@ -129,7 +134,7 @@
             <span
               class="comment-entry-tool"
               id="show_emoji_picker"
-              @click="showEmojiPicker = showEmojiPicker ? undefined : c.id"
+              @click="clickShowEmoji(c)"
             >
               😀
             </span>
@@ -193,9 +198,8 @@ import {
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
-import { sortBy, flattenTree } from "../../common/util"
+import { flattenTree } from "../../common/util"
 
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
@@ -203,15 +207,15 @@ import {
   toRefs,
   computed,
   PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+  nextTick,
+} from "vue"
 
-import data from "emoji-mart-vue-fast/data/all.json"
-import { Picker, EmojiIndex } from "emoji-mart-vue-fast"
-import "emoji-mart-vue-fast/css/emoji-mart.css"
+import MyPicker from "./MyPicker.vue"
+// import data from "../../emoji-mart-vue-fast/data/all.json"
+// import { Picker, EmojiIndex } from "../../emoji-mart-vue-fast/src"
+// import "../../emoji-mart-vue-fast/css/emoji-mart.css"
 
-const emojiIndex = new EmojiIndex(data)
+// const emojiIndex = new EmojiIndex(data)
 
 interface CommentHistoryEntry {
   event: string
@@ -243,7 +247,8 @@ interface DateEvent extends CommentHistoryEntry {
 
 export default defineComponent({
   components: {
-    Picker,
+    // Picker,
+    MyPicker,
   },
   props: {
     poster: {
@@ -337,7 +342,7 @@ export default defineComponent({
     watch(
       () => numInputRows.value,
       () => {
-        Vue.nextTick(() => {
+        nextTick(() => {
           let el = document.querySelector("#chat-local-history")
           if (el) {
             el.scrollTop = el.scrollHeight
@@ -347,6 +352,12 @@ export default defineComponent({
             el.scrollTop = el.scrollHeight
           }
         })
+          .then(() => {
+            //
+          })
+          .catch(() => {
+            //
+          })
       }
     )
 
@@ -433,26 +444,13 @@ export default defineComponent({
       }
     }
 
-    interface IWindow extends Window {
+    interface SpeechWindow extends Window {
       webkitSpeechRecognition: any
     }
 
-    const { webkitSpeechRecognition }: IWindow = <IWindow>(window as any)
-
-    const toggleDictation = () => {
-      if (!state.dictation.running) {
-        startDictation()
-      } else {
-        stopDictation()
-      }
-    }
-
-    const notSender = (
-      person: UserId,
-      texts: { to: UserId }[]
-    ): { to: UserId }[] => {
-      return texts.filter(t => t.to != person)
-    }
+    const {
+      webkitSpeechRecognition,
+    }: SpeechWindow = (window as any) as SpeechWindow
 
     const startDictation = () => {
       if (state.dictation.running) {
@@ -469,7 +467,8 @@ export default defineComponent({
 
       recognition.onresult = event => {
         const text = event.results[0][0].transcript
-        Vue.set(state.dictation, "text", text)
+        //Vue.set
+        state.dictation.text = text
         state.inputText = state.inputTextWithoutDictation + text
         if (event.results[0].isFinal) {
           state.inputText += "。"
@@ -492,6 +491,21 @@ export default defineComponent({
       console.log("stopDictation", state.recognition)
       state.recognition.stop()
       state.recognition = undefined
+    }
+
+    const toggleDictation = () => {
+      if (!state.dictation.running) {
+        startDictation()
+      } else {
+        stopDictation()
+      }
+    }
+
+    const notSender = (
+      person: UserId,
+      texts: { to: UserId }[]
+    ): { to: UserId }[] => {
+      return texts.filter(t => t.to != person)
     }
 
     const speechText = (text: string) => {
@@ -520,11 +534,15 @@ export default defineComponent({
       window.speechSynthesis.speak(utter)
     }
 
-    context.parent?.$on("clear-chat-input", () => {
+    context["parent"]?.$on("clear-chat-input", () => {
       state.inputText = ""
     })
 
     const is_chrome = !!window["chrome"]
+
+    const clickShowEmoji = (c: ChatCommentDecrypted) => {
+      state.showEmojiPicker = state.showEmojiPicker ? undefined : c.id
+    }
 
     const selectEmoji = (c: ChatCommentDecrypted, emoji: any) => {
       const me = props.myself
@@ -562,7 +580,8 @@ export default defineComponent({
       toggleDictation,
       is_chrome,
       notSender,
-      emojiIndex,
+      // emojiIndex,
+      clickShowEmoji,
       selectEmoji,
       clickReaction,
     }

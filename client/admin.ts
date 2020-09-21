@@ -1,7 +1,4 @@
-import Vue from "vue"
+import { createApp } from "vue"
 import Admin from "./Admin.vue"
 
-Vue.config.productionTip = false
-new Vue({
-  render: h => h(Admin),
-}).$mount("#app")
+createApp(Admin).mount("#app")

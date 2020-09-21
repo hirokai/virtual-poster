@@ -115,15 +115,7 @@
 <script lang="ts">
 import { Cell, Person, Poster } from "../../@types/types"
 
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  toRefs,
-  PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, reactive, toRefs, PropType } from "vue"
 
 export default defineComponent({
   // @Prop() public myself!: Person

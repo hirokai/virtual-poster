@@ -1,10 +1,6 @@
-import Vue from "vue"
+import { createApp } from "vue"
 import Register from "./Register.vue"
-import VueCompositionApi from "@vue/composition-api"
 
-Vue.config.productionTip = false
-Vue.use(VueCompositionApi)
-
-new Vue({
+createApp({
   render: h => h(Register),
-}).$mount("#app")
+}).mount("#app")

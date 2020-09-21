@@ -98,10 +98,7 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
-import { defineComponent, PropType } from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+import { defineComponent, PropType } from "vue"
 import { Cell, Point, ChatGroup, Person, Direction } from "../../@types/types"
 import MiniMapCell from "./MiniMapCell.vue"
 

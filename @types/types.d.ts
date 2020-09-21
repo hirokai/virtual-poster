@@ -1,8 +1,6 @@
 import { admin } from "firebase-admin/lib/auth"
 import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
-import { SocketIOEmitter } from "socket.io-emitter"
-import { ComputedRef } from "@vue/composition-api"
 import { BatchMove } from "../client/room_map_service"
 export type Point = { x: number; y: number }
 

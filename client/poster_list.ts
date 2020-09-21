@@ -1,12 +1,10 @@
-import Vue from "vue"
+import { createApp } from "vue"
 import PosterList from "./PosterList.vue"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import axios from "axios"
 import { PostIdTokenResponse } from "@/@types/types"
 import firebaseConfig from "../firebaseConfig"
-
-Vue.config.productionTip = true
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -48,7 +46,7 @@ firebase.auth().onAuthStateChanged(user => {
             idToken,
             socketURL,
           }
-          new Vue<typeof PosterList>({
+          createApp({
             render: h => h(PosterList, { props: propsData }),
             el: "#app",
           })

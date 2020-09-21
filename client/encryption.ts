@@ -118,7 +118,7 @@ export async function fingerPrint(
 
 export async function importPublicKey(
   s: string,
-  exportable = false
+  _exportable = false
 ): Promise<CryptoKey | null> {
   // console.log("importPublicKey", data)
   try {
@@ -132,9 +132,9 @@ export async function importPublicKey(
       // Usages must be empty for public keys
       []
     )
-    console.log("Public key: ", key)
+    // console.log("Public key: ", key)
     const obj = await crypto.subtle.exportKey("jwk", key)
-    console.log("importPublicKey imported", key, obj)
+    // console.log("importPublicKey imported", key, obj)
 
     return key
   } catch (err) {
@@ -190,7 +190,6 @@ export async function encrypt(
   localPrivateKey: CryptoKey,
   input: Uint8Array
 ): Promise<EncryptedData> {
-  console.log("encrypt()")
   //   const fp1 = await fingerPrint1(remotePublicKey)
   //   const fp2 = await fingerPrint1(localPrivateKey)
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -205,7 +204,7 @@ export async function encrypt(
     throw ""
   }
   const encryptionKey = await getEncryptionKey(remotePublicKey, localPrivateKey)
-  console.log("encryptionKey", encryptionKey)
+  // console.log("encryptionKey", encryptionKey)
   const data = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv, tagLength: 128 },
     encryptionKey,
@@ -338,13 +337,13 @@ export async function importPrivateKeyJwk(
   exportable = false
 ): Promise<{ key: CryptoKey; mnemonic: string } | null> {
   try {
-    console.log(
-      "importPrivateKeyJwk() importing",
-      data,
-      decodeBase64URL(data.d!).length,
-      decodeBase64URL(data.x!).length,
-      decodeBase64URL(data.y!).length
-    )
+    // console.log(
+    //   "importPrivateKeyJwk() importing",
+    //   data,
+    //   decodeBase64URL(data.d!).length,
+    //   decodeBase64URL(data.x!).length,
+    //   decodeBase64URL(data.y!).length
+    // )
 
     // const buffer = Buffer.from(decodeBase64URL(data.d!))
     // const hex = buffer.toString("hex")
@@ -360,7 +359,7 @@ export async function importPrivateKeyJwk(
     // const mnemonic_again = getMnemonic(d_again!)
     // console.log(mnemonic_again)
 
-    console.log("Calling crypto.subtle.importKey()", data)
+    // console.log("Calling crypto.subtle.importKey()", data)
 
     const key = await crypto.subtle.importKey(
       "jwk",
@@ -371,7 +370,7 @@ export async function importPrivateKeyJwk(
       // Usages must be empty for public keys
       ["deriveKey", "deriveBits"]
     )
-    console.log("Imported key", key)
+    // console.log("Imported key", key)
     const s = "Test string"
     const enc = await encrypt_str(publicKey, key, s)
     const s2 = await decrypt_str(publicKey, key, enc)

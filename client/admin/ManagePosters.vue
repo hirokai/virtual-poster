@@ -49,18 +49,14 @@ import { Room, Poster, PosterId, PersonWithEmail } from "@/@types/types"
 import { AxiosStatic } from "axios"
 import { sortBy } from "../../common/util"
 
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
   computed,
   watch,
-  set,
   toRefs,
   PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+} from "vue"
 
 export default defineComponent({
   props: {
@@ -90,14 +86,15 @@ export default defineComponent({
       required: true,
     },
   },
-  setup(props) {
+  setup(props, context) {
     const state = reactive({
       files: {} as { [index: string]: File },
       dataURI: {} as { [poster_id: string]: string },
       lastLoaded: -1,
     })
     const onFileChange = (name: string, e) => {
-      set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
+      //Vue.set
+      state.files[name] = (e.target.files || e.dataTransfer.files)[0]
     }
     const submitClick = async (room_id: string) => {
       console.log("submitClick", state.files[room_id])
@@ -153,7 +150,8 @@ export default defineComponent({
                   ""
                 )
               )
-              set(state.dataURI, poster.id, image)
+              //Vue.set
+              state.dataURI[poster.id] = image
             })
             .catch(() => {
               //
@@ -206,7 +204,8 @@ export default defineComponent({
           .then(({ data }) => {
             console.log(data)
             if (data.ok) {
-              set(props.posters, data.poster.id, data.poster)
+              //Vue.set
+              context.emit("update-poster", data.poster)
             }
           })
           .catch(err => {

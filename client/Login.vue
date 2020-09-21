@@ -17,24 +17,19 @@
 </template>
 
 <script lang="ts">
-import { onMounted, toRefs } from "@vue/composition-api"
 import axios from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import * as firebaseui from "firebaseui"
 import jsSHA from "jssha"
 
-import Vue from "vue"
-import { defineComponent, reactive } from "@vue/composition-api"
+import { onMounted, toRefs, defineComponent, reactive } from "vue"
 import firebaseConfig from "../firebaseConfig"
 
-import VueCompositionApi from "@vue/composition-api"
 import { setUserInfo, deleteUserInfoOnLogout } from "./util"
 
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
-
-Vue.use(VueCompositionApi)
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT

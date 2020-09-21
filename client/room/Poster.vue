@@ -148,7 +148,6 @@ import { inRange, sortBy } from "../../common/util"
 import axiosDefault from "axios"
 import { countLines } from "../util"
 
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
@@ -157,9 +156,7 @@ import {
   ref,
   computed,
   PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+} from "vue"
 
 export default defineComponent({
   props: {

@@ -90,18 +90,13 @@
 <script lang="ts">
 import firebaseConfig from "../../firebaseConfig"
 
-import { onMounted, toRefs, computed } from "@vue/composition-api"
+import { onMounted, toRefs, computed, defineComponent, reactive } from "vue"
 import axios from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 
-import Vue from "vue"
-import { defineComponent, reactive } from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
 import * as encryption from "../encryption"
 import { chunk } from "../../common/util"
-
-Vue.use(VueCompositionApi)
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT

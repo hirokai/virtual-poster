@@ -49,12 +49,7 @@
         @dbl-click="dblClick"
       />
     </g>
-    <g
-      id="controller"
-      style="transform: translate(384px, 432px);"
-      @mousedown="clickController"
-      opacity="0.8"
-    >
+    <g id="controller" @mousedown="clickController" opacity="0.8">
       <g id="レイヤー_1-2" data-name="レイヤー 1">
         <polygon
           class="cls-3"
@@ -96,7 +91,6 @@
 </template>
 
 <script lang="ts">
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
@@ -104,9 +98,7 @@ import {
   toRefs,
   computed,
   PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+} from "vue"
 import {
   Cell,
   Point,
@@ -233,7 +225,7 @@ export default defineComponent({
       }
     }
 
-    const cssVars = {
+    const cssVars = reactive({
       opacity: computed(() => {
         return props.hidden ? 0 : 1
       }),
@@ -249,7 +241,7 @@ export default defineComponent({
       }),
       top: props.isMobile ? "0px" : undefined,
       left: props.isMobile ? "3px" : undefined,
-    }
+    })
 
     watch(
       () => !!props.activePoster,
@@ -296,7 +288,7 @@ svg#cells {
   width: calc(48px * 11);
   user-select: none;
   /* transform: translate(0px, 0px) scale(0.8); */
-  transition: opacity 0.5s linear;
+  transition: opacity 0.3s linear;
   z-index: -1;
 }
 
@@ -314,7 +306,8 @@ svg#cells.small {
   animation-fill-mode: forwards;
 }
 
-svg#cells.normal #controller {
+svg#cells #controller {
+  transform: translate(384px, 432px);
   animation-name: controller_translate_rev;
   animation-duration: 1s;
   animation-direction: normal;

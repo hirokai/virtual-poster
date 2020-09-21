@@ -1,11 +1,9 @@
-import Vue from "vue"
-import { computed, ComputedRef, set } from "@vue/composition-api"
+import { computed, ComputedRef, nextTick } from "vue"
 
 import {
   RoomAppState,
   RoomAppProps,
   Poster,
-  ChatComment,
   MySocketObject,
   PosterId,
 } from "../@types/types"
@@ -14,6 +12,7 @@ import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import { SocketIO } from "socket.io-client"
+import { ChatCommentDecrypted } from "@/api/@types"
 
 export const adjacentPosters = (
   props: RoomAppProps,
@@ -141,22 +140,25 @@ export const initPosterService = async (
   const client = api(axiosClient(axios))
   socket.on("Poster", (d: Poster) => {
     console.log("socket Poster", d)
-    Vue.set(state.posters, d.id, d)
-    Vue.set(state.hallMap[d.y], d.x, {
+    //Vue.set
+    state.posters[d.id] = d
+    //Vue.set
+    state.hallMap[d.y][d.x] = {
       ...state.hallMap[d.y][d.x],
       poster_number: d.poster_number,
-    })
+    }
   })
-  socket.on("PosterComment", (d: ChatComment) => {
+  socket.on("PosterComment", async (d: ChatCommentDecrypted) => {
     console.log("PosterComment", d)
     const pid = activePoster.value?.id
     const to_s = d.texts.map(t => t.to)
     const scroll = !state.posterComments[d.id]
     if (pid && to_s.indexOf(pid) != -1) {
-      set(state.posterComments, d.id, d)
+      //Vue.set
+      state.posterComments[d.id] = d
     }
     if (scroll) {
-      Vue.nextTick(() => {
+      await nextTick(() => {
         const el = document.querySelector("#poster-comments-container")
         if (el) {
           el.scrollTop = el.scrollHeight
@@ -166,12 +168,14 @@ export const initPosterService = async (
   })
   socket.on("poster.comment.remove", (comment_id: string) => {
     console.log("poster.comment.remove", comment_id)
-    Vue.delete(state.posterComments, comment_id)
+    //Vue.delete
+    delete state.posterComments[comment_id]
   })
 
   socket.on("PosterRemove", (poster_id: PosterId) => {
     const pid = adjacentPoster(props, state).value?.id
-    Vue.delete(state.posters, poster_id)
+    //Vue.delete
+    delete state.posters[poster_id]
     console.log("PosterRemove", pid, poster_id)
     if (pid == poster_id) {
       state.posterLooking = false

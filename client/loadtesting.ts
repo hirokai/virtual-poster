@@ -1,8 +1,5 @@
-import Vue from "vue"
-import App from "./LoadTesting.vue"
+import { createApp } from "vue"
+import LoadTesting from "./LoadTesting.vue"
 
 console.log("Loadtesting starting")
-
-Vue.config.productionTip = false
-
-new App().$mount("#app") as App
+createApp(LoadTesting).mount("#app")

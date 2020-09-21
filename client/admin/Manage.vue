@@ -25,12 +25,7 @@
             </form>
           </td>
           <td>
-            <button
-              @click="
-                downloadUrl('/admin/export/map.text', 'map.txt')
-                return false
-              "
-            >
+            <button @click="downloadUrl('/admin/export/map.text', 'map.txt')">
               ダウンロード
             </button>
           </td>
@@ -58,12 +53,7 @@
             </form>
           </td>
           <td>
-            <button
-              @click="
-                downloadUrl('/admin/export/people', 'people.json')
-                return false
-              "
-            >
+            <button @click="downloadUrl('/admin/export/people', 'people.json')">
               ダウンロード
             </button>
           </td>
@@ -90,10 +80,7 @@
           </td>
           <td>
             <button
-              @click="
-                downloadUrl('/admin/export/posters', 'posters.json')
-                return false
-              "
+              @click="downloadUrl('/admin/export/posters', 'posters.json')"
             >
               ダウンロード
             </button>
@@ -144,10 +131,7 @@
           </td>
           <td>
             <button
-              @click="
-                downloadUrl('/admin/export/comments', 'comments.json')
-                return false
-              "
+              @click="downloadUrl('/admin/export/comments', 'comments.json')"
             >
               ダウンロード
             </button>
@@ -173,12 +157,7 @@
             </form>
           </td>
           <td>
-            <button
-              @click="
-                downloadUrl('/admin/export/groups', 'groups.json')
-                return false
-              "
-            >
+            <button @click="downloadUrl('/admin/export/groups', 'groups.json')">
               ダウンロード
             </button>
           </td>
@@ -200,17 +179,7 @@ import { AxiosStatic } from "axios"
 import { Person } from "@/@types/types"
 const API_ROOT = "/api"
 
-import Vue from "vue"
-import {
-  defineComponent,
-  reactive,
-  set,
-  toRefs,
-  PropType,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
-
+import { defineComponent, reactive, toRefs, PropType } from "vue"
 export default defineComponent({
   props: {
     axios: {
@@ -231,7 +200,8 @@ export default defineComponent({
     })
 
     const onFileChange = (name: string, e) => {
-      set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
+      //Vue.set
+      state.files[name] = (e.target.files || e.dataTransfer.files)[0]
     }
     const submitClick = async (name: string) => {
       console.log("submitClick", state.files[name])

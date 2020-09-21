@@ -4,7 +4,7 @@ module.exports = {
     node: true,
   },
   extends: [
-    "plugin:vue/essential",
+    "plugin:vue/vue3-essential",
     "eslint:recommended",
     "@vue/typescript/recommended",
     "@vue/prettier",
@@ -28,7 +28,8 @@ module.exports = {
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": ["warn", { varsIgnorePattern: "^_" }],
     "@typescript-eslint/no-non-null-assertion": "off",
-    "prettier/prettier": ["error", { singleQuote: false, semi: false }],
+    "prettier/prettier": "warn", // ["error", { singleQuote: false, semi: false }],
+    "vue/custom-event-name-casing": "warn",
   },
   overrides: [
     {

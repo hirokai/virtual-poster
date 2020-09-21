@@ -1,5 +1,4 @@
-import Vue from "vue"
-import { computed, ComputedRef } from "@vue/composition-api"
+import { computed, ComputedRef } from "vue"
 import {
   calcDirection,
   inRange,
@@ -50,24 +49,26 @@ import api from "../api/$api"
 
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
   return (msg: string, timeout = 5000): void => {
-    Vue.set(state.message, "text", msg)
-    Vue.set(state.message, "hide", false)
+    //Vue.set
+    state.message.text = msg
+    //Vue.set
     state.message.hide = false
     if (state.message.timer) {
       window.clearTimeout(state.message.timer)
-      Vue.set(state.message, "timer", undefined)
+      //Vue.set
+      state.message.timer = undefined
     }
     if (timeout > 0) {
-      Vue.set(
-        state.message,
-        "timer",
-        window.setTimeout(() => {
-          if (state.message) {
-            Vue.set(state.message, "hide", true)
-            Vue.set(state.message, "text", "")
-          }
-        }, timeout)
-      )
+      //Vue.set
+
+      state.message.timer = window.setTimeout(() => {
+        if (state.message) {
+          //Vue.set
+          state.message.hide = true
+          //Vue.set
+          state.message.text = ""
+        }
+      }, timeout)
     }
   }
 }
@@ -104,65 +105,6 @@ export let moveOneStep = (
   // To avoid warning (This function is never called)
   console.log(on_complete)
   return false
-}
-
-export const moveTo = (
-  axios: AxiosStatic | AxiosInstance,
-  props: RoomAppProps,
-  state: RoomAppState,
-  myself: PersonInMap,
-  to: Point,
-  on_complete: (g: ChatGroup | undefined) => void = () => {
-    /* */
-  },
-  target?: UserId,
-  immediate = false,
-  chatAfterMove?: UserId | PosterId
-): boolean => {
-  if (state.batchMove) {
-    state.batchMove.stop()
-    state.batchMove = undefined
-  }
-  const from = { x: myself.x, y: myself.y }
-  const toCell = state.hallMap[to.y][to.x]
-  const person = personAt(state.people, to)
-  const poster = posterAt(state.posters, to)
-  if (person || poster || ["wall", "water", "poster"].includes(toCell.kind)) {
-    console.info("Destination not open", { toCell, person, poster })
-    return false
-  }
-  if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
-    if (immediate) {
-      moveOneStep(axios, props, state, myself.id, to, calcDirection(from, to))
-    }
-    const d: MoveSocketData = props.debug_as
-      ? {
-          ...to,
-          room: props.room_id,
-          user: props.myUserId,
-          debug_as: props.debug_as,
-        }
-      : {
-          ...to,
-          room: props.room_id,
-          user: props.myUserId,
-        }
-    console.log("Move emitting", d)
-    state.socket?.emit("Move", d)
-    state.move_emitted = performance.now()
-    return true
-  } else {
-    return startBatchMove(
-      props,
-      state,
-      axios,
-      from,
-      to,
-      immediate,
-      chatAfterMove,
-      on_complete
-    )
-  }
 }
 
 export class BatchMove {
@@ -331,6 +273,65 @@ function startBatchMove(
   return true
 }
 
+export const moveTo = (
+  axios: AxiosStatic | AxiosInstance,
+  props: RoomAppProps,
+  state: RoomAppState,
+  myself: PersonInMap,
+  to: Point,
+  on_complete: (g: ChatGroup | undefined) => void = () => {
+    /* */
+  },
+  target?: UserId,
+  immediate = false,
+  chatAfterMove?: UserId | PosterId
+): boolean => {
+  if (state.batchMove) {
+    state.batchMove.stop()
+    state.batchMove = undefined
+  }
+  const from = { x: myself.x, y: myself.y }
+  const toCell = state.hallMap[to.y][to.x]
+  const person = personAt(state.people, to)
+  const poster = posterAt(state.posters, to)
+  if (person || poster || ["wall", "water", "poster"].includes(toCell.kind)) {
+    console.info("Destination not open", { toCell, person, poster })
+    return false
+  }
+  if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) {
+    if (immediate) {
+      moveOneStep(axios, props, state, myself.id, to, calcDirection(from, to))
+    }
+    const d: MoveSocketData = props.debug_as
+      ? {
+          ...to,
+          room: props.room_id,
+          user: props.myUserId,
+          debug_as: props.debug_as,
+        }
+      : {
+          ...to,
+          room: props.room_id,
+          user: props.myUserId,
+        }
+    console.log("Move emitting", d)
+    state.socket?.emit("Move", d)
+    state.move_emitted = performance.now()
+    return true
+  } else {
+    return startBatchMove(
+      props,
+      state,
+      axios,
+      from,
+      to,
+      immediate,
+      chatAfterMove,
+      on_complete
+    )
+  }
+}
+
 moveOneStep = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
@@ -351,7 +352,8 @@ moveOneStep = (
   if (p.x == to.x && p.y == to.y && p.direction == direction) {
     return false
   }
-  Vue.set(state.people, user_id, { ...p, x, y, direction })
+  // Vue.set
+  state.people[user_id] = { ...p, x, y, direction }
   if (p.id == props.myUserId) {
     state.center = {
       x: inRange(x, 5, state.cols - 6),
@@ -525,74 +527,6 @@ const on_socket_move = (
   }
 }
 
-export const initMapService = async (
-  axios: AxiosStatic | AxiosInstance,
-  socket: SocketIO.Socket | MySocketObject,
-  props: RoomAppProps,
-  state: RoomAppState
-): Promise<boolean> => {
-  console.log("initMapService", socket)
-  const client = api(axiosClient(axios))
-  socket.on("Moved", data => {
-    const ss = data.split(";")
-    for (const s of ss) {
-      on_socket_move(axios, props, state, s)
-    }
-  })
-  socket.on("MoveError", (msg: MoveErrorSocketData) => {
-    console.log("MoveError socket", msg)
-    if (msg.error.indexOf("Access denied") == 0) {
-      ;(async () => {
-        const user = firebase.auth().currentUser
-        if (user) {
-          const token = await user.getIdToken(true)
-          const data = await client.id_token.$post({ body: { token } })
-          console.log("/id_token result", data)
-          if (data.token_actual && data.user_id) {
-            const shaObj = new jsSHA("SHA-256", "TEXT", {
-              encoding: "UTF8",
-            })
-            shaObj.update(data.token_actual)
-            const jwt_hash = shaObj.getHash("HEX")
-            localStorage["virtual-poster:jwt_hash"] = jwt_hash
-            const d: AuthSocket = {
-              user: data.user_id,
-              jwt_hash,
-            }
-            socket.emit("Auth", d)
-          }
-        }
-      })().catch(() => {
-        //
-      })
-    }
-    if (msg.user_id && msg.pos != undefined) {
-      moveOneStep(
-        axios,
-        props,
-        state,
-        msg.user_id,
-        { x: msg.pos.x, y: msg.pos.y },
-        msg.pos.direction as Direction
-      )
-    }
-    if (msg.error.indexOf("Access denied") != -1) {
-      // location.reload()
-    }
-  })
-  socket.on("MoveRequest", async d => {
-    console.log("MoveRequest", d)
-    const p = state.posters[d.to_poster]
-    await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
-  })
-  const data = await client.maps._roomId(props.room_id).$get()
-  state.hallMap = data.cells
-  state.cols = data.numCols
-  state.rows = data.numRows
-
-  return true
-}
-
 export const dblClickHandler = (
   props: RoomAppProps,
   state: RoomAppState,
@@ -692,7 +626,8 @@ export const dblClickHandler = (
           })
       } else if (poster) {
         state.selectedUsers.clear()
-        Vue.set(state, "posterLooking", true)
+        // Vue.set
+        state.posterLooking = true
       }
       return
     } else {
@@ -727,4 +662,72 @@ export const dblClickHandler = (
       }
     }
   }
+}
+
+export const initMapService = async (
+  axios: AxiosStatic | AxiosInstance,
+  socket: SocketIO.Socket | MySocketObject,
+  props: RoomAppProps,
+  state: RoomAppState
+): Promise<boolean> => {
+  console.log("initMapService", socket)
+  const client = api(axiosClient(axios))
+  socket.on("Moved", data => {
+    const ss = data.split(";")
+    for (const s of ss) {
+      on_socket_move(axios, props, state, s)
+    }
+  })
+  socket.on("MoveError", (msg: MoveErrorSocketData) => {
+    console.log("MoveError socket", msg)
+    if (msg.error.indexOf("Access denied") == 0) {
+      ;(async () => {
+        const user = firebase.auth().currentUser
+        if (user) {
+          const token = await user.getIdToken(true)
+          const data = await client.id_token.$post({ body: { token } })
+          console.log("/id_token result", data)
+          if (data.token_actual && data.user_id) {
+            const shaObj = new jsSHA("SHA-256", "TEXT", {
+              encoding: "UTF8",
+            })
+            shaObj.update(data.token_actual)
+            const jwt_hash = shaObj.getHash("HEX")
+            localStorage["virtual-poster:jwt_hash"] = jwt_hash
+            const d: AuthSocket = {
+              user: data.user_id,
+              jwt_hash,
+            }
+            socket.emit("Auth", d)
+          }
+        }
+      })().catch(() => {
+        //
+      })
+    }
+    if (msg.user_id && msg.pos != undefined) {
+      moveOneStep(
+        axios,
+        props,
+        state,
+        msg.user_id,
+        { x: msg.pos.x, y: msg.pos.y },
+        msg.pos.direction as Direction
+      )
+    }
+    if (msg.error.indexOf("Access denied") != -1) {
+      // location.reload()
+    }
+  })
+  socket.on("MoveRequest", async d => {
+    console.log("MoveRequest", d)
+    const p = state.posters[d.to_poster]
+    await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
+  })
+  const data = await client.maps._roomId(props.room_id).$get()
+  state.hallMap = data.cells
+  state.cols = data.numCols
+  state.rows = data.numRows
+
+  return true
 }

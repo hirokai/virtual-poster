@@ -63,12 +63,6 @@ module.exports = {
       chunks: ["chunk-vendors", "chunk-common", "mypage"],
     },
   },
-  chainWebpack: config => {
-    config.plugin("fork-ts-checker").tap(args => {
-      args[0].memoryLimit = 4096
-      return args
-    })
-  },
   configureWebpack: {
     plugins: [
       new webpack.IgnorePlugin(/^\.\/wordlists\/(?!english)/, /bip39\/src$/),
@@ -100,6 +94,6 @@ module.exports = {
         secure: false,
       },
     },
-    headers: { "Cache-Control": "no-store" },
+    // headers: { "Cache-Control": "no-store" },
   },
 }

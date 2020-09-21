@@ -26,10 +26,7 @@
         </td>
         <td>
           <button
-            @click="
-              downloadUrl('/admin/export/people.csv', 'people.csv')
-              return false
-            "
+            @click="downloadUrl('/admin/export/people.csv', 'people.csv')"
           >
             ダウンロード
           </button>
@@ -155,18 +152,14 @@ import api from "../../api/$api"
 
 import { PersonWithEmailRooms, RoomId } from "@/@types/types"
 
-import Vue from "vue"
 import {
   defineComponent,
   reactive,
-  set,
   PropType,
   SetupContext,
   toRefs,
   watch,
-} from "@vue/composition-api"
-import VueCompositionApi from "@vue/composition-api"
-Vue.use(VueCompositionApi)
+} from "vue"
 
 export default defineComponent({
   props: {
@@ -208,7 +201,8 @@ export default defineComponent({
       state.editing.person = JSON.parse(JSON.stringify(p))
     }
     const onFileChange = (name: string, e) => {
-      set(state.files, name, (e.target.files || e.dataTransfer.files)[0])
+      //Vue.set
+      state.files[name] = (e.target.files || e.dataTransfer.files)[0]
     }
 
     const submitClick = async (name: string) => {
@@ -266,9 +260,11 @@ export default defineComponent({
 
     const toggleRoom = (room_id: RoomId) => {
       if (state.selected_rooms[room_id]) {
-        Vue.delete(state.selected_rooms, room_id)
+        //Vue.delete
+        delete state.selected_rooms[room_id]
       } else {
-        Vue.set(state.selected_rooms, room_id, true)
+        //Vue.set
+        state.selected_rooms[room_id] = true
       }
     }
     watch(

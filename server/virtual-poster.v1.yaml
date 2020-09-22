@@ -648,6 +648,26 @@ paths:
         - poster
       description: Update poster comment
       parameters: []
+    delete:
+      summary: Delete a poster comment
+      operationId: delete-posters-posterId-comments-commentId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: Delete a poster comment
+      tags:
+        - poster
   "/comments/{commentId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -926,7 +946,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ChatCommentDecrypted"
+                  $ref: "#/components/schemas/PosterCommentDecrypted"
       tags:
         - poster
       description: Get comments on a poster
@@ -1500,6 +1520,10 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
       operationId: post-comments-commentId-reply
       requestBody:
         content:
@@ -1509,6 +1533,105 @@ paths:
               items:
                 $ref: "#/components/schemas/CommentEncrypted"
       description: "Add a comment reply  "
+  "/posters/{posterId}/comments/{commentId}/reply":
+    parameters:
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: commentId
+        in: path
+        required: true
+    post:
+      summary: Post a reply to a poster comment
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-posters-posterId-comments-commentId-reply
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+              required:
+                - text
+  "/maps/{roomId}/posters/{posterId}/enter":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    post:
+      summary: Start viewing a poster
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-maps-roomId-posters-posterId-enter
+      description: "Start viewing a poster. After this, the user can get comments.  "
+  "/maps/{roomId}/posters/{posterId}/leave":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    post:
+      summary: Start viewing a poster
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-maps-roomId-posters-posterId-leave
+      description: "Finish viewing a poster. After this, the user cannot get comments until they enter it again.  "
 components:
   parameters:
     debug_token:
@@ -1658,6 +1781,45 @@ components:
       minLength: 1
       x-tags:
         - types
+    PosterCommentDecrypted:
+      title: PosterCommentDecrypted
+      type: object
+      description: Poster comment object
+      x-tags:
+        - types
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: integer
+        last_updated:
+          type: integer
+        room:
+          $ref: "#/components/schemas/RoomId"
+        x:
+          type: integer
+          minimum: 0
+        "y":
+          type: integer
+          minimum: 0
+        person:
+          $ref: "#/components/schemas/UserId"
+        text_decrypted:
+          type: string
+        reply_to:
+          type: string
+        poster:
+          $ref: "#/components/schemas/PosterId"
+      required:
+        - id
+        - timestamp
+        - last_updated
+        - room
+        - x
+        - "y"
+        - person
+        - text_decrypted
+        - poster
     ChatCommentDecrypted:
       title: ChatCommentDecrypted
       type: object
@@ -1679,10 +1841,6 @@ components:
         "y":
           type: integer
           minimum: 0
-        encrypted:
-          type: array
-          items:
-            type: boolean
         person:
           $ref: "#/components/schemas/UserId"
         text_decrypted:
@@ -1715,7 +1873,6 @@ components:
         - room
         - x
         - "y"
-        - encrypted
         - person
         - text_decrypted
         - texts
@@ -1842,6 +1999,8 @@ components:
           type: boolean
         stats:
           $ref: "#/components/schemas/PersonStat"
+        poster_viewing:
+          $ref: "#/components/schemas/PosterId"
       required:
         - id
         - room

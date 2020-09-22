@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS poster_viewer;
+
 DROP TABLE IF EXISTS vote;
 
 DROP TABLE IF EXISTS public_key;
@@ -169,4 +171,12 @@ CREATE TABLE public_key (
 CREATE TABLE vote (
 	person text references person(id) primary key,
 	blinded_signature text not null
+);
+
+CREATE TABLE poster_viewer (
+	poster text references poster(id) not null,
+	person text references person(id) not null,
+	joined_time bigint not null,
+	left_time bigint,
+	last_active bigint
 );

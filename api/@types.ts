@@ -47,6 +47,19 @@ export type ChatGroupId = string
 
 export type RoomId = string
 
+export type PosterCommentDecrypted = {
+  id: string
+  timestamp: number
+  last_updated: number
+  room: RoomId
+  x: number
+  y: number
+  person: UserId
+  text_decrypted: string
+  reply_to?: string
+  poster: PosterId
+}
+
 export type ChatCommentDecrypted = {
   id: string
   timestamp: number
@@ -54,7 +67,6 @@ export type ChatCommentDecrypted = {
   room: RoomId
   x: number
   y: number
-  encrypted: boolean[]
   person: UserId
   text_decrypted: string
   texts: {
@@ -108,6 +120,7 @@ export type PersonInMap = {
   last_updated: number
   moving: boolean
   stats: PersonStat
+  poster_viewing?: PosterId
 }
 
 export type PersonStat = {

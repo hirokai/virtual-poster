@@ -32,7 +32,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
         $delete: (option?: { query?: Methods0['delete']['query'], config?: T }) =>
           fetch<Methods0['delete']['resBody'], BasicHeaders, Methods0['delete']['status']>(prefix, prefix0, DELETE, option).json().then(r => r.body),
         $path: (option?: { method: 'patch'; query: Methods0['patch']['query'] } | { method: 'delete'; query: Methods0['delete']['query'] }) =>
-          `${prefix}${prefix0}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+          `${prefix}${prefix0}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`
       }
     }
   }

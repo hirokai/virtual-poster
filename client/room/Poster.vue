@@ -86,8 +86,109 @@
         </div>
       </div>
     </transition>
-    <div id="poster-chat-input-container">
-      <h3>ポスターにコメント書き込み（参加者全員が読めます）</h3>
+    <transition name="fade">
+      <h3 id="poster-comment-title" v-if="poster">ポスターへのコメント</h3>
+    </transition>
+    <transition name="fade">
+      <div
+        id="poster-comments-container"
+        class="chat-container"
+        :class="{ poster_active: !!poster }"
+        :style="{
+          width: isMobile ? '520px' : undefined,
+          bottom: '' + (102 + numInputRows * 20) + 'px',
+        }"
+        v-if="poster"
+      >
+        <div id="poster-comments">
+          <div
+            v-for="c in posterCommentHistory"
+            class="poster-comment-entry comment-entry"
+            :class="{
+              replying: replying && replying.id == c.id,
+              editing: editingOld && c.id == editingOld,
+            }"
+            :key="c.timestamp + c.person + c.to + c.kind"
+          >
+            <MyPicker
+              v-if="showEmojiPicker && showEmojiPicker == c.id"
+              @select="emoji => selectEmoji(c, emoji)"
+              @close-emoji-picker="showEmojiPicker = undefined"
+            />
+            <div
+              v-if="c.event == 'comment'"
+              :style="{
+                'margin-left': '' + inRange(c.__depth - 1, 0, 5) * 30 + 'px',
+              }"
+            >
+              <div class="local-entry-header">
+                <span class="comment-name">{{
+                  people[c.person]?.name || "名前不明" + JSON.stringify(c)
+                }}</span>
+                <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
+
+                <span
+                  class="comment-entry-tool"
+                  id="show_emoji_picker"
+                  @click="clickShowEmoji(c)"
+                >
+                  😀
+                </span>
+                <span
+                  v-if="c.__depth <= 3"
+                  class="comment-entry-tool"
+                  @click="startReply(c)"
+                  >返信</span
+                >
+                <span
+                  class="comment-entry-tool"
+                  @click="speechText(c.text_decrypted || '')"
+                  >読み上げ</span
+                >
+                <span
+                  v-if="myself && c.person == myself.id"
+                  class="comment-entry-tool comment-delete"
+                  @click="$emit('delete-comment', poster.id, c.id)"
+                  >削除</span
+                >
+                <span
+                  v-if="myself && c.person == myself.id"
+                  class="comment-entry-tool comment-edit"
+                  @click="startUpdateComment(c.id)"
+                  >編集</span
+                >
+              </div>
+
+              <div
+                class="comment-content"
+                v-html="c.text_decrypted?.replace(/[\r\n]/g, '<br>')"
+              ></div>
+              <div
+                class="reactions"
+                v-if="c.reactions && Object.keys(c.reactions).length > 0"
+              >
+                <span
+                  :class="{
+                    'reaction-entry': true,
+                    'my-reaction': !!r[myself.id],
+                  }"
+                  v-for="(r, reaction) in c.reactions"
+                  :key="reaction"
+                  @click="clickReaction(c, r[myself.id], reaction)"
+                  >{{ reaction }}
+                  <span class="count">{{ Object.keys(r).length }}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+    <div
+      id="poster-chat-input-container"
+      class="chat-input-container"
+      :class="{ replying: !!replying, editing: !!editingOld }"
+    >
       <textarea
         ref="input"
         id="poster-chat-input"
@@ -97,11 +198,12 @@
         @compositionend="composing = false"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
-        placeholder="Shift+Enterで送信"
+        @keydown.enter="onKeyDownEnterPosterCommentInput"
+        placeholder="Shift+Enterでポスターにコメント"
       ></textarea>
       <button
         id="submit-poster-comment"
-        @click="$emit('submit-poster-comment', inputText)"
+        @click="$emit('submit-poster-comment', inputText, replying)"
         :disabled="inputText == ''"
       >
         <img
@@ -111,44 +213,6 @@
         />
       </button>
     </div>
-    <transition name="fade">
-      <div
-        id="poster-comments-container"
-        :class="{ poster_active: !!poster }"
-        :style="{
-          width: isMobile ? '520px' : undefined,
-          bottom: '' + (120 + numInputRows * 20) + 'px',
-        }"
-        v-if="poster"
-      >
-        <div id="poster-comments">
-          <div
-            v-for="c in comments_sorted"
-            class="poster-comment-entry"
-            :key="c.timestamp + c.person + c.to + c.kind"
-          >
-            <span class="comment-name">{{ people[c.person].name }}</span>
-            <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
-            <span
-              v-if="myself && c.person == myself.id"
-              class="comment-delete"
-              @click="$emit('delete-comment', c.id)"
-              >削除</span
-            >
-            <span
-              v-if="myself && c.person == myself.id"
-              class="comment-edit"
-              @click="startUpdateComment(c.id)"
-              >編集</span
-            >
-            <div
-              class="comment-content"
-              v-html="c.text_decrypted.replace(/[\r\n]/g, '<br>')"
-            ></div>
-          </div>
-        </div>
-      </div>
-    </transition>
   </div>
 </template>
 
@@ -158,11 +222,17 @@ import {
   Poster as PosterTyp,
   Point,
   Person,
+  CommentId,
   ChatCommentDecrypted,
+  CommentHistoryEntry,
+  CommentEvent,
+  DateEvent,
+  Tree,
 } from "../../@types/types"
-import { inRange, sortBy } from "../../common/util"
+import { inRange, sortBy, flattenTree } from "../../common/util"
 import axiosDefault from "axios"
 import { countLines } from "../util"
+import { sameDate, formatDate } from "../room_chat_service"
 
 import {
   defineComponent,
@@ -174,7 +244,12 @@ import {
   PropType,
 } from "vue"
 
+import MyPicker from "./MyPicker.vue"
+
 export default defineComponent({
+  components: {
+    MyPicker,
+  },
   props: {
     poster: {
       type: Object as PropType<PosterTyp>,
@@ -193,8 +268,9 @@ export default defineComponent({
       type: Object as PropType<{ [index: string]: ChatCommentDecrypted }>,
       required: true,
     },
-    inputFromParent: {
-      type: String,
+    commentTree: {
+      type: Object as PropType<Tree<ChatCommentDecrypted>>,
+      required: true,
     },
     isMobile: {
       type: Boolean,
@@ -219,12 +295,58 @@ export default defineComponent({
       imageMags: [0.1, 0.2, 0.3, 0.5, 0.67, 1, 1.2, 1.5, 2, 3, 4, 5],
       imageMagIndex: 5,
       dragOver: false,
+      voice: null as SpeechSynthesisVoice | null,
+      composing: false,
+      showEmojiPicker: undefined as CommentId | undefined,
+      replying: undefined as CommentEvent | undefined,
+      showDateEvent: false,
     })
-    const comments_sorted = computed(() => {
-      return sortBy(Object.values(props.comments), c => c.timestamp)
+    const posterCommentHistory = computed((): CommentHistoryEntry[] => {
+      const comments = flattenTree(props.commentTree).map(c => {
+        return {
+          ...c,
+          event: "comment",
+          encrypted_for_all: false,
+        } as CommentEvent
+      })
+      console.log("posterCommentHistory comments", props.commentTree, comments)
+
+      if (!state.showDateEvent) {
+        return comments
+      } else {
+        const comments_with_date: CommentHistoryEntry[] = []
+        if (comments.length > 0) {
+          comments_with_date.push({
+            event: "new_date",
+            date_str: formatDate(comments[0].timestamp),
+          } as DateEvent)
+        }
+        let prev_toplevel = 0
+        for (let i = 0; i < comments.length; i++) {
+          const toplevel = comments[i].__depth == 1
+          if (
+            toplevel &&
+            !sameDate(comments[prev_toplevel].timestamp, comments[i].timestamp)
+          ) {
+            comments_with_date.push({
+              event: "new_date",
+              date_str: formatDate(comments[i].timestamp),
+              timestamp: comments[i].timestamp - 1,
+            } as DateEvent)
+          }
+          comments_with_date.push(comments[i])
+          if (toplevel) {
+            prev_toplevel = i
+          }
+        }
+
+        return comments_with_date
+      }
     })
+
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)
+      state.replying = undefined
       state.inputText = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#poster-chat-input"
@@ -234,16 +356,6 @@ export default defineComponent({
         el.focus()
       }
     }
-    watch(
-      () => props.inputFromParent,
-      () => {
-        if (props.inputFromParent) {
-          state.inputText = props.inputFromParent
-        } else {
-          state.inputText = ""
-        }
-      }
-    )
     watch(
       () => [props.poster, props.poster?.last_updated],
       () => {
@@ -296,11 +408,37 @@ export default defineComponent({
       }
     })
 
-    const posterImage = ref<Element>()
+    const speechText = (text: string) => {
+      window.speechSynthesis.cancel()
+
+      const utter = new SpeechSynthesisUtterance(text)
+      utter.lang = "ja-JP"
+      window.speechSynthesis.onvoiceschanged = () => {
+        const voices = window.speechSynthesis.getVoices()
+        // console.log(voices)
+        for (const voice of voices) {
+          if (voice.lang == "ja-JP") {
+            console.log(utter)
+            console.log(voice)
+            state.voice = voice
+            utter.voice = voice
+            break
+          }
+        }
+      }
+      const voices = window.speechSynthesis.getVoices()
+      state.voice = voices.filter(v => v.lang == "ja-JP")[0]
+      utter.voice = state.voice
+      console.log(voices.filter(v => v.lang == "ja-JP"))
+
+      window.speechSynthesis.speak(utter)
+    }
 
     const clearInput = () => {
       state.inputText = ""
     }
+
+    const posterImage = ref<Element>()
 
     const zoomIn = () => {
       const idx = inRange(
@@ -391,6 +529,64 @@ export default defineComponent({
       }
     }
 
+    const onKeyDownEnterPosterCommentInput = (ev: KeyboardEvent) => {
+      // console.log(ev);
+      if (ev.shiftKey) {
+        if (state.composing) {
+          state.composing = false
+        } else {
+          context.emit("submit-poster-comment", state.inputText, state.replying)
+          ev.preventDefault()
+          state.inputText = ""
+          return true
+        }
+        return false
+      }
+    }
+
+    const clickShowEmoji = (c: ChatCommentDecrypted) => {
+      state.showEmojiPicker = state.showEmojiPicker == c.id ? undefined : c.id
+    }
+
+    const selectEmoji = (c: ChatCommentDecrypted, emoji: any) => {
+      const me = props.myself
+      if (!me) {
+        console.error("Myself not set")
+        return
+      }
+      console.log(emoji)
+      const reaction: string = emoji.native
+      const reaction_id: string | undefined = c.reactions
+        ? c.reactions[reaction]
+          ? c.reactions[reaction][me.id]
+          : undefined
+        : undefined
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction, "poster")
+      state.showEmojiPicker = undefined
+    }
+
+    const clickReaction = (
+      c: ChatCommentDecrypted,
+      reaction_id: CommentId,
+      reaction: string
+    ) => {
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction, "poster")
+    }
+
+    const startReply = (c: CommentEvent) => {
+      console.log("startReply", c)
+      state.replying = c
+      context.emit("set-editing-old", undefined)
+      state.inputText = ""
+      const el = document.querySelector(
+        "#poster-chat-input"
+      ) as HTMLTextAreaElement
+      if (el) {
+        el.value = state.inputText
+        el.focus()
+      }
+    }
+
     return {
       ...toRefs(state),
       mouseDownPoster,
@@ -398,14 +594,21 @@ export default defineComponent({
       mouseMovePoster,
       mouseWheelPoster,
       startUpdateComment,
-      comments_sorted,
+      posterCommentHistory,
       clearInput,
+      speechText,
       numInputRows,
       zoomIn,
       zoomOut,
       zoomFit,
       posterImage,
       onDropMyPoster,
+      onKeyDownEnterPosterCommentInput,
+      clickShowEmoji,
+      selectEmoji,
+      clickReaction,
+      startReply,
+      inRange,
       ...CommonMixin,
     }
   },
@@ -413,6 +616,9 @@ export default defineComponent({
 </script>
 
 <style lang="css" scoped>
+@import url("https://fonts.googleapis.com/css2?family=Lato&display=swap");
+@import url("./chat.css");
+
 h3 {
   font-size: 14px;
 }
@@ -470,11 +676,34 @@ div#poster {
 }
 
 div#poster-comments-container {
-  top: 612px;
+  position: absolute;
+  top: 622px;
+  left: 8px;
+  width: 528px;
+  min-height: 100px;
+  overflow: scroll;
+  font-size: 12px;
+  background: white;
+  border: 1px solid #888;
+  border-radius: 4px;
 }
 
 div#poster-comments-container.poster_active {
+  top: 340px;
+}
+
+h3#poster-comment-title {
+  position: absolute;
   top: 320px;
+  left: 10px;
+}
+
+div#poster-comments {
+  margin: 0px 0px 0px 0px;
+}
+
+#submit-poster-comment {
+  margin-left: 0px;
 }
 
 .mobile div#poster-comments-container {
@@ -509,25 +738,6 @@ div#poster > img {
   margin: 0px;
 }
 
-div#poster-comments-container {
-  border: 1px solid #888;
-  position: absolute;
-  left: 8px;
-  width: 528px;
-  min-height: 100px;
-  overflow: scroll;
-  font-size: 12px;
-  background: white;
-}
-
-div#poster-comments {
-  margin: 0px 0px 0px 0px;
-}
-
-#submit-poster-comment {
-  margin-left: 0px;
-}
-
 h3 {
   margin: 0px;
 }
@@ -559,11 +769,8 @@ textarea#poster-chat-input {
   position: absolute;
   bottom: 20px;
   width: 528px;
-  border: 1px solid #ccc;
   z-index: 100 !important;
-  background: white;
   padding: 10px;
-  box-shadow: 1px 1px 2px #222;
 }
 
 .comment-content {

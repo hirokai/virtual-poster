@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { Poster, ChatCommentDecrypted } from "@/@types/types"
+import { Poster, PosterId, PosterCommentDecrypted } from "@/@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
@@ -135,8 +135,14 @@ async function routes(
         req["requester"],
         true
       )
+      const last_updated = Date.now()
       if (r.ok && r.poster_id) {
         emit.posterRemove(roomId, req["requester"], r.poster_id)
+        emit.room(roomId).peopleUpdate(
+          r.viewers!.map(pid => {
+            return { id: pid, last_updated, poster_viewing: null }
+          })
+        )
       }
       return r
     }
@@ -366,17 +372,17 @@ async function routes(
   fastify.post<any>(
     "/posters/:posterId/comments",
     async (req): Promise<{ ok: boolean }> => {
-      const user_id: string = req.body.user_id
+      const user_id: string = req["requester"]
       const comment: string = req.body.comment
       const posterId: string = req.params.posterId
+
       const timestamp = Date.now()
 
-      const permitted =
-        user_id &&
-        (req["requester_type"] == "admin" || user_id == req["requester"])
-      if (!permitted) {
-        throw { statusCode: 403 }
+      const v = await model.posters.isViewing(user_id, posterId)
+      if (!v.viewing) {
+        throw { statusCode: 400, message: "Not viewing a poster" }
       }
+
       userLog({
         userId: user_id,
         operation: "comment.new",
@@ -401,17 +407,73 @@ async function routes(
       }
 
       fastify.log.debug("Ajacent posters", posters)
-      const e: ChatCommentDecrypted = {
+      const c: PosterCommentDecrypted = {
         id: model.chat.genCommentId(),
         person: user_id,
         room: roomId,
         x: pos.x,
         y: pos.y,
         text_decrypted: comment,
-        texts: [{ to: posterId, encrypted: false }],
+        poster: posterId,
         timestamp: timestamp,
         last_updated: timestamp,
-        kind: "poster",
+      }
+      const r = await model.chat.addPosterComment(c)
+      if (r) {
+        emit.posterComment(c)
+        return { ok: true }
+      } else {
+        return { ok: false }
+      }
+    }
+  )
+
+  fastify.post<any>(
+    "/posters/:posterId/comments/:commentId/reply",
+    async (req): Promise<{ ok: boolean }> => {
+      const posterId: string = req.params.posterId
+      const reply_to_id: string = req.params.commentId
+      const text = req.body.text
+
+      const timestamp = Date.now()
+
+      const requester: string = req["requester"]
+
+      userLog({
+        userId: requester,
+        operation: "comment.new",
+        data: { text, reply_to: reply_to_id },
+      })
+      const poster = await model.posters.get(posterId)
+      if (!poster) {
+        throw { statusCode: 404, message: "Poster is not found" }
+      }
+      const roomId = poster.room
+      const map = model.maps[roomId]
+      if (!map) {
+        throw { statusCode: 404, message: "Room not found" }
+      }
+      const pos = await model.people.getPos(requester, roomId)
+      if (!pos) {
+        throw { statusCode: 400, message: "User position not found." }
+      }
+      const posters = await map.getAdjacentPosters(pos)
+      if (posters.indexOf(posterId) == -1) {
+        throw { statusCode: 400, message: "Poster is not in ajacency" }
+      }
+
+      fastify.log.debug("Ajacent posters", posters)
+      const e: PosterCommentDecrypted = {
+        id: model.chat.genCommentId(),
+        person: requester,
+        room: roomId,
+        x: pos.x,
+        y: pos.y,
+        text_decrypted: text,
+        poster: posterId,
+        timestamp: timestamp,
+        last_updated: timestamp,
+        reply_to: reply_to_id,
       }
       const r = await model.chat.addPosterComment(e)
       if (r) {
@@ -431,7 +493,13 @@ async function routes(
   })
 
   fastify.get<any>("/posters/:posterId/comments", async req => {
-    return await model.chat.getPosterComments(req.params.posterId)
+    const posterId: PosterId = req.params.posterId
+    const v = await model.posters.isViewing(req["requester"], posterId)
+    if (v.viewing == true) {
+      return await model.chat.getPosterComments(posterId)
+    } else {
+      throw { statusCode: 400, message: "Not viewing a poster" }
+    }
   })
 
   fastify.get<any>("/maps/:roomId/posters", async req => {

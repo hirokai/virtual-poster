@@ -3,7 +3,7 @@
     <h2>
       反応を選択 <span class="close-picker" @click="onBlur">&times;</span>
     </h2>
-    <div v-for="emoji in emojis" :key="emoji.native" @click="clickEmoji(emoji)">
+    <div v-for="(emoji, i) in emojis" :key="i" @click="clickEmoji(emoji)">
       {{ emoji.native }}
     </div>
   </div>

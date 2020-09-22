@@ -202,7 +202,7 @@ export default defineComponent({
     })
     const dblClick = (p: Point) => {
       console.log("dblClick", p)
-      context.emit("dblClick", p)
+      context.emit("dbl-click", p)
     }
     const poster = (cell: Cell): Poster | null => {
       return posterByCellId.value[cell.id]

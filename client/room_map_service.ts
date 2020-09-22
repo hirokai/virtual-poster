@@ -5,6 +5,8 @@ import {
   findRoute,
   lookingAt,
   decodeMoved,
+  keyBy,
+  isUserId,
 } from "../common/util"
 import {
   startChat,
@@ -12,6 +14,7 @@ import {
   inviteToChat,
   myChatGroup as _myChatGroup,
 } from "./room_chat_service"
+import { adjacentPoster } from "./room_poster_service"
 import { addLatencyLog } from "./room_log_service"
 import { SocketIO } from "socket.io-client"
 import * as firebase from "firebase/app"
@@ -89,6 +92,47 @@ export const posterAt = (
   return Object.values(posters).find(p => {
     return p.x == pos.x && p.y == pos.y
   })
+}
+
+export const enterPoster = (
+  axios: AxiosStatic | AxiosInstance,
+  props: RoomAppProps,
+  state: RoomAppState
+) => async () => {
+  console.log("enterPoster() invoked")
+  const pid = await new Promise<PosterId | null>(resolve => {
+    const bm = state.batchMove
+    if (!bm) {
+      const _adjacentPoster = adjacentPoster(props, state)
+      const pid = _adjacentPoster.value?.id
+      resolve(pid)
+    } else {
+      let count = 0
+      setInterval(() => {
+        count += 1
+        if (count >= 20) {
+          resolve(null)
+        }
+        const _adjacentPoster = adjacentPoster(props, state)
+        const pid = _adjacentPoster.value?.id
+        if (pid) {
+          resolve(pid)
+        }
+      }, 100)
+    }
+  })
+  if (!pid) {
+    console.warn("Not adjacent to poster")
+    return
+  }
+  const client = api(axiosClient(axios))
+  const r = await client.maps
+    ._roomId(props.room_id)
+    .posters._posterId(pid)
+    .enter.$post()
+  if (!r.ok) {
+    console.warn("Cannot start viewing a poster")
+  }
 }
 
 export let moveOneStep = (
@@ -184,19 +228,30 @@ export class BatchMove {
           clearInterval(this.timer)
           this.batchMovePoints = []
           if (chatAfterMove) {
-            this.state.selectedUsers = new Set([chatAfterMove])
-            startChat(this.props, this.state, this.axios)
-              .then(d => {
-                if (this.on_complete) {
-                  this.on_complete(d?.group)
-                }
-                if (d) {
-                  this.state.selectedUsers.clear()
-                }
-              })
-              .catch(() => {
-                //
-              })
+            if (isUserId(chatAfterMove)) {
+              this.state.selectedUsers = new Set([chatAfterMove])
+              startChat(this.props, this.state, this.axios)
+                .then(d => {
+                  if (this.on_complete) {
+                    this.on_complete(d?.group)
+                  }
+                  if (d) {
+                    this.state.selectedUsers.clear()
+                  }
+                })
+                .catch(() => {
+                  //
+                })
+            } else {
+              // Poster
+              enterPoster(this.axios, this.props, this.state)()
+                .then(() => {
+                  //
+                })
+                .catch(() => {
+                  //
+                })
+            }
             chatAfterMove = undefined
           } else {
             if (this.on_complete) {
@@ -343,7 +398,6 @@ moveOneStep = (
     /* */
   }
 ): boolean => {
-  console.log("moveOneStep()", to.x, to.y, direction)
   const { x, y } = to
   const p = state.people[user_id]
   if (!p) {
@@ -352,14 +406,15 @@ moveOneStep = (
   if (p.x == to.x && p.y == to.y && p.direction == direction) {
     return false
   }
+  console.log("moveOneStep()", to.x, to.y, direction)
   // Vue.set
-  state.people[user_id] = { ...p, x, y, direction }
   if (p.id == props.myUserId) {
     state.center = {
       x: inRange(x, 5, state.cols - 6),
       y: inRange(y, 5, state.rows - 6),
     }
   }
+  state.people[user_id] = { ...p, x, y, direction }
   if (
     p.id != props.myUserId &&
     state.batchMove &&
@@ -399,7 +454,7 @@ export const moveByArrow = (
   if (myChatGroup(props, state).value) {
     return { ok: false, moved, error: "during_chat" }
   }
-  if (state.posterLooking) {
+  if (me.poster_viewing) {
     return { ok: false, moved, error: "during_poster" }
   }
   const x = me.x
@@ -540,7 +595,7 @@ export const dblClickHandler = (
     }
     const poster = posterAt(state.posters, p)
     const person = poster ? undefined : personAt(state.people, p)
-    if (state.posterLooking && !(person && isAdjacent(me, person))) {
+    if (me.poster_viewing && !(person && isAdjacent(me, person))) {
       showMessage(
         props,
         state
@@ -627,12 +682,13 @@ export const dblClickHandler = (
       } else if (poster) {
         state.selectedUsers.clear()
         // Vue.set
-        state.posterLooking = true
+        await enterPoster(axios, props, state)()
       }
       return
     } else {
       const dps = getClosestAdjacentPoints({ x: me.x, y: me.y }, p)
       const chatAfterMove = person ? person.id : poster ? poster.id : undefined
+      console.log("Start batch move with chatAfterMove:", chatAfterMove)
       // Try to move to an adjacent open until it succeeds.
       for (const p1 of dps) {
         const r = moveTo(

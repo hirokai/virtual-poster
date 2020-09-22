@@ -13,7 +13,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
     $post: (option?: { body?: Methods0['post']['reqBody'], query?: Methods0['post']['query'], config?: T }) =>
       fetch<Methods0['post']['resBody'], BasicHeaders, Methods0['post']['status']>(prefix, PATH0, POST, option).json().then(r => r.body),
     $path: (option?: { method: 'post'; query: Methods0['post']['query'] }) =>
-      `${prefix}${PATH0}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+      `${prefix}${PATH0}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`
   }
 }
 

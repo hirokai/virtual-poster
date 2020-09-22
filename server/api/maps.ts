@@ -1,7 +1,7 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { RoomId, MapEnterResponse } from "@/@types/types"
+import { RoomId, MapEnterResponse, UserId } from "@/@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 
@@ -52,6 +52,50 @@ async function maps_api_routes(
     console.log("APPROACH", req["requester"])
     emit.room(req["requester"]).moveRequest({ to_poster: req.params.posterId })
     return { ok: true }
+  })
+
+  fastify.post<any>("/maps/:roomId/posters/:posterId/enter", async req => {
+    const roomId = req.params.roomId
+    const posterId = req.params.posterId
+    const map = model.maps[roomId]
+    if (!map) {
+      throw { statusCode: 404, message: "Room not found" }
+    }
+    const r = await model.posters.startViewing(
+      req["requester"],
+      roomId,
+      posterId
+    )
+    if (r.ok && r.joined_time) {
+      emit.peopleUpdate([
+        {
+          id: req["requester"] as UserId,
+          last_updated: r.joined_time,
+          poster_viewing: posterId,
+        },
+      ])
+    }
+    return r
+  })
+
+  fastify.post<any>("/maps/:roomId/posters/:posterId/leave", async req => {
+    const roomId = req.params.roomId
+    const posterId = req.params.posterId
+    const map = model.maps[roomId]
+    if (!map) {
+      throw { statusCode: 404, message: "Room not found" }
+    }
+    const r = await model.posters.endViewing(req["requester"], roomId, posterId)
+    if (r.ok && r.left_time) {
+      emit.peopleUpdate([
+        {
+          id: req["requester"] as UserId,
+          last_updated: r.left_time,
+          poster_viewing: null,
+        },
+      ])
+    }
+    return r
   })
 
   fastify.post<any>("/maps/:roomId/enter", async req => {

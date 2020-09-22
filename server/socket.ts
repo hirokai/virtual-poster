@@ -29,6 +29,7 @@ import {
   EmitCommand,
   ActiveUsersSocketData,
   SocketMessageFromUser,
+  PosterCommentDecrypted,
 } from "@/@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -144,7 +145,10 @@ export class Emit {
   announce(d: Announcement, socket: Emitter = this.emitter): void {
     socket.emit("Announce", d)
   }
-  posterComment(d: ChatCommentDecrypted, socket: Emitter = this.emitter): void {
+  posterComment(
+    d: PosterCommentDecrypted,
+    socket: Emitter = this.emitter
+  ): void {
     socket.emit("PosterComment", d)
   }
   async commentRemove(cid: CommentId, to_users: UserId[]): Promise<void> {

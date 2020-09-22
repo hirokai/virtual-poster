@@ -75,6 +75,7 @@
     "@types/cors": "^2.8.6",
     "@types/express": "^4.17.6",
     "@types/ioredis": "^4.16.0",
+    "@types/lodash": "^4.14.161",
     "@types/node": "^13.11.1",
     "@types/shortid": "0.0.29",
     "@types/socket.io": "^2.1.4",

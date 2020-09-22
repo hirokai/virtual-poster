@@ -11,6 +11,7 @@ import {
   ChatCommentDecrypted,
   CommentId,
   CommentEncryptedEntry,
+  PosterCommentDecrypted,
 } from "@/@types/types"
 import * as bunyan from "bunyan"
 import { db, pgp } from "../model"
@@ -298,13 +299,21 @@ export async function getAllComments(
 
 export async function getPosterComments(
   poster_id: PosterId
-): Promise<ChatCommentDecrypted[]> {
+): Promise<PosterCommentDecrypted[]> {
   const rows = await db.query(
     `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c join comment_to_poster as cp on c.id=cp.comment where cp.poster=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
     poster_id
   )
-  const ds: ChatCommentDecrypted[] = rows.map(r => {
-    const r2: ChatCommentDecrypted = {
+  const ds: PosterCommentDecrypted[] = rows.map(r => {
+    const to_s: string[] = r["to_poster"].split("::::")
+    if (to_s.length != 1) {
+      console.log(
+        "Comment is sent to multiple posters. This should be a bug. (DB schema should be fixed at some point.)"
+      )
+    }
+    // Assuming there is only one to_s.
+    const poster = to_s[0]
+    const r2: PosterCommentDecrypted = {
       id: r.id,
       timestamp: parseInt(r["timestamp"]),
       last_updated: parseInt(r["last_updated"]),
@@ -313,23 +322,51 @@ export async function getPosterComments(
       room: r.room,
       person: r.person,
       text_decrypted: r.text,
-      texts: r["to_poster"].split("::::").map(to => {
-        return { to, encrypted: false }
-      }),
-      kind: "poster",
+      poster,
       reply_to: r["reply_to"] || undefined,
     }
     return r2
   })
   return ds
 }
+
+export async function getPosterComment(
+  comment_id: CommentId
+): Promise<PosterCommentDecrypted | null> {
+  const rows = await db.query(
+    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c join comment_to_poster as cp on c.id=cp.comment where c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    comment_id
+  )
+  const d: PosterCommentDecrypted | undefined = rows.map(r => {
+    const to_s: string[] = r["to_poster"].split("::::")
+    if (to_s.length != 1) {
+      console.log(
+        "Comment is sent to multiple posters. This should be a bug. (DB schema should be fixed at some point.)"
+      )
+    }
+    // Assuming there is only one to_s.
+    const poster = to_s[0]
+    const r2: PosterCommentDecrypted = {
+      id: r.id,
+      timestamp: parseInt(r["timestamp"]),
+      last_updated: parseInt(r["last_updated"]),
+      x: r.x,
+      y: r.y,
+      room: r.room,
+      person: r.person,
+      poster,
+      text_decrypted: r.text,
+      reply_to: r["reply_to"] || undefined,
+    }
+    return r2
+  })[0]
+  return d || null
+}
+
 export async function addPosterComment(
-  c: ChatCommentDecrypted
+  c: PosterCommentDecrypted
 ): Promise<boolean> {
   log.debug(c)
-  if (c.kind != "poster") {
-    return false
-  }
   try {
     await db.query("BEGIN")
     const obj = {
@@ -341,17 +378,21 @@ export async function addPosterComment(
       y: c.y,
       timestamp: c.timestamp,
       last_updated: c.last_updated,
-      kind: c.kind,
+      kind: "poster",
+      reply_to: c.reply_to,
     }
     await db.query(pgp.helpers.insert(obj, null, "comment"))
     const s = pgp.helpers.insert(
-      c.texts.map(t => {
-        return { comment: c.id, poster: t.to }
-      }),
+      [{ comment: c.id, poster: c.poster }],
       ["comment", "poster"],
       "comment_to_poster"
     )
     await db.query(s)
+
+    await db.query(
+      `UPDATE poster_viewer SET last_active=$1 WHERE person=$2 AND poster=$3 AND left_time IS NULL;`,
+      [c.last_updated, c.person, c.poster]
+    )
 
     const p = await model.people.get(c.person)
     if (p) {
@@ -524,7 +565,7 @@ export async function updatePosterComment(
   poster_id: PosterId,
   comment_id: string,
   text: string
-): Promise<{ ok: boolean; comment?: ChatComment; error?: string }> {
+): Promise<{ ok: boolean; comment?: PosterCommentDecrypted; error?: string }> {
   let last_updated: number
   const comment = await getComment(comment_id)
   // log.debug("updateComment", text, user_id)
@@ -538,21 +579,12 @@ export async function updatePosterComment(
         `UPDATE comment SET "text"=$1,last_updated=$2 WHERE id=$3;`,
         [text, last_updated, comment_id]
       )
-      const uc = await getComment(comment_id)
-      const res: ChatComment | undefined = uc
-        ? {
-            x: uc.x,
-            y: uc.y,
-            id: uc.id,
-            timestamp: uc.timestamp,
-            last_updated: uc.last_updated,
-            kind: "poster" as "poster" | "person",
-            room: uc.room,
-            person: uc.person,
-            texts: [{ to: poster_id, text, encrypted: false }],
-          }
-        : undefined
-      return { ok: !!uc, comment: res }
+      await db.query(
+        `UPDATE poster_viewer SET last_active=$1 WHERE person=$2 AND poster=$3 AND left_time IS NULL;`,
+        [last_updated, user_id, poster_id]
+      )
+      const uc = (await getPosterComment(comment_id)) || undefined
+      return { ok: !!uc, comment: uc }
     } catch (err) {
       log.error(err)
       return { ok: false, error: "DB update error" }
@@ -570,7 +602,6 @@ export async function removeComment(
   comment_id: string
 ): Promise<{
   ok: boolean
-  kind?: "person" | "poster"
   removed_to_users?: UserId[]
   error?: string
 }> {
@@ -581,8 +612,38 @@ export async function removeComment(
   if (doc.person != user_id) {
     return { ok: false, error: "User does not own comment." }
   }
+  if (doc.kind == "poster") {
+    return {
+      ok: false,
+      error: "Poster comment cannot be deleted by this method.",
+    }
+  }
   const ok = await deleteComment(comment_id)
-  return { ok, kind: doc.kind, removed_to_users: doc.texts.map(t => t.to) }
+  return { ok, removed_to_users: doc.texts.map(t => t.to) }
+}
+
+export async function removePosterComment(
+  user_id: UserId,
+  poster_id: PosterId,
+  comment_id: CommentId
+): Promise<{
+  ok: boolean
+  error?: string
+}> {
+  const doc = await getPosterComment(comment_id)
+  if (!doc) {
+    return { ok: false, error: "Comment does not exist." }
+  }
+  if (doc.person != user_id) {
+    return { ok: false, error: "User does not own comment." }
+  }
+  const v = await model.posters.isViewing(user_id, doc.poster)
+  if (!v.viewing) {
+    throw { statusCode: 400, message: "Not viewing a poster" }
+  }
+  const ok = await deleteComment(comment_id)
+
+  return { ok }
 }
 
 export function genCommentId(): CommentId {

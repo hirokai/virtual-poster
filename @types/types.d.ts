@@ -30,6 +30,7 @@ export type PersonInMap = Person & {
   y: number
   direction: Direction
   moving: boolean
+  poster_viewing?: PosterId
 }
 
 export type PersonUpdate = {
@@ -43,6 +44,7 @@ export type PersonUpdate = {
   name?: string
   avatar?: string
   connected?: boolean
+  poster_viewing?: PosterId | null
   stats?: PersonStat
   public_key?: string
 }
@@ -105,7 +107,7 @@ type RoomAppState = {
   avatarImages: { [index: string]: string }
   enableMiniMap: boolean
   posters: { [index: string]: Poster }
-  posterComments: { [comment_id: string]: ChatCommentDecrypted }
+  posterComments: { [comment_id: string]: PosterCommentDecrypted }
   posterInputComment: string | undefined
   hallMap: Cell[][]
   cols: number
@@ -119,8 +121,6 @@ type RoomAppState = {
     [groupId: string]: ChatGroup
   }
   posterChatGroup: UserId[]
-
-  posterLooking: boolean
 
   botActive: boolean
 
@@ -179,7 +179,6 @@ export type Cell = {
   y: number
   kind: CellType
   name?: string
-  open: boolean
   poster_number?: number
   custom_image?: string
 }
@@ -196,6 +195,34 @@ type MapCellRDB = {
   kind: CellType
   poster_number: number | null
   custom_image: string | null
+}
+
+export interface CommentHistoryEntry {
+  event: string
+  timestamp: number
+}
+
+export interface CommentEvent extends CommentHistoryEntry {
+  event: "comment"
+  encrypted_for_all: boolean
+  id: string
+  last_updated: number
+  x: number
+  y: number
+  text_decrypted: string
+  texts: {
+    to: UserId
+  }[]
+  person: UserId
+  __depth: number
+  reactions?: {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
+}
+
+export interface DateEvent extends CommentHistoryEntry {
+  event: "new_date"
+  date_str: string
 }
 
 export type ChatComment = {
@@ -231,6 +258,22 @@ export type ChatCommentDecrypted = {
   }[]
   person: UserId
   kind: "poster" | "person"
+  reply_to?: CommentId
+  reactions?: {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
+}
+
+export type PosterCommentDecrypted = {
+  id: string
+  timestamp: number
+  last_updated: number
+  room: RoomId
+  x: number
+  y: number
+  poster: PosterId
+  person: UserId
+  text_decrypted: string
   reply_to?: CommentId
   reactions?: {
     [reaction: string]: { [user_id: string]: CommentId }

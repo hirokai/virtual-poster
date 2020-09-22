@@ -1,0 +1,169 @@
+.chat-container {
+  font-family: "Lato", sans-serif;
+}
+
+.chat-history {
+  overflow: scroll;
+  border: 1px solid black;
+}
+
+.chat-history > p {
+  margin: 0px;
+}
+
+.chat-input-container {
+  box-shadow: 1px 1px 2px #222;
+  background: white;
+  border: 1px solid #ccc;
+}
+
+.chat-input-container.replying {
+  border: 2px solid #00f;
+}
+
+.chat-input-container.editing {
+  border: 2px solid rgb(162, 87, 7);
+}
+
+button.chat-tool-button {
+  width: 40px;
+  height: 26px;
+}
+
+img.icon {
+  /* display: inline; */
+  margin: 0px;
+  height: 20px;
+  vertical-align: -5px;
+}
+
+button:disabled img.icon {
+  opacity: 0.4;
+}
+
+.running img#voice-input {
+  filter: invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg)
+    brightness(95%) contrast(112%);
+}
+
+button#dictation.running {
+  font-weight: bold;
+  animation-name: glowing_bg;
+  animation-duration: 2s;
+  animation-direction: normal;
+  animation-iteration-count: infinite;
+}
+
+button#submit {
+  margin-left: 10px;
+  vertical-align: 7px;
+}
+
+button#dictation {
+  width: 80px;
+  margin-left: 10px;
+  vertical-align: 7px;
+}
+
+button#abort-reply {
+  width: 90px;
+  float: right;
+  margin-right: 10px;
+  vertical-align: 7px;
+}
+
+button#show_emoji_picker {
+  font-size: 20px;
+  width: 40px;
+  height: 26px;
+  margin-left: 10px;
+  vertical-align: -1px;
+}
+
+.comment-entry {
+  padding: 0px 10px;
+}
+.comment-entry:hover {
+  background: #eee;
+}
+
+.comment-entry-tool {
+  float: right;
+  display: block;
+  font-size: 12px;
+  cursor: pointer;
+  visibility: hidden;
+  margin: 0px 4px;
+}
+
+.comment-entry:hover .comment-entry-tool {
+  visibility: visible;
+}
+
+.comment-delete {
+  color: red;
+}
+
+.my-reaction {
+  background: rgba(29, 155, 209, 0.1);
+  box-shadow: rgb(29, 155, 209) 0px 0px 0px 0.8px inset;
+}
+
+.reaction-entry .count {
+  font-size: 10px;
+}
+
+div.comment-entry {
+  border: 2px solid rgba(0, 0, 0, 0);
+  border-radius: 3px;
+}
+
+div.comment-entry.replying {
+  border: 2px solid #00f;
+  border-radius: 3px;
+}
+
+div.comment-entry.editing {
+  border: 2px solid rgb(162, 87, 7);
+  border-radius: 3px;
+}
+
+div.comment-entry.hidden {
+  opacity: 0;
+  transition: opacity 0.5s linear;
+}
+
+.reactions {
+  height: 20px;
+}
+
+.reaction-entry {
+  cursor: pointer;
+  font-size: 14px;
+  background-color: rgba(29, 28, 29, 0.04);
+  border-radius: 6px;
+  margin: 0px 3px;
+  padding: 1px 3px;
+}
+
+.date_event {
+  text-align: center;
+  font-size: 12px;
+}
+
+.date_event span {
+  display: block;
+  margin: -10px auto 0px auto;
+  background: white;
+  width: 150px;
+  border: 1px solid black;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.date_event hr {
+  margin: 10px 0px 0px 0px;
+  background-color: #ccc;
+  height: 1px;
+  border: 0;
+}

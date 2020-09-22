@@ -87,6 +87,10 @@ export const getPos = (
   }
 }
 
+export function isOpenCell(c: Cell) {
+  return c.kind == "grass" || c.kind == "poster_seat" || c.kind == "mud"
+}
+
 export function encodeMoved(d: PersonPos, room = false): string {
   const dir = d.direction[0]
   return (room

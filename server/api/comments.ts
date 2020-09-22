@@ -4,8 +4,8 @@ import {
   PosterId,
   CommentEncryptedEntry,
   ChatComment,
-  ChatCommentDecrypted,
   CommentId,
+  PosterCommentDecrypted,
 } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
@@ -74,6 +74,26 @@ async function routes(
     return { ok: true }
   })
 
+  fastify.delete<any>("/posters/:posterId/comments/:commentId", async req => {
+    const posterId: PosterId = req.params.posterId
+    const commentId: CommentId = req.params.commentId
+
+    userLog({
+      userId: req["requester"],
+      operation: "comment.delete",
+      data: { commentId, kind: "poster" },
+    })
+    const { ok, error } = await model.chat.removePosterComment(
+      req["requester"],
+      posterId,
+      commentId
+    )
+    if (ok) {
+      emit.posterCommentRemove(commentId)
+    }
+    return { ok, error }
+  })
+
   fastify.patch<{
     Params: { posterId: string; commentId: string }
     Body: { comment: string }
@@ -82,6 +102,10 @@ async function routes(
     const comment_id: string = req.params.commentId
     const comment: string = req.body.comment
 
+    const v = await model.posters.isViewing(req["requester"], poster_id)
+    if (!v.viewing) {
+      throw { statusCode: 400, message: "Not viewing a poster" }
+    }
     userLog({
       userId: req["requester"],
       operation: "comment.update",
@@ -99,7 +123,7 @@ async function routes(
       comment
     )
     if (comment_actual) {
-      const comment_not_encrypted: ChatCommentDecrypted = {
+      const comment_not_encrypted: PosterCommentDecrypted = {
         id: comment_actual.id,
         timestamp: comment_actual.timestamp,
         last_updated: comment_actual.last_updated,
@@ -107,13 +131,7 @@ async function routes(
         y: comment_actual.y,
         room: comment_actual.room,
         person: comment_actual.person,
-        kind: comment_actual.kind,
-        texts: [
-          {
-            encrypted: false,
-            to: poster_id,
-          },
-        ],
+        poster: poster_id,
         text_decrypted: comment,
       }
       emit.posterComment(comment_not_encrypted)
@@ -135,7 +153,13 @@ async function routes(
     if (!reply_to_comment) {
       throw { statusCode: 400, message: "Comment not found" }
     }
-    const pos = { x: reply_to_comment.x, y: reply_to_comment.y }
+    const pos = await model.people.getPos(requester, reply_to_comment.room)
+    if (!pos) {
+      throw { statusCode: 400, message: "User position not found" }
+    }
+    if (reply_to_comment.kind != "person") {
+      return { ok: false, error: "Not a comment in a group chat." }
+    }
     const map = model.maps[reply_to_comment.room]
     if (!map) {
       throw { statusCode: 400, message: "Room not found" }
@@ -143,6 +167,7 @@ async function routes(
     const to_users_original = reply_to_comment.texts.map(t => t.to)
     const to_users_this = comments_encrypted.map(c => c.to)
     if (!_.isEqual(to_users_original.sort(), to_users_this.sort())) {
+      req.log.debug({ to_users_original, to_users_this })
       throw { statusCode: 400, message: "Chat recipients are invalid" }
     }
     const e: ChatComment = {
@@ -185,25 +210,20 @@ async function routes(
 
   fastify.delete<any>("/comments/:commentId", async req => {
     const commentId = req.params.commentId
+
     userLog({
       userId: req["requester"],
       operation: "comment.delete",
       data: { commentId },
     })
-    const {
-      ok,
-      kind,
-      removed_to_users,
-      error,
-    } = await model.chat.removeComment(req["requester"], commentId)
-    fastify.log.info(
-      "removeComment result" + JSON.stringify({ ok, kind, error })
+    const { ok, removed_to_users, error } = await model.chat.removeComment(
+      req["requester"],
+      commentId
     )
+    fastify.log.info("removeComment result" + JSON.stringify({ ok, error }))
     if (ok) {
-      if (kind == "person" && removed_to_users) {
+      if (removed_to_users) {
         await emit.commentRemove(commentId, removed_to_users)
-      } else {
-        emit.posterCommentRemove(commentId)
       }
     }
     return { ok, error }

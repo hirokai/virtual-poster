@@ -13,7 +13,7 @@
     >
       <span v-if="!!myself">
         {{ myself ? myself.name : "" }}さん
-        <span id="login-info">({{ myUserId }})</span>
+        <span id="login-info">({{ myUserId }}) {{ posterLooking }}</span>
       </span>
 
       <img
@@ -105,7 +105,7 @@
       :people_typing="people_typing"
       :avatarImages="avatarImages"
       @select="updateSelectedPos"
-      @dblClick="dblClick"
+      @dbl-click="dblClick"
       @upload-poster="uploadPoster"
       @inputArrowKey="inputArrowKey"
     />
@@ -157,16 +157,17 @@
       :myself="myself"
       :poster="posterLooking ? adjacentPoster : undefined"
       :comments="posterComments"
+      :commentTree="posterCommentTree"
       :people="people"
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
-      :inputFromParent="posterInputComment"
       @submit-poster-comment="submitPosterComment"
       @update-poster-comment="updatePosterComment"
-      @delete-comment="deleteComment"
+      @delete-comment="deletePosterComment"
       @set-editing-old="setEditingOld"
       @on-focus-input="onFocusInput"
       @upload-poster="uploadPoster"
+      @add-emoji-reaction="addEmojiReaction"
       v-show="posterLooking"
     />
     <button
@@ -230,6 +231,8 @@ import {
   SocketMessageFromUser,
   HttpMethod,
   CommentId,
+  CommentEvent,
+  PosterCommentDecrypted,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -253,6 +256,7 @@ import {
   sendComment,
   updateComment,
   deleteComment,
+  deletePosterComment,
   initChatService,
   chatGroupOfUser,
   myChatGroup as _myChatGroup,
@@ -265,6 +269,7 @@ import {
   cellsMag,
   initMapService,
   dblClickHandler,
+  enterPoster,
 } from "./room_map_service"
 
 import {
@@ -279,6 +284,7 @@ import {
 import { addLatencyLog } from "./room_log_service"
 
 import { deleteUserInfoOnLogout } from "./util"
+import { PosterId } from "@/api/@types"
 
 class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]> = {}
@@ -446,7 +452,7 @@ export default defineComponent({
 
       people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
-      posterComments: {} as { [comment_id: string]: ChatCommentDecrypted },
+      posterComments: {} as { [comment_id: string]: PosterCommentDecrypted },
       posterInputComment: "" as string | undefined,
       hallMap: [] as Cell[][],
       cols: 0,
@@ -460,7 +466,6 @@ export default defineComponent({
         [groupId: string]: ChatGroup
       },
       posterChatGroup: [] as UserId[],
-      posterLooking: false,
 
       botActive: false,
 
@@ -555,6 +560,10 @@ export default defineComponent({
 
     const adjacentPoster = _adjacentPoster(props, state)
 
+    const posterLooking: ComputedRef<PosterId | undefined> = computed(() => {
+      return state.people[props.myUserId]?.poster_viewing
+    })
+
     const showMessage = showMessage_(props, state)
 
     const posterComponent = ref<typeof Poster>()
@@ -564,19 +573,16 @@ export default defineComponent({
       context.emit("clear-chat-input")
     }
 
-    const enterPoster = async () => {
-      const pid = adjacentPoster.value?.id
-      if (!pid) {
-        return
+    const leavePoster = async () => {
+      const r = await client.maps
+        ._roomId(props.room_id)
+        .posters._posterId(adjacentPoster.value!.id)
+        .leave.$post()
+      if (r.ok) {
+        state.posterComments = {}
+      } else {
+        console.error("Leave poster failed")
       }
-      state.posterLooking = true
-      const data = await client.posters._posterId(pid).comments.$get()
-      state.posterComments = keyBy(data, "id")
-    }
-
-    const leavePoster = () => {
-      state.posterLooking = false
-      state.posterComments = {}
     }
 
     const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
@@ -749,35 +755,18 @@ export default defineComponent({
       }
     }
 
-    const submitPosterComment = async (t: string) => {
-      await doSubmitPosterComment(props.axios, props, state, t)
+    const submitPosterComment = async (
+      text: string,
+      reply_to: CommentEvent
+    ) => {
+      await doSubmitPosterComment(props.axios, props, state, text, reply_to)
     }
 
     onMounted(() => {
       console.log("onMounted")
       window.addEventListener("keydown", ev => {
-        // console.log(ev);
-        if (document.activeElement?.tagName.toLowerCase() === "textarea") {
-          if (ev.key == "Enter" && ev.shiftKey) {
-            if (state.composing) {
-              state.composing = false
-            } else {
-              const t: HTMLTextAreaElement = ev.target as HTMLTextAreaElement
-              if (t?.id == "poster-chat-input") {
-                doSubmitPosterComment(props.axios, props, state, t.value)
-                  .then(() => {
-                    //
-                  })
-                  .catch(() => {
-                    //
-                  })
-              }
-            }
-            ev.preventDefault()
+        console.log(ev)
 
-            return true
-          }
-        }
         const r = handleGlobalKeyDown(ev)
         if (r) {
           ev.preventDefault()
@@ -873,21 +862,6 @@ export default defineComponent({
     })
 
     watch(
-      () => myself,
-      async () => {
-        const me = myself.value!
-        state.center = {
-          x: inRange(me.x, 5, state.cols - 6),
-          y: inRange(me.y, 5, state.rows - 6),
-        }
-        console.log("center updated", state.center)
-        await nextTick(() => {
-          // state.hidden = false
-        })
-      }
-    )
-
-    watch(
       () => state.enableEncryption,
       () => {
         localStorage[
@@ -945,29 +919,61 @@ export default defineComponent({
     const addEmojiReaction = async (
       cid: CommentId,
       reaction_id: CommentId,
-      emoji: string
+      emoji: string,
+      kind: "chat" | "poster"
     ) => {
-      console.log("addEmojiReaction", cid, reaction_id, emoji)
-      const c = state.comments[cid]
-      if (!c) {
+      if (kind != "chat" && kind != "poster") {
+        console.log("chat or poster must be specified")
         return
       }
-      if (
-        c.reactions &&
-        c.reactions[emoji] &&
-        c.reactions[emoji][props.myUserId] != undefined
-      ) {
-        await client.comments._commentId(reaction_id).$delete()
+      console.log("addEmojiReaction", cid, reaction_id, emoji)
+      if (kind == "chat") {
+        const c = state.comments[cid]
+        if (!c) {
+          console.log("Comment not found")
+          return
+        }
+        if (
+          c.reactions &&
+          c.reactions[emoji] &&
+          c.reactions[emoji][props.myUserId] != undefined
+        ) {
+          await client.comments._commentId(reaction_id).$delete()
+        } else {
+          const r = await client.comments._commentId(cid).reply.$post({
+            body: c.texts.map(t => {
+              return {
+                encrypted: false,
+                text: "\\reaction " + emoji,
+                to: t.to,
+              }
+            }),
+          })
+          console.log("addEmojiReaction API result", r)
+        }
       } else {
-        await client.comments._commentId(cid).reply.$post({
-          body: c.texts.map(t => {
-            return {
-              encrypted: false,
-              text: "\\reaction " + emoji,
-              to: t.to,
-            }
-          }),
-        })
+        const c: PosterCommentDecrypted = state.posterComments[cid]
+        if (!c) {
+          console.log("Comment not found")
+          return
+        }
+        console.log("Reaction to poster comment", c)
+        if (
+          c.reactions &&
+          c.reactions[emoji] &&
+          c.reactions[emoji][props.myUserId] != undefined
+        ) {
+          await client.posters
+            ._posterId(c.poster)
+            .comments._commentId(reaction_id)
+            .$delete()
+        } else {
+          const r = await client.posters
+            ._posterId(c.poster)
+            .comments._commentId(c.id)
+            .reply.$post({ body: { text: "\\reaction " + emoji } })
+          console.log("addEmojiReaction API result", r)
+        }
       }
     }
 
@@ -1089,7 +1095,11 @@ export default defineComponent({
         return undefined
       } else {
         for (const uid of state.selectedUsers) {
-          if (state.people[uid].x == pos.x && state.people[uid].y == pos.y) {
+          if (
+            state.people[uid] &&
+            state.people[uid].x == pos.x &&
+            state.people[uid].y == pos.y
+          ) {
             return state.people[uid]
           }
         }
@@ -1099,7 +1109,8 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
-      commentTree: _commentTree(state),
+      commentTree: _commentTree(state, "chat"),
+      posterCommentTree: _commentTree(state, "poster"),
       signOut,
       setEncryption,
       addEmojiReaction,
@@ -1107,6 +1118,7 @@ export default defineComponent({
       leaveChat,
       uploadPoster,
       deleteComment: deleteComment(props.axios),
+      deletePosterComment: deletePosterComment(props.axios),
       onInputTextChange,
       cellsMag: cellsMag(state),
       hideMessage,
@@ -1122,12 +1134,13 @@ export default defineComponent({
       inputArrowKey,
       myChatGroup,
       adjacentPoster,
+      posterLooking,
       myself,
       updatePosterComment,
       chatGroupOfUser: chatGroupOfUser(state),
       selectedPerson,
       posterComponent,
-      enterPoster,
+      enterPoster: enterPoster(props.axios, props, state),
       leavePoster,
     }
   },

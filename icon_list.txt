@@ -2,3 +2,7 @@ zoom-in.png	https://www.flaticon.com/free-icon/zoom-in_545651?term=zoom&page=1&p
 zoom_out.png	https://www.flaticon.com/free-icon/zoom-out_545652?term=zoom%20out&page=1&position=4
 zoom-fit.png	https://www.flaticon.com/free-icon/maximize_1141984?term=zoom&page=2&position=12
 maximize.png	https://www.flaticon.com/free-icon/maximize_1141984?term=zoom&page=2&position=12
+enter-arrow.png https://www.flaticon.com/free-icon/enter-arrow_60539
+right-arrow.png https://www.flaticon.com/free-icon/right-arrow_724954?term=send&page=1&position=4
+microphone.png    https://www.flaticon.com/free-icon/microphone_709682?term=microphone&page=1&position=1
+departures.png    https://www.flaticon.com/free-icon/departures_1212247?term=departure&page=1&position=30

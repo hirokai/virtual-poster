@@ -1,6 +1,7 @@
 <template>
   <div
     id="chat-local"
+    class="chat-container"
     :style="{
       width: isMobile
         ? '510px'
@@ -17,7 +18,8 @@
     }"
   >
     <div
-      id="chat-input-container"
+      id="chat-local-input-container"
+      class="chat-input-container"
       :class="{ replying: !!replying, editing: !!editingOld }"
     >
       <textarea
@@ -217,10 +219,7 @@
               >編集</span
             >
           </div>
-          <div
-            class="local-entry-content"
-            @dblclick="speechText(c.text_decrypted || '')"
-          >
+          <div class="local-entry-content">
             <span
               class="comment-content"
               v-html="(c.text_decrypted || '').replace(/[\r\n]/g, '<br>')"
@@ -256,10 +255,15 @@ import {
   UserId,
   CommentId,
   Tree,
+  CommentHistoryEntry,
+  CommentEvent,
+  DateEvent,
 } from "../../@types/types"
 import { CommonMixin } from "./util"
 import { countLines } from "../util"
 import { flattenTree, inRange } from "../../common/util"
+
+import { sameDate, formatDate } from "../room_chat_service"
 
 import {
   defineComponent,
@@ -277,34 +281,6 @@ import MyPicker from "./MyPicker.vue"
 // import "../../emoji-mart-vue-fast/css/emoji-mart.css"
 
 // const emojiIndex = new EmojiIndex(data)
-
-interface CommentHistoryEntry {
-  event: string
-  timestamp: number
-}
-
-interface CommentEvent extends CommentHistoryEntry {
-  event: "comment"
-  encrypted_for_all: boolean
-  id: string
-  last_updated: number
-  x: number
-  y: number
-  text_decrypted: string
-  texts: {
-    to: UserId
-  }[]
-  person: UserId
-  __depth: number
-  reactions?: {
-    [reaction: string]: { [user_id: string]: CommentId }
-  }
-}
-
-interface DateEvent extends CommentHistoryEntry {
-  event: "new_date"
-  date_str: string
-}
 
 export default defineComponent({
   components: {
@@ -414,31 +390,6 @@ export default defineComponent({
       }
     )
 
-    const sameDate = (a: number, b: number): boolean => {
-      const ta = new Date(a)
-      const tb = new Date(b)
-      return (
-        ta.getFullYear() == tb.getFullYear() &&
-        ta.getMonth() == tb.getMonth() &&
-        ta.getDate() == tb.getDate()
-      )
-    }
-
-    const formatDate = (t: number): string => {
-      const t1 = new Date(t)
-      const show_year = t1.getFullYear() != new Date().getFullYear()
-      return (
-        "" +
-        (show_year ? t1.getFullYear() + "年" : "") +
-        (t1.getMonth() + 1) +
-        "月" +
-        t1.getDate() +
-        "日 (" +
-        ["日", "月", "火", "水", "木", "金", "土"][t1.getDay()] +
-        ")"
-      )
-    }
-
     const localCommentHistory = computed((): CommentHistoryEntry[] => {
       const comments = flattenTree(props.commentTree)
         .filter(c => {
@@ -518,6 +469,7 @@ export default defineComponent({
       const recognition = new SpeechRecognition()
       state.recognition = recognition
       recognition.interimResults = true
+      recognition.lang = "ja-JP"
 
       recognition.onresult = event => {
         const text = event.results[0][0].transcript
@@ -607,7 +559,7 @@ export default defineComponent({
           ? c.reactions[reaction][me.id]
           : undefined
         : undefined
-      context.emit("add-emoji-reaction", c.id, reaction_id, reaction)
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction, "chat")
       state.showEmojiPicker = undefined
     }
 
@@ -616,7 +568,7 @@ export default defineComponent({
       reaction_id: CommentId,
       reaction: string
     ) => {
-      context.emit("add-emoji-reaction", c.id, reaction_id, reaction)
+      context.emit("add-emoji-reaction", c.id, reaction_id, reaction, "chat")
     }
 
     const startReply = (c: CommentEvent) => {
@@ -685,29 +637,9 @@ export default defineComponent({
 })
 </script>
 
-<style lang="css">
+<style lang="css" scoped>
 @import url("https://fonts.googleapis.com/css2?family=Lato&display=swap");
-
-button.chat-tool-button {
-  width: 40px;
-  height: 26px;
-}
-
-img.icon {
-  /* display: inline; */
-  margin: 0px;
-  height: 20px;
-  vertical-align: -5px;
-}
-
-button:disabled img.icon {
-  opacity: 0.4;
-}
-
-.running img#voice-input {
-  filter: invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg)
-    brightness(95%) contrast(112%);
-}
+@import url("./chat.css");
 
 #participants {
   display: inline-block;
@@ -720,73 +652,24 @@ button:disabled img.icon {
   top: 10px;
   min-width: 250px;
   height: calc(100% - 20px);
-  font-family: "Lato", sans-serif;
 }
 
-#chat-input-container {
+#chat-local-input-container {
   box-sizing: border-box;
   position: absolute;
   bottom: 10px;
-  background: white;
   width: 100%;
-  border: 1px solid #ccc;
   z-index: 100 !important;
-  box-shadow: 1px 1px 2px #222;
-  border: 2px solid rgba(0, 0, 0, 0);
-}
-
-#chat-input-container.replying {
-  border: 2px solid #00f;
-}
-
-#chat-input-container.editing {
-  border: 2px solid rgb(162, 87, 7);
 }
 
 #chat-local-history {
   position: absolute;
   top: 22px;
   margin-bottom: 100px;
-  /* min-height: 580px; */
   height: calc(100% - 152px);
   width: 100%;
-  /* width: 790px; */
-  /* z-index: -100; */
   border: 1px solid #888;
   border-radius: 4px;
-}
-
-.comment-entry {
-  padding: 0px 10px;
-}
-.comment-entry:hover {
-  background: #eee;
-}
-
-.comment-entry-tool {
-  float: right;
-  display: block;
-  font-size: 12px;
-  cursor: pointer;
-  visibility: hidden;
-  margin: 0px 4px;
-}
-
-.comment-entry:hover .comment-entry-tool {
-  visibility: visible;
-}
-
-.comment-delete {
-  color: red;
-}
-
-.chat-history {
-  overflow: scroll;
-  border: 1px solid black;
-}
-
-.chat-history > p {
-  margin: 0px;
 }
 
 textarea#local-chat-input {
@@ -809,9 +692,10 @@ textarea#local-chat-input {
   margin-right: 10px;
 }
 
-button#dictation.running {
+.person-in-local.typing {
+  color: blue;
   font-weight: bold;
-  animation-name: glowing_bg;
+  animation-name: glowing_text;
   animation-duration: 2s;
   animation-direction: normal;
   animation-iteration-count: infinite;
@@ -827,41 +711,6 @@ button#dictation.running {
   100% {
     color: red;
   }
-}
-
-button#submit {
-  margin-left: 10px;
-  vertical-align: 7px;
-}
-
-button#dictation {
-  width: 80px;
-  margin-left: 10px;
-  vertical-align: 7px;
-}
-
-button#abort-reply {
-  width: 90px;
-  float: right;
-  margin-right: 10px;
-  vertical-align: 7px;
-}
-
-button#show_emoji_picker {
-  font-size: 20px;
-  width: 40px;
-  height: 26px;
-  margin-left: 10px;
-  vertical-align: -1px;
-}
-
-.person-in-local.typing {
-  color: blue;
-  font-weight: bold;
-  animation-name: glowing_text;
-  animation-duration: 2s;
-  animation-direction: normal;
-  animation-iteration-count: infinite;
 }
 
 @keyframes glowing_text {
@@ -881,9 +730,11 @@ button#leave-chat {
   margin-right: 10px;
   vertical-align: 7px;
 }
+
 #show-encrypt {
   margin: 0px;
 }
+
 #show-encrypt img {
   margin: 0px 0px -2px 10px;
   cursor: pointer;
@@ -902,71 +753,8 @@ button#leave-chat {
 .comment-recipients {
   margin-left: 5px;
 }
+
 .recipient {
   margin: 0px 3px;
-}
-
-.comment-entry.hidden {
-  opacity: 0;
-  transition: opacity 0.5s linear;
-}
-
-.date_event {
-  text-align: center;
-  font-size: 12px;
-}
-
-.date_event span {
-  display: block;
-  margin: -10px auto 0px auto;
-  background: white;
-  width: 150px;
-  border: 1px solid black;
-  border-radius: 5px;
-  text-align: center;
-}
-
-.date_event hr {
-  margin: 10px 0px 0px 0px;
-  background-color: #ccc;
-  height: 1px;
-  border: 0;
-}
-
-.reactions {
-  height: 20px;
-}
-
-.reaction-entry {
-  cursor: pointer;
-  font-size: 14px;
-  background-color: rgba(29, 28, 29, 0.04);
-  border-radius: 6px;
-  margin: 0px 3px;
-  padding: 1px 3px;
-}
-
-.my-reaction {
-  background: rgba(29, 155, 209, 0.1);
-  box-shadow: rgb(29, 155, 209) 0px 0px 0px 0.8px inset;
-}
-
-.reaction-entry .count {
-  font-size: 10px;
-}
-
-div.comment-entry {
-  border: 2px solid rgba(0, 0, 0, 0);
-  border-radius: 3px;
-}
-
-div.comment-entry.replying {
-  border: 2px solid #00f;
-  border-radius: 3px;
-}
-
-div.comment-entry.editing {
-  border: 2px solid rgb(162, 87, 7);
-  border-radius: 3px;
 }
 </style>

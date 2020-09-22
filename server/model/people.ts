@@ -15,6 +15,7 @@ import {
   UserId,
   PersonStat,
   RoomId,
+  PosterId,
   PosDir,
 } from "@/@types/types"
 import { redis, log, db, pgp, maps } from "./index"
@@ -75,6 +76,95 @@ function _normalizeStats(obj: Record<string, any>): PersonStat {
       typeof obj?.people_encountered == "object" ? obj?.people_encountered : [],
   }
   return res
+}
+
+function genUserId(): string {
+  for (;;) {
+    const s = "U" + shortid.generate()
+    if (s.indexOf("-") == -1) {
+      return s
+    }
+  }
+}
+
+export async function getUserIdFromEmail(
+  email: string
+): Promise<string | null> {
+  return await redis.accounts.get("email:" + email)
+}
+
+export async function get(
+  user_id: UserId,
+  with_email = false,
+  with_room_access = false
+): Promise<{
+  id: UserId
+  last_updated: number
+  name: string
+  avatar?: string
+  email?: string
+  rooms?: { room_id: RoomId; pos?: PosDir }[]
+} | null> {
+  if (!initialized) {
+    throw new Error("Not initialized")
+  }
+  const rows = with_room_access
+    ? await db.query(
+        `select person.*,string_agg(ra.room,'::::') as rooms from person left join person_room_access as ra on person.id=ra.person left join public_key as k on person.id=k.person where person.id=$1 group by person.id;`,
+        [user_id]
+      )
+    : await db.query(
+        `SELECT * from person left join public_key as k on person.id=k.person where id=$1;`,
+        [user_id]
+      )
+  const p =
+    rows.length == 0
+      ? null
+      : {
+          id: rows[0].id,
+          last_updated: parseInt(rows[0].last_updated),
+          public_key: rows[0].public_key || undefined,
+          room: rows[0].room,
+          name: rows[0].name,
+          avatar: rows[0].avatar,
+          rooms:
+            rows[0].rooms?.split("::::")?.map((room_id: string) => {
+              return { room_id }
+            }) || [],
+          email: with_email
+            ? (await redis.accounts.get("uid:" + user_id)) || undefined
+            : undefined,
+        }
+  return p
+}
+
+export async function getUnwrap(
+  user_id: string,
+  with_email = false,
+  with_room_access = false
+): Promise<{
+  id: UserId
+  last_updated: number
+  name: string
+  email?: string
+  rooms?: { room_id: RoomId; pos?: PosDir }[]
+}> {
+  const p = await get(user_id, with_email, with_room_access)
+  if (p) {
+    return p
+  } else {
+    throw "Tried to unwrap undefined Person"
+  }
+}
+
+export async function getUserType(
+  user_id: UserId
+): Promise<"admin" | "user" | null> {
+  const count = await redis.accounts.exists(
+    "uid:" + user_id,
+    "uid:" + user_id + ":admin"
+  )
+  return count == 2 ? "admin" : count == 1 ? "user" : null
 }
 
 export async function isAdmin(token: string): Promise<boolean> {
@@ -195,17 +285,32 @@ export async function getAllPeopleList(
   with_room_access = false
 ): Promise<(PersonInMap & { email?: string })[]> {
   let rows
+  let rows2: { person: UserId; poster: PosterId }[]
   if (room_id) {
     rows = await db.query(
-      `select * from person left join person_position as pos on person.id=pos.person left join public_key as k on person.id=k.person where pos.room=$1;`,
+      `select person.*,pos.x,pos.y,pos.direction,k.* from person left join person_position as pos on person.id=pos.person left join public_key as k on person.id=k.person
+          WHERE
+              pos.room=$1
+          GROUP BY person.id,pos.x,pos.y,pos.direction,k.person
+      ;`,
       [room_id]
     )
+    rows2 = await db.query(
+      `SELECT * FROM poster_viewer
+      WHERE
+          poster IN (SELECT id FROM poster WHERE location IN (SELECT id FROM map_cell WHERE room=$1))
+        AND
+          left_time IS NULL;`,
+      [room_id]
+    )
+    //
   } else {
     rows = await (with_room_access
       ? db.query(
           `select person.*,string_agg(ra.room,'::::') as rooms,k.public_key from person left join person_room_access as ra on person.id=ra.person left join public_key as k on person.id=k.person group by person.id,k.public_key;`
         )
       : db.query("select * from person;"))
+    rows2 = []
   }
   const connected = room_id
     ? new Set(await redis.sockets.smembers("room:" + room_id + ":__all__"))
@@ -215,101 +320,57 @@ export async function getAllPeopleList(
     "room:" + "__any__"
   )
 
+  const poster_viewers = _.groupBy(rows2, "person")
+
   // log.debug(count_all_sockets_for_users)
+  console.log("people raw data", rows)
   return rows.map(row => {
-    delete row["person"]
-    if (!with_email) {
-      delete row["email"]
+    const uid = row["id"] as UserId
+    const poster_viewing = poster_viewers[uid]
+      ? poster_viewers[uid][0]?.poster
+      : undefined
+    const r: PersonInMap & {
+      email?: string
+      rooms?: RoomId[]
+      poster_viewing?: PosterId
+    } = {
+      name: row["name"],
+      rooms: row["rooms"] ? row["rooms"].split("::::") : [],
+      stats: {
+        walking_steps: 0,
+        people_encountered: [],
+        chat_count: 0,
+        chat_char_count: 0,
+      },
+      public_key: row["public_key"],
+      id: uid,
+      last_updated: parseInt(row["last_updated"]),
+      connected: room_id
+        ? connected.has(row.id)
+        : count_all_sockets_for_users[row.id] &&
+          parseInt(count_all_sockets_for_users[row.id]) > 0
+        ? true
+        : false,
+      room: room_id || "N/A",
+      avatar: row["avatar"],
+      x: row["x"],
+      y: row["y"],
+      direction: row["direction"],
+      moving: false,
     }
-    if (row["rooms"]) {
-      row["rooms"] = row["rooms"].split("::::")
+    if (poster_viewing) {
+      r.poster_viewing = poster_viewing
     }
-    row["stats"] = {
-      walking_steps: 0,
-      people_encountered: [],
-      chat_count: 0,
-      chat_char_count: 0,
+    if (with_email) {
+      r.email = row["email"]
     }
-    log.debug()
-    if (room_id) {
-      row["connected"] = connected.has(row.id)
-    } else {
-      row["connected"] =
-        count_all_sockets_for_users[row.id] &&
-        parseInt(count_all_sockets_for_users[row.id]) > 0
-          ? true
-          : false
-    }
-    row.last_updated = parseInt(row.last_updated)
-    return row
+    return r
   })
 }
 
 export async function getAdmin(): Promise<UserId[] | null> {
   const admins = await redis.accounts.keys("uid:*:admin")
   return admins.length == 0 ? null : admins
-}
-export async function get(
-  user_id: UserId,
-  with_email = false,
-  with_room_access = false
-): Promise<{
-  id: UserId
-  last_updated: number
-  name: string
-  avatar?: string
-  email?: string
-  rooms?: { room_id: RoomId; pos?: PosDir }[]
-} | null> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
-  const rows = with_room_access
-    ? await db.query(
-        `select person.*,string_agg(ra.room,'::::') as rooms from person left join person_room_access as ra on person.id=ra.person left join public_key as k on person.id=k.person where person.id=$1 group by person.id;`,
-        [user_id]
-      )
-    : await db.query(
-        `SELECT * from person left join public_key as k on person.id=k.person where id=$1;`,
-        [user_id]
-      )
-  const p =
-    rows.length == 0
-      ? null
-      : {
-          id: rows[0].id,
-          last_updated: parseInt(rows[0].last_updated),
-          public_key: rows[0].public_key || undefined,
-          room: rows[0].room,
-          name: rows[0].name,
-          avatar: rows[0].avatar,
-          rooms:
-            rows[0].rooms?.split("::::")?.map((room_id: string) => {
-              return { room_id }
-            }) || [],
-          email: with_email
-            ? (await redis.accounts.get("uid:" + user_id)) || undefined
-            : undefined,
-        }
-  return p
-}
-export async function getUnwrap(
-  user_id: string,
-  with_email = false,
-  with_room_access = false
-): Promise<{
-  id: UserId
-  last_updated: number
-  name: string
-  email?: string
-  rooms?: { room_id: RoomId; pos?: PosDir }[]
-}> {
-  const p = await get(user_id, with_email, with_room_access)
-  if (p) {
-    return p
-  } else {
-    throw "Tried to unwrap undefined Person"
-  }
 }
 
 export async function getPos(
@@ -488,11 +549,6 @@ export async function update(
   }
 }
 
-export async function getUserIdFromEmail(
-  email: string
-): Promise<string | null> {
-  return await redis.accounts.get("email:" + email)
-}
 export async function saveJWT(
   email: string,
   token: string,
@@ -527,15 +583,6 @@ export async function getUserIdFromJWTHash(
   hash: string
 ): Promise<UserId | null> {
   return await redis.accounts.get("hash:" + hash)
-}
-export async function getUserType(
-  user_id: UserId
-): Promise<"admin" | "user" | null> {
-  const count = await redis.accounts.exists(
-    "uid:" + user_id,
-    "uid:" + user_id + ":admin"
-  )
-  return count == 2 ? "admin" : count == 1 ? "user" : null
 }
 
 export async function authSocket(
@@ -615,15 +662,6 @@ export async function getAll(
   }
   const people_list = await getAllPeopleList(room_id)
   return _.keyBy(people_list, "id")
-}
-
-function genUserId(): string {
-  for (;;) {
-    const s = "U" + shortid.generate()
-    if (s.indexOf("-") == -1) {
-      return s
-    }
-  }
 }
 
 export function randomAvatar(): string {

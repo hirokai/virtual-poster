@@ -4,11 +4,11 @@ import {
   UserId,
   RoomId,
   CommentId,
+  PosterId,
   ChatCommentDecrypted,
   ChatComment,
   RoomAppState,
   RoomAppProps,
-  PosterId,
   Poster,
   ChatGroup,
   ChatGroupId,
@@ -26,6 +26,31 @@ import Peer from "skyway-js"
 
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
+
+export const sameDate = (a: number, b: number): boolean => {
+  const ta = new Date(a)
+  const tb = new Date(b)
+  return (
+    ta.getFullYear() == tb.getFullYear() &&
+    ta.getMonth() == tb.getMonth() &&
+    ta.getDate() == tb.getDate()
+  )
+}
+
+export const formatDate = (t: number): string => {
+  const t1 = new Date(t)
+  const show_year = t1.getFullYear() != new Date().getFullYear()
+  return (
+    "" +
+    (show_year ? t1.getFullYear() + "年" : "") +
+    (t1.getMonth() + 1) +
+    "月" +
+    t1.getDate() +
+    "日 (" +
+    ["日", "月", "火", "水", "木", "金", "土"][t1.getDay()] +
+    ")"
+  )
+}
 
 async function makeEncrypted(
   to_users: UserId[],
@@ -158,6 +183,21 @@ export const deleteComment = (axios: AxiosStatic | AxiosInstance) => async (
   }
 }
 
+export const deletePosterComment = (
+  axios: AxiosStatic | AxiosInstance
+) => async (poster_id: PosterId, comment_id: CommentId): Promise<void> => {
+  try {
+    const client = api(axiosClient(axios))
+    const r = await client.posters
+      ._posterId(poster_id)
+      .comments._commentId(comment_id)
+      .$delete()
+    console.log(r)
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 export const decryptIfNeeded = async (
   myUserId: string,
   public_keys: { [user_id: string]: { public_key?: string } },
@@ -225,8 +265,7 @@ export const decryptIfNeeded = async (
 export const newComment = async (
   props: RoomAppProps,
   state: RoomAppState,
-  d: ChatComment,
-  activePoster?: PosterId
+  d: ChatComment
 ): Promise<void> => {
   console.log("newComment", d)
   if (state.enableEncryption && !state.privateKey) {
@@ -248,31 +287,17 @@ export const newComment = async (
       }),
       text_decrypted: r.text || "（暗号化）",
     }
-    if (
-      d2.kind == "poster" &&
-      activePoster &&
-      d2.texts.map(t => t.to).indexOf(activePoster) != -1
-    ) {
-      //Vue.set
-      state.posterComments[d.id] = d2
+
+    const is_new_latest = !state.comments[d.id] && !d2.reply_to
+    //Vue.set
+    state.comments[d.id] = d2
+    if (is_new_latest) {
       await nextTick(() => {
-        const el = document.querySelector("#poster-comments")
+        const el = document.querySelector("#chat-local-history")
         if (el) {
           el.scrollTop = el.scrollHeight
         }
       })
-    } else {
-      const is_new_latest = !state.comments[d.id] && !d2.reply_to
-      //Vue.set
-      state.comments[d.id] = d2
-      if (is_new_latest) {
-        await nextTick(() => {
-          const el = document.querySelector("#chat-local-history")
-          if (el) {
-            el.scrollTop = el.scrollHeight
-          }
-        })
-      }
     }
   } catch (err) {
     console.error(err)
@@ -426,10 +451,9 @@ export const initChatService = async (
     // location.href = "/mypage?room=" + props.room_id + "#encrypt"
   }
   socket.on("Comment", async (d: ChatComment) => {
-    const pid = activePoster.value?.id
     console.log("Comment socket", d)
     if (d.room == props.room_id) {
-      await newComment(props, state, d, pid)
+      await newComment(props, state, d)
     }
   })
   socket.on("CommentRemove", (comment_id: string) => {
@@ -562,7 +586,9 @@ export function countItems(
   return obj
 }
 
-function summarizeReactions(tree: Tree<ChatCommentDecrypted>): void {
+function summarizeReactions<T extends DecryptedCommentCommon>(
+  tree: Tree<T>
+): void {
   for (const c of tree.children) {
     summarizeReactions(c)
   }
@@ -587,33 +613,50 @@ function summarizeReactions(tree: Tree<ChatCommentDecrypted>): void {
   }
 }
 
+interface DecryptedCommentCommon {
+  id: CommentId
+  reply_to?: CommentId
+  timestamp: number
+  text_decrypted: string
+  person: UserId
+  reactions?: {
+    [reaction: string]: { [user_id: string]: CommentId }
+  }
+}
+
 export const commentTree = (
-  state: RoomAppState
-): ComputedRef<Tree<ChatCommentDecrypted>> =>
+  state: RoomAppState,
+  kind: "chat" | "poster"
+): ComputedRef<Tree<DecryptedCommentCommon>> =>
   computed(
-    (): Tree<ChatCommentDecrypted> => {
-      const nodes: { [comment_id: string]: Tree<ChatCommentDecrypted> } = {}
+    (): Tree<DecryptedCommentCommon> => {
+      const nodes: { [comment_id: string]: Tree<DecryptedCommentCommon> } = {}
       const findOrMakeNode = (
-        c: ChatCommentDecrypted
-      ): { node: Tree<ChatCommentDecrypted>; created: boolean } => {
+        c: DecryptedCommentCommon
+      ): { node: Tree<DecryptedCommentCommon>; created: boolean } => {
         const node = nodes[c.id]
         if (node) {
           return { node, created: false }
         } else {
-          const node = { node: c, children: [] }
+          const node: Tree<DecryptedCommentCommon> = { node: c, children: [] }
           nodes[c.id] = node
           return { node, created: true }
         }
       }
-      const tree: Tree<ChatCommentDecrypted> = { children: [] }
-      for (const c of Object.values(state.comments)) {
+      const tree: Tree<DecryptedCommentCommon> = { children: [] }
+      for (const c of Object.values(
+        kind == "chat" ? state.comments : state.posterComments
+      )) {
         if (!c.reply_to) {
           const { node } = findOrMakeNode(c)
           if (!tree.children.find(child => child.node?.id == c.id)) {
             tree.children.push(node)
           }
         } else {
-          const p: ChatCommentDecrypted | undefined = state.comments[c.reply_to]
+          const p: DecryptedCommentCommon | undefined =
+            kind == "chat"
+              ? state.comments[c.reply_to]
+              : state.posterComments[c.reply_to]
           if (p) {
             const { node: node_parent } = findOrMakeNode(p)
             const { node } = findOrMakeNode(c)
@@ -633,6 +676,7 @@ export const commentTree = (
       sortTree(tree, (a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp == b.timestamp ? 0 : 1
       )
+      console.log("commentTree", tree)
       return tree
     }
   )

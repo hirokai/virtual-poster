@@ -1,4 +1,4 @@
-import { computed, ComputedRef, nextTick } from "vue"
+import { computed, ComputedRef, nextTick, watch } from "vue"
 
 import {
   RoomAppState,
@@ -6,13 +6,14 @@ import {
   Poster,
   MySocketObject,
   PosterId,
+  CommentEvent,
+  PosterCommentDecrypted,
 } from "../@types/types"
 import { keyBy } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import { SocketIO } from "socket.io-client"
-import { ChatCommentDecrypted } from "@/api/@types"
 
 export const adjacentPosters = (
   props: RoomAppProps,
@@ -71,29 +72,43 @@ export const sendPosterComment = async (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
-  text: string
+  text: string,
+  reply_to?: CommentEvent
 ): Promise<void> => {
   const pid = adjacentPoster(props, state).value?.id
   if (!pid) {
     return
   }
-  console.log("Poster to comment on:", pid)
   const client = api(axiosClient(axios))
-  const data = await client.posters._posterId(pid).comments.$post({
-    body: {
-      user_id: props.myUserId,
-      comment: text,
-    },
-  })
-  console.log("sendPosterComment done", data)
-  state.posterInputComment = ""
+  if (reply_to) {
+    const r = await client.posters
+      ._posterId(pid)
+      .comments._commentId(reply_to.id)
+      .reply.$post({ body: { text } })
+    console.log("sendPosterComment (reply) done", r)
+    if (r.ok) {
+      state.posterInputComment = ""
+    }
+  } else {
+    const r = await client.posters._posterId(pid).comments.$post({
+      body: {
+        user_id: props.myUserId,
+        comment: text,
+      },
+    })
+    console.log("sendPosterComment done", r)
+    if (r.ok) {
+      state.posterInputComment = ""
+    }
+  }
 }
 
 export const doSubmitPosterComment = async (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
   state: RoomAppState,
-  text: string
+  text: string,
+  reply_to?: CommentEvent
 ): Promise<void> => {
   if (state.editingOld) {
     const poster_id = adjacentPoster(props, state).value?.id
@@ -108,7 +123,7 @@ export const doSubmitPosterComment = async (
       )
     }
   } else {
-    await sendPosterComment(axios, props, state, text)
+    await sendPosterComment(axios, props, state, text, reply_to)
     clearInputPoster(state)
     ;(document.querySelector("#poster-chat-input") as any)?.focus()
   }
@@ -138,6 +153,45 @@ export const initPosterService = async (
   activePoster: ComputedRef<Poster | undefined>
 ): Promise<boolean> => {
   const client = api(axiosClient(axios))
+
+  const pid = state.people[props.myUserId]?.poster_viewing
+  if (pid) {
+    console.log("poster comment loading")
+    if (pid) {
+      const data = await client.posters._posterId(pid).comments.$get()
+      watch(
+        () => state.people[props.myUserId],
+        async () => {
+          console.log("poster_viewing changed")
+          const pid = state.people[props.myUserId]?.poster_viewing
+          if (pid) {
+            const data = await client.posters._posterId(pid).comments.$get()
+            state.posterComments = keyBy(data, "id")
+          } else {
+            state.posterComments = {}
+          }
+        }
+      )
+      state.posterComments = keyBy(data, "id")
+    } else {
+      state.posterComments = {}
+    }
+  } else {
+    watch(
+      () => state.people[props.myUserId],
+      async () => {
+        console.log("poster_viewing changed")
+        const pid = state.people[props.myUserId]?.poster_viewing
+        if (pid) {
+          const data = await client.posters._posterId(pid).comments.$get()
+          state.posterComments = keyBy(data, "id")
+        } else {
+          state.posterComments = {}
+        }
+      }
+    )
+  }
+
   socket.on("Poster", (d: Poster) => {
     console.log("socket Poster", d)
     //Vue.set
@@ -148,16 +202,19 @@ export const initPosterService = async (
       poster_number: d.poster_number,
     }
   })
-  socket.on("PosterComment", async (d: ChatCommentDecrypted) => {
-    console.log("PosterComment", d)
-    const pid = activePoster.value?.id
-    const to_s = d.texts.map(t => t.to)
-    const scroll = !state.posterComments[d.id]
-    if (pid && to_s.indexOf(pid) != -1) {
+  socket.on("PosterComment", async (d: PosterCommentDecrypted) => {
+    if (activePoster.value && d.poster == activePoster.value.id) {
+      console.log("PosterComment socket", d)
       //Vue.set
       state.posterComments[d.id] = d
+      await nextTick(() => {
+        const el = document.querySelector("#poster-comments")
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      })
     }
-    if (scroll) {
+    if (!state.posterComments[d.id]) {
       await nextTick(() => {
         const el = document.querySelector("#poster-comments-container")
         if (el) {
@@ -177,9 +234,6 @@ export const initPosterService = async (
     //Vue.delete
     delete state.posters[poster_id]
     console.log("PosterRemove", pid, poster_id)
-    if (pid == poster_id) {
-      state.posterLooking = false
-    }
   })
   const posters = await client.maps._roomId(props.room_id).posters.$get()
   state.posters = keyBy(posters, "id")

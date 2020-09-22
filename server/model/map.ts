@@ -16,7 +16,7 @@ import shortid from "shortid"
 import { redis, log, db, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
 import _ from "lodash"
-import { mkKey, calcDirection } from "../../common/util"
+import { mkKey, calcDirection, isOpenCell } from "../../common/util"
 import cluster from "cluster"
 import * as Posters from "./posters"
 import { config } from "../config"
@@ -143,15 +143,15 @@ export class MapModel {
         const rs: Cell[] = _.map(_.range(numCols), x => {
           const id = MapModel.genMapCellId()
           if (map_rows[y][x] == ".") {
-            return { id, x, y, kind: "grass", open: true }
+            return { id, x, y, kind: "grass" }
           } else if (map_rows[y][x] == "W") {
-            return { id, x, y, kind: "wall", open: false }
+            return { id, x, y, kind: "wall" }
           } else if (map_rows[y][x] == "P") {
-            return { id, x, y, kind: "poster", open: false }
+            return { id, x, y, kind: "poster" }
           } else if (map_rows[y][x] == "M") {
-            return { id, x, y, kind: "mud", open: true }
+            return { id, x, y, kind: "mud" }
           } else if (map_rows[y][x] == "{") {
-            return { id, x, y, kind: "water", open: false }
+            return { id, x, y, kind: "water" }
           } else {
             throw "Invalid map element." + map_rows[y][x]
           }
@@ -165,7 +165,7 @@ export class MapModel {
         for (let x = 0; x < cells[0].length; x++) {
           if (cells[y][x].kind == "poster") {
             for (const c of adjacentCells(cells, x, y, 1)) {
-              if (c.open) {
+              if (isOpenCell(c)) {
                 c.kind = "poster_seat"
               }
             }
@@ -391,7 +391,7 @@ export class MapModel {
         log.warn("Static cell cache failed to get.")
         return { error: "Static cell cache failed to get." }
       }
-      if (!to_cell.open) {
+      if (!isOpenCell(to_cell)) {
         log.warn("Destination is not open")
         return { error: "Destination is not open" }
       }
@@ -441,7 +441,6 @@ export class MapModel {
         x: r.x,
         y: r.y,
         kind: r.kind,
-        open: r.kind == "grass" || r.kind == "mud" || r.kind == "poster_seat",
       }
       if (r.poster_number != null) {
         r2.poster_number = r.poster_number
@@ -510,7 +509,12 @@ export class MapModel {
     poster_number: number,
     author: UserId,
     forceRemoveComments = false
-  ): Promise<{ ok: boolean; poster_id?: PosterId; error?: string }> {
+  ): Promise<{
+    ok: boolean
+    poster_id?: PosterId
+    viewers?: UserId[]
+    error?: string
+  }> {
     try {
       const poster: Poster | null = await model.posters.getByNumber(
         this.room_id,
@@ -531,11 +535,18 @@ export class MapModel {
           poster.id,
         ])
       }
+      const rows1 = await db.query(
+        `DELETE FROM poster_viewer WHERE poster=$1 AND left_time IS NULL RETURNING person;`,
+        [poster.id]
+      )
+      const viewers = rows1.map(r => r["person"]) as string[]
+      await db.query(`DELETE FROM poster_viewer WHERE poster=$1;`, [poster.id])
+
       const rows = await db.query(
         `DELETE FROM poster WHERE author=$1 AND location in (SELECT id FROM map_cell WHERE room=$2 AND poster_number=$3) RETURNING id;`,
         [author, this.room_id, poster_number]
       )
-      return { ok: rows.length == 1, poster_id: rows[0]?.id }
+      return { ok: rows.length == 1, poster_id: rows[0]?.id, viewers }
     } catch (err) {
       log.error(err)
       return { ok: false, error: "DB error" }

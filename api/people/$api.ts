@@ -32,7 +32,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
           $get: (option?: { query?: Methods3['get']['query'], config?: T }) =>
             fetch<Methods3['get']['resBody'], BasicHeaders, Methods3['get']['status']>(prefix, `${prefix0}${PATH2}`, GET, option).json().then(r => r.body),
           $path: (option?: { method?: 'get'; query: Methods3['get']['query'] }) =>
-            `${prefix}${prefix0}${PATH2}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+            `${prefix}${prefix0}${PATH2}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`
         },
         get: (option?: { query?: Methods1['get']['query'], config?: T }) =>
           fetch<Methods1['get']['resBody'], BasicHeaders, Methods1['get']['status']>(prefix, prefix0, GET, option).json(),
@@ -43,7 +43,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
         $patch: (option?: { body?: Methods1['patch']['reqBody'], query?: Methods1['patch']['query'], config?: T }) =>
           fetch<Methods1['patch']['resBody'], BasicHeaders, Methods1['patch']['status']>(prefix, prefix0, PATCH, option).json().then(r => r.body),
         $path: (option?: { method?: 'get'; query: Methods1['get']['query'] } | { method: 'patch'; query: Methods1['patch']['query'] }) =>
-          `${prefix}${prefix0}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+          `${prefix}${prefix0}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`
       }
     },
     get: (option?: { query?: Methods0['get']['query'], config?: T }) =>
@@ -55,7 +55,7 @@ const api = <T>({ baseURL, fetch }: AspidaClient<T>) => {
     $post: (option?: { body?: Methods0['post']['reqBody'], query?: Methods0['post']['query'], config?: T }) =>
       fetch<void, BasicHeaders, Methods0['post']['status']>(prefix, PATH0, POST, option).send().then(r => r.body),
     $path: (option?: { method?: 'get'; query: Methods0['get']['query'] } | { method: 'post'; query: Methods0['post']['query'] }) =>
-      `${prefix}${PATH0}${option?.query ? `?${dataToURLString(option.query)}` : ''}`
+      `${prefix}${PATH0}${option && option.query ? `?${dataToURLString(option.query)}` : ''}`
   }
 }
 

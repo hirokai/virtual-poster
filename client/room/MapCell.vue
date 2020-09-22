@@ -19,13 +19,13 @@
     @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y, event: $event })"
   >
+    <image xlink:href="/img/map/kusa.png" width="48px" height="48px" />
     <image
       v-if="cell.kind == 'poster_seat'"
       xlink:href="/img/map/kusa_red.png"
       width="48px"
       height="48px"
     />
-    <image v-else xlink:href="/img/map/kusa.png" width="48px" height="48px" />
     <rect
       class="poster-name"
       v-if="cell.kind == 'poster' && !person && poster && poster.author"

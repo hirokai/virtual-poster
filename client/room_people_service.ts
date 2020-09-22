@@ -47,7 +47,26 @@ const updatePerson = (
     stats: d.stats || p.stats,
     public_key: d.public_key || p.public_key,
     connected: d.connected != undefined ? d.connected : p.connected,
+    poster_viewing:
+      d.poster_viewing === null
+        ? undefined
+        : d.poster_viewing != undefined
+        ? d.poster_viewing
+        : p.poster_viewing,
   }
+  if (d.id == props.myUserId && person.poster_viewing) {
+    const client = api(axiosClient(axios))
+    client.posters
+      ._posterId(person.poster_viewing)
+      .comments.$get()
+      .then(data => {
+        state.posterComments = keyBy(data, "id")
+      })
+      .catch(() => {
+        //
+      })
+  }
+  console.log("Setting person", person)
   //Vue.set
   state.people[d.id] = person
 }
@@ -119,6 +138,7 @@ export const initPeopleService = async (
     }),
     "id"
   )
+  console.log("r_people", r_people)
   // Adhoc fix
   //Vue.set
   state.people[props.myUserId] = {

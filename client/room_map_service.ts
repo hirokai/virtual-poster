@@ -44,7 +44,7 @@ import {
 
 import { getClosestAdjacentPoints, isAdjacent } from "../common/util"
 
-const BATCH_MOVE_INTERVAL = 400
+const BATCH_MOVE_INTERVAL = 100
 import { range } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
@@ -183,7 +183,11 @@ export class BatchMove {
   ): NodeJS.Timeout {
     this.on_complete = on_complete
     this.timer = setInterval(() => {
-      console.log("batchMoveTimer")
+      if (!this.state.oneStepAccepted) {
+        console.warn("Not received previous move result. Wait to move.")
+        return
+      }
+      // console.log("batchMoveTimer")
       if (!this.points) {
         return
       }
@@ -406,7 +410,7 @@ moveOneStep = (
   if (p.x == to.x && p.y == to.y && p.direction == direction) {
     return false
   }
-  console.log("moveOneStep()", to.x, to.y, direction)
+  // console.log("moveOneStep()", to.x, to.y, direction)
   // Vue.set
   if (p.id == props.myUserId) {
     state.center = {
@@ -545,7 +549,7 @@ const on_socket_move = (
   s: string
 ) => {
   const pos = decodeMoved(s, props.room_id)
-  console.log("on_socket_move", s, pos, state.move_emitted)
+  // console.log("on_socket_move", s, pos, state.move_emitted)
   if (
     !pos ||
     !state.people ||
@@ -560,7 +564,8 @@ const on_socket_move = (
     state.oneStepAccepted = true
   }
   if (pos.user == props.myUserId && state.move_emitted) {
-    const latency = performance.now() - state.move_emitted
+    const latency =
+      Math.round((performance.now() - state.move_emitted) * 100) / 100
     state.move_emitted = null
     console.log("%c" + latency.toFixed(2) + "ms socket move", "color: green")
     addLatencyLog(axios, {
@@ -720,6 +725,44 @@ export const dblClickHandler = (
   }
 }
 
+function optimizeCells(cells: Cell[][]): Cell[][] {
+  function f(c: Cell): Cell {
+    const c2 = {}
+    Object.defineProperties(c2, {
+      id: {
+        configurable: false,
+        value: c.id,
+      },
+      x: {
+        configurable: false,
+        value: c.x,
+      },
+      y: {
+        configurable: false,
+        value: c.y,
+      },
+      kind: {
+        configurable: false,
+        value: c.kind,
+      },
+      name: {
+        configurable: false,
+        value: c.name,
+      },
+      poster_number: {
+        configurable: false,
+        value: c.poster_number,
+      },
+      custom_image: {
+        configurable: false,
+        value: c.custom_image,
+      },
+    })
+    return c2 as Cell
+  }
+  return cells.map(row => row.map(f))
+}
+
 export const initMapService = async (
   axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,
@@ -781,6 +824,7 @@ export const initMapService = async (
     await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
   })
   const data = await client.maps._roomId(props.room_id).$get()
+  // state.hallMap = optimizeCells(data.cells)
   state.hallMap = data.cells
   state.cols = data.numCols
   state.rows = data.numRows

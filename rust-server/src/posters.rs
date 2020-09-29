@@ -3,28 +3,6 @@ use super::defs::*;
 use actix_web::{web, HttpResponse};
 use serde_json::json;
 
-pub async fn get_poster_of_person(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-pub async fn post_poster_of_person(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-pub async fn get_posters_of_person(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
 pub async fn get_posters_of_room(
     data: web::Data<MyData>,
     _auth: Auth,
@@ -68,52 +46,4 @@ pub async fn get_posters_of_room(
         })
         .collect();
     HttpResponse::Ok().json(json!(posters))
-}
-
-pub async fn patch_poster_comment(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn get_poster_file(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn post_poster_file(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn delete_poster_file(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn get_poster_comments(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn post_poster_comments(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
 }

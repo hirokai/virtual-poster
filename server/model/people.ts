@@ -323,7 +323,6 @@ export async function getAllPeopleList(
   const poster_viewers = _.groupBy(rows2, "person")
 
   // log.debug(count_all_sockets_for_users)
-  console.log("people raw data", rows)
   return rows.map(row => {
     const uid = row["id"] as UserId
     const poster_viewing = poster_viewers[uid]

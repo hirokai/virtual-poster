@@ -65,14 +65,6 @@ pub async fn get_all_people(data: web::Data<MyData>, _auth: Auth) -> HttpRespons
     HttpResponse::Ok().json(ss2)
 }
 
-pub async fn post_people(_data: web::Data<MyData>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn get_people_multi(_path: web::Path<String>, _data: web::Data<MyData>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
 pub async fn get_person(
     path: web::Path<String>,
     data: web::Data<MyData>,

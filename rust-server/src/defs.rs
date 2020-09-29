@@ -5,7 +5,6 @@ use bb8_postgres::PostgresConnectionManager;
 use postgres_types::{FromSql, ToSql};
 use serde::{Deserialize, Serialize};
 // use sqlx;
-use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
 use strum_macros::{Display, EnumString};
 
@@ -21,6 +20,7 @@ pub struct MyData {
     // pub pgx: sqlx::Pool<sqlx::Postgres>,
     pub redis: Addr<RedisActor>,
     pub redis_sync: redis::Client,
+    pub redis_sync_sessions: redis::Client,
     pub debug_token: String,
 }
 
@@ -182,21 +182,32 @@ pub struct Move {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AppNotification {
+    Person { person: Person },
     PersonNew { person: Person },
     PersonUpdate { person: Person },
     PersonRemove { id: String },
-    GroupNew { group: ChatGroup },
+    Group { group: ChatGroup },
     GroupUpdate { group: ChatGroup },
     GroupRemove { id: String },
     PosterFileUpdate { id: String },
-    PosterCommentNew { comment: CommentEncrypted },
-    PosterCommentUpdate { comment: CommentEncrypted },
+    Poster { poster: Poster },
+    PosterRemove { id: String },
+    PosterComment { comment: CommentEncrypted },
     PosterCommentRemove { id: String },
-    CommentNew { comment: CommentEncrypted },
-    CommentUpdate { comment: CommentEncrypted },
+    Comment { comment: CommentEncrypted },
     CommentRemove { id: String },
     Moved { room: RoomId, move_data: Vec<Move> },
     UserActive { room: RoomId, user: String },
+    /*
+    | "Announce"
+    | "AuthError"
+    | "MoveError"
+    | "PosterReset"
+    | "MapReset"
+    | "ActiveUsers"
+    | "ChatTyping"
+    | "MoveRequest"
+    */
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -205,9 +216,11 @@ pub enum MsgFromUser {
         room: String,
         x: u32,
         y: u32,
-        token: String,
+        user: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         debug_as: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        debug_token: Option<String>,
     },
     Active {
         user: String,
@@ -218,7 +231,6 @@ pub enum MsgFromUser {
     },
     Subscribe {
         channel: String,
-        token: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         debug_as: Option<String>,
     },

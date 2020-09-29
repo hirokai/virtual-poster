@@ -289,6 +289,7 @@ import { PosterId } from "@/api/@types"
 class MySocketObject {
   listeners: Record<string, ((data: any) => void)[]> = {}
   ws: WebSocket
+  connected?: boolean
 
   constructor(url: string) {
     this.ws = this.connect(url)
@@ -297,12 +298,13 @@ class MySocketObject {
       console.log("WebSocket received: ", dat)
       const msg = dat.type
       for (const listener of this.listeners[msg] || []) {
-        listener(dat)
+        listener(dat.data)
       }
     }
     this.ws.onopen = () => {
-      this.listeners["connected"][0](null)
+      this.listeners["connection"][0](null)
     }
+    this.connected = false
   }
   on(message: string, handler: (data: any) => void) {
     if (!this.listeners[message]) {
@@ -326,8 +328,10 @@ class MySocketObject {
   connect(url: string): WebSocket {
     console.log("Connecting WS: ", url)
     const ws = new WebSocket(url)
+    this.ws = ws
     ws.onopen = () => {
       console.log("WebSocket server connected")
+      this.connected = true
     }
 
     ws.onclose = ev => {
@@ -336,7 +340,9 @@ class MySocketObject {
         ev.reason
       )
       setTimeout(() => {
-        this.connect(url)
+        if (!this.connected) {
+          this.connect(url)
+        }
       }, 5000)
     }
 
@@ -592,7 +598,8 @@ export default defineComponent({
         socket.emit("Active", {
           room: props.room_id,
           user: props.myUserId,
-          token: props.jwt_hash_initial,
+          token: props.jwt_hash_initial || props.debug_token,
+          debug_as: props.debug_as,
         })
         socket.emit("Subscribe", {
           channel: props.room_id,
@@ -763,10 +770,7 @@ export default defineComponent({
     }
 
     onMounted(() => {
-      console.log("onMounted")
       window.addEventListener("keydown", ev => {
-        console.log(ev)
-
         const r = handleGlobalKeyDown(ev)
         if (r) {
           ev.preventDefault()
@@ -808,7 +812,9 @@ export default defineComponent({
         } else {
           console.error("Socket protocol not supported")
         }
-        if (!state.socket) {
+        if (state.socket) {
+          console.log("Socket created:", state.socket)
+        } else {
           console.error("Failed to make a socket.")
           return
         }

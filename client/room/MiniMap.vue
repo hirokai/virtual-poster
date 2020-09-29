@@ -4,17 +4,21 @@
       id="minimap"
       :style="{
         opacity: hidden ? 0 : 1,
-        height: '' + 9 * cells.length + 'px',
-        width: '' + 9 * (cells[0] ? cells[0].length : 0) + 'px',
+        height: '' + size * cells.length + 'px',
+        width: '' + size * (cells[0] ? cells[0].length : 0) + 'px',
         'clip-path':
-          'polygon( 0px 0px, 0px calc(9 * ' +
+          'polygon( 0px 0px, 0px calc(' +
+          size +
+          ' * ' +
           cells.length +
           ') px, ' +
-          (cells[0] ? cells[0].length : 0) * 9 +
-          'px calc(9 * ' +
+          (cells[0] ? cells[0].length : 0) * size +
+          'px calc(' +
+          size +
+          ' * ' +
           cells.length +
           ') px, ' +
-          (cells[0] ? cells[0].length : 0) * 9 +
+          (cells[0] ? cells[0].length : 0) * size +
           'px 0px)',
         top: isMobile ? '560px' : undefined,
       }"
@@ -24,8 +28,8 @@
           v-for="(cell, xi) in row"
           :cell="cell"
           :key="xi"
-          :left="cell.x * 9"
-          :top="cell.y * 9"
+          :left="cell.x * size"
+          :top="cell.y * size"
           :selected="false"
           :chat="false"
           :chat_color="'pink'"
@@ -37,11 +41,8 @@
         <g
           v-for="person in people"
           :key="person.id"
-          v-show="person.x >= 0 && person.y >= 0"
           :transform="
-            person.x >= 0 && person.y >= 0
-              ? 'translate (' + person.x * 9 + ' ' + person.y * 9 + ')'
-              : ''
+            'translate (' + person.x * size + ' ' + person.y * size + ')'
           "
         >
           <image
@@ -60,13 +61,13 @@
                 : ''
             "
             :style="{ opacity: person.connected ? 1 : 0.5 }"
-            width="9px"
-            height="9px"
+            :width="'' + size + 'px'"
+            :height="'' + size + 'px'"
           />
           <rect
             class="typing-indicator"
-            width="9px"
-            height="9px"
+            :width="'' + size + 'px'"
+            :height="'' + size + 'px'"
             opacity="0.4"
             v-if="people_typing[person.id]"
           />
@@ -88,17 +89,17 @@
     <div
       id="minimap-area"
       :style="{
-        left: 8 + (this.center.x - 5) * 9 + 'px',
-        top: 612 + (this.center.y - 5) * 9 + 'px',
-        width: 9 * 11 - 1 + 'px',
-        height: 9 * 11 - 1 + 'px',
+        left: 8 + (this.center.x - 5) * size + 'px',
+        top: 612 + (this.center.y - 5) * size + 'px',
+        width: size * 11 - 1 + 'px',
+        height: size * 11 - 1 + 'px',
       }"
     ></div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue"
+import { defineComponent, PropType, computed } from "vue"
 import { Cell, Point, ChatGroup, Person, Direction } from "../../@types/types"
 import MiniMapCell from "./MiniMapCell.vue"
 
@@ -151,6 +152,11 @@ export default defineComponent({
     const select = (p: Point) => {
       context.emit("select", p)
     }
+    const size = computed(() => {
+      return Math.floor(
+        528 / (props.cells.length > 0 ? props.cells[0].length : 500 / 9)
+      )
+    })
     const personImgOffset = (direction: Direction): string => {
       if (direction == "left") {
         return -8 + "px"
@@ -186,6 +192,7 @@ export default defineComponent({
       select,
       personImgOffset,
       personImgClipPath,
+      size,
     }
   },
 })

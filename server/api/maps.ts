@@ -12,32 +12,75 @@ async function maps_api_routes(
 ): Promise<void> {
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.get("/maps", async req => {
-    const rows =
-      req["requester_type"] == "admin"
-        ? await model.db.query(
-            `SELECT room.id,room.name,count(c.poster_number) as poster_location_count,count(poster.id) as poster_count from room left join map_cell as c on room.id=c.room LEFT JOIN poster ON c.id=poster.location GROUP BY room.id;`
-          )
-        : await model.db.query(
-            `SELECT room.id,room.name,count(c.poster_number) as poster_location_count,count(poster.id) as poster_count from room left join map_cell as c on room.id=c.room LEFT JOIN poster ON c.id=poster.location JOIN person_room_access AS a ON room.id=a.room WHERE a.person=$1 GROUP BY room.id;`,
-            [req["requester"]]
-          )
-    const result: {
-      id: RoomId
-      name: string
-      numCols: number
-      numRows: number
-    }[] = []
-    for (const r of rows) {
-      const map = model.maps[r.id]
-      r.numCols = await map.numCols()
-      r.numRows = await map.numRows()
-      r.poster_count = parseInt(r.poster_count)
-      r.poster_location_count = parseInt(r.poster_location_count)
-      result.push(r)
+  fastify.get(
+    "/maps",
+    async (
+      req
+    ): Promise<
+      {
+        id: RoomId
+        name: string
+        numCols: number
+        numRows: number
+        poster_count: number
+        poster_location_count: number
+      }[]
+    > => {
+      const rows: any[] =
+        req["requester_type"] == "admin"
+          ? await model.db.query(
+              `
+        SELECT
+            room.id,
+            room.name,
+            count(c.poster_number) AS poster_location_count,
+            count(poster.id) AS poster_count,
+            max(c.x) AS max_x,
+            max(c.y) AS max_y
+        FROM
+            room
+            LEFT JOIN map_cell AS c ON room.id = c.room
+            LEFT JOIN poster ON c.id = poster.location
+        GROUP BY
+            room.id;`
+            )
+          : await model.db.query(
+              `
+        SELECT
+            room.id,
+            room.name,
+            count(c.poster_number) as poster_location_count,
+            count(poster.id) as poster_count,
+            max(c.x) as max_x,
+            max(c.y) as max_y
+        FROM
+            room
+            LEFT JOIN map_cell as c on room.id = c.room
+            LEFT JOIN poster ON c.id = poster.location
+            JOIN person_room_access AS a ON room.id = a.room
+        WHERE
+            a.person = $ 1
+        GROUP BY
+            room.id;`,
+              [req["requester"]]
+            )
+      const result = rows.map(r => {
+        const numCols: number = r["max_x"] + 1
+        const numRows: number = r["max_x"] + 1
+        const poster_count = parseInt(r.poster_count)
+        const poster_location_count = parseInt(r.poster_location_count)
+        return {
+          id: r["id"],
+          name: r["name"],
+          poster_location_count,
+          poster_count,
+          numCols,
+          numRows,
+        }
+      })
+      return result
     }
-    return result
-  })
+  )
 
   fastify.get<any>("/maps/:roomId", async (req, res) => {
     const map = model.maps[req.params.roomId]

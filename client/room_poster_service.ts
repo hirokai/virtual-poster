@@ -160,7 +160,7 @@ export const initPosterService = async (
     if (pid) {
       const data = await client.posters._posterId(pid).comments.$get()
       watch(
-        () => state.people[props.myUserId],
+        () => state.people[props.myUserId]?.poster_viewing,
         async () => {
           console.log("poster_viewing changed")
           const pid = state.people[props.myUserId]?.poster_viewing
@@ -178,7 +178,7 @@ export const initPosterService = async (
     }
   } else {
     watch(
-      () => state.people[props.myUserId],
+      () => state.people[props.myUserId]?.poster_viewing,
       async () => {
         console.log("poster_viewing changed")
         const pid = state.people[props.myUserId]?.poster_viewing

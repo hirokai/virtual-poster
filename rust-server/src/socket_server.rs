@@ -5,12 +5,16 @@
 use super::*;
 use actix_redis::{Command, RedisActor, RespValue};
 use defs::*;
+use rand::prelude::*;
 use rand::{self};
 use redis_async::resp_array;
 use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use tokio::time::delay_for;
 use uuid::Uuid;
+
+const emulate_delay: bool = false;
 
 // type SessionId = u128;
 
@@ -250,6 +254,7 @@ impl Handler<DataFromUser> for PubSubServer {
     type Result = ();
 
     fn handle(&mut self, msg: DataFromUser, ctx: &mut Context<Self>) {
+        let mut rng = rand::thread_rng();
         let start = Instant::now();
         debug!("{:?}", start);
         match msg.data {
@@ -265,17 +270,20 @@ impl Handler<DataFromUser> for PubSubServer {
             MsgFromUser::Move { room, x, y, .. } => {
                 let redis = self.redis.clone();
                 let user_id = msg.user_id.clone();
+                let session_id = msg.session_id.clone();
                 let room1 = room.clone();
                 let addr = ctx.address();
                 let sessions = self.sessions.clone();
                 let topics = self.topics.clone();
                 let pg = self.pg.clone();
                 async move {
+                    if emulate_delay {
+                        let delay: u64 = rng.gen_range(20, 200);
+                        delay_for(Duration::from_millis(delay)).await;
+                    }
+                    let key = format!("pos:{}:{}", &room1, user_id.clone());
                     let resp = redis
-                        .send(Command(resp_array![
-                            "GET",
-                            format!("pos:{}:{}", room1, user_id.clone())
-                        ]))
+                        .send(Command(resp_array!["GET", &key]))
                         .await
                         .unwrap()
                         .unwrap();
@@ -286,7 +294,7 @@ impl Handler<DataFromUser> for PubSubServer {
                     };
                     let pos: Option<(Point, direction)> = parse_pos(&s);
                     match pos {
-                        None => warn!("Pos parse failed: {}", s),
+                        None => warn!("Pos parse failed: '{}' (key: '{}')", s, &key),
                         Some(pos) => {
                             if (pos.0.x as i32 - (x as i32)).abs() > 1
                                 || (pos.0.y as i32 - (y as i32)).abs() > 1
@@ -299,16 +307,16 @@ impl Handler<DataFromUser> for PubSubServer {
                                 let resp = redis
                                     .send(Command(resp_array![
                                         "SET",
-                                        format!("pos:{}:{}", room1, user_id.clone()),
+                                        format!("pos:{}:{}", &room1, &user_id),
                                         format!("{}.{}.{}", new_pos.0.x, new_pos.0.y, &new_pos.1)
                                     ]))
                                     .await
                                     .unwrap()
                                     .unwrap();
+                                let start = Instant::now();
                                 let conn = pg.get().await.unwrap();
-                                let from_me = conn
-                                    .query(
-                                        "UPDATE
+                                conn.query(
+                                    "UPDATE
                                             person_position
                                         SET
                                             x=$3,
@@ -316,19 +324,22 @@ impl Handler<DataFromUser> for PubSubServer {
                                         WHERE
                                             person=$1
                                             AND room=$2",
-                                        &[
-                                            &user_id,
-                                            &room,
-                                            &(new_pos.0.x as i32),
-                                            &(new_pos.0.y as i32),
-                                        ],
-                                    )
-                                    .await
-                                    .unwrap();
+                                    &[
+                                        &user_id,
+                                        &room,
+                                        &(new_pos.0.x as i32),
+                                        &(new_pos.0.y as i32),
+                                    ],
+                                )
+                                .await
+                                .unwrap();
+                                let end = start.elapsed();
+                                debug!("Updated position: {} µs", end.subsec_nanos() / 1000);
+
                                 let obj = AppNotification::Moved {
-                                    room: room1,
+                                    room: room1.clone(),
                                     move_data: vec![Move {
-                                        user: user_id,
+                                        user: user_id.clone(),
                                         x: x,
                                         y: y,
                                         direction: new_pos.1,
@@ -336,7 +347,9 @@ impl Handler<DataFromUser> for PubSubServer {
                                 };
                                 let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
                                 for (n, _) in &topics {
-                                    send_message(&sessions, &topics, &n, &s, None);
+                                    if n == &room1 {
+                                        send_message(&sessions, &topics, &n, &s, None);
+                                    }
                                 }
                             }
                             ()

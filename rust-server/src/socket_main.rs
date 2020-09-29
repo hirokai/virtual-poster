@@ -1,9 +1,10 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use actix::*;   
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use actix_web_actors::ws; 
+use actix::*;
+use actix_cors::Cors;
+use actix_web::{http, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web_actors::ws;
 use std::time::{Duration, Instant};
 mod defs;
 extern crate num_cpus;
@@ -11,13 +12,13 @@ mod socket_server;
 use crate::defs::*;
 use bb8_postgres::bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
+use clap::{App as AppClap, Arg};
+use dotenv::dotenv;
 use serde::Deserialize;
 use serde_json::json;
 use socket_server::*;
-use dotenv::dotenv;
-use std::time::SystemTime;
 use std::env;
-use clap::{App as AppClap, Arg};
+use std::time::SystemTime;
 #[macro_use]
 extern crate log;
 
@@ -52,6 +53,7 @@ async fn chat_route(
     stream: web::Payload,
     srv: web::Data<Addr<socket_server::PubSubServer>>,
 ) -> Result<HttpResponse, Error> {
+    println!("/ws chat route open");
     ws::start(
         WsChatSession {
             id: None,
@@ -154,7 +156,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
             Ok(msg) => msg,
         };
 
-        // println!("WEBSOCKET MESSAGE: {:?}", msg);
         match msg {
             ws::Message::Ping(msg) => {
                 self.hb = Instant::now();
@@ -163,11 +164,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
             ws::Message::Pong(_) => {
                 self.hb = Instant::now();
             }
-                ws::Message::Text(text) => {
+            ws::Message::Text(text) => {
                 let m = text.trim();
+                debug!("Text received: {:?}", m);
                 if m == "ping" {
                     ctx.text("pong");
-                }else{
+                } else {
                     let obj: Option<MsgFromUser> = serde_json::from_str(&m).ok();
                     info!("{:?}", &obj);
                     match (&obj, &self.user_id, &self.id) {
@@ -184,7 +186,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                             let user_verified: Option<&str> = check_token(&user, &token, &debug_as);
                             match user_verified {
                                 Some(user_verified) => {
-                                    self.user_id = Some(user_verified.to_string()); 
+                                    self.user_id = Some(user_verified.to_string());
                                     self.addr.do_send(socket_server::DataFromUser {
                                         data: MsgFromUser::Active {
                                             room: room.to_string(),
@@ -193,17 +195,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                                             debug_as: debug_as.as_ref().map(|s| s.to_string()),
                                         },
                                         user_id: user_verified.to_string(),
-                                        session_id: *session_id,  
+                                        session_id: *session_id,
                                     });
                                 },
-                                None => ctx.text(    
+                                None => ctx.text(
                                     &serde_json::to_string(&json!({"Error": {"error": "Invalid token"}})).unwrap()
                                 ),
                             }
                         }
                         (Some(obj1), Some(user_id), Some(session_id)) => {
-                            if let MsgFromUser::Subscribe { channel,token, debug_as } = &obj1 {
-                                let user_verified: Option<&str> = check_token(&user_id, &token, &debug_as);
+                            if let MsgFromUser::Subscribe { channel, debug_as } = &obj1 {
+                                let user_verified: Option<&str> = check_token(&user_id, &"", &debug_as);
                                 if user_verified.is_some() {
                                     self.subscribed_to.push(channel.to_string());
                                 } else{
@@ -221,7 +223,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                         }
                         (Some(_), Some(user_id), None) => {
                             ctx.text(
-    
                             &serde_json::to_string(
                                 &json!({"Error": {"error": "Session ID not assigned"}}),
                             )
@@ -237,7 +238,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                             warn!("Failed to parse a message from client: {}", &m);
                         }
                     }
-    
                 }
             }
 
@@ -291,33 +291,34 @@ impl WsChatSession {
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    std::env::set_var(
-        "RUST_LOG",
-        "actix_server=info,actix_web=info,websocket=debug",
-    );
+    env_logger::init();
+
+    // std::env::set_var(
+    //     "RUST_LOG",
+    //     "actix_server=info,actix_web=info,websocket=debug",
+    // );
 
     let app = AppClap::new("WebSocket server")
-    .version("0.1.0")
-    .arg(
-        Arg::with_name("tls")
-            .help("Enable TLS")
-            .long("tls")
-            .takes_value(false),
-    )
-    .arg(
-        Arg::with_name("workers")
-            .help("The number of workers")
-            .long("workers")
-            .short("w")
-            .takes_value(true),
-    );
-let matches = app.get_matches();
+        .version("0.1.0")
+        .arg(
+            Arg::with_name("tls")
+                .help("Enable TLS")
+                .long("tls")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("workers")
+                .help("The number of workers")
+                .long("workers")
+                .short("w")
+                .takes_value(true),
+        );
+    let matches = app.get_matches();
 
     let port = env::var("PORT").unwrap_or("5000".to_string());
     let secret_path = std::env::var("DEBUG_TOKEN").expect("DEBUG_TOKEN is needed");
     let input_path = format!("/input/{}", secret_path);
     println!("Secret input path: {}", input_path);
-    env_logger::init();
 
     let conn_str = dotenv::var("POSTGRES_CONNECTION_STRING").unwrap_or(String::from(
         "postgresql://postgres@localhost:5432/virtual_poster",
@@ -336,21 +337,26 @@ let matches = app.get_matches();
     let num_cpus = num_cpus::get();
 
     let num_workers: usize = matches
-    .value_of("workers")
-    .map(|a| a.parse().unwrap_or(num_cpus))
-    .unwrap_or(num_cpus);
+        .value_of("workers")
+        .map(|a| a.parse().unwrap_or(num_cpus))
+        .unwrap_or(num_cpus);
 
     println!("# of workers: {}", num_workers);
-
 
     // Create Http server with websocket support
     HttpServer::new(move || {
         App::new()
             .data(server.clone())
+            // .wrap(
+            //     Cors::new() // <- Construct CORS middleware builder
+            //         .allowed_origin("*")
+            //         .max_age(3600)
+            //         .finish(),
+            // )
             .service(web::resource("/ws").to(chat_route))
             .service(web::resource(input_path.clone()).to(input_route))
     })
-    .bind(format!("127.0.0.1:{}",port))?
+    .bind(format!("0.0.0.0:{}", port))?
     .workers(num_workers)
     .run()
     .await

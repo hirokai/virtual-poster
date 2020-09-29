@@ -379,7 +379,7 @@ export const myChatGroup = (
 ): ComputedRef<ChatGroupId | null> =>
   computed((): ChatGroupId | null => {
     const g = Object.values(state.chatGroups).find(g => {
-      return g.users.indexOf(props.myUserId) != -1
+      return g.users?.indexOf(props.myUserId) >= 0
     })
     return g?.id || null
   })

@@ -1,7 +1,9 @@
 use super::auth::Auth;
 use super::defs::*;
-use crate::emit::*;
+use actix_redis::Command;
 use actix_web::{web, HttpResponse};
+use redis_async::resp::RespValue;
+use redis_async::resp_array;
 use serde_json::json;
 use std::time::Instant;
 
@@ -12,9 +14,49 @@ pub async fn get_rooms(
 ) -> HttpResponse {
     let conn = data.pg.get().await.unwrap();
     let rows = if auth.user_type == UserType::Admin {
-        conn.query("SELECT room.id,room.name,count(c.poster_number) as poster_location_count,count(poster.id) as poster_count,max(c.x) as max_x,max(c.y) as max_y from room left join map_cell as c on room.id=c.room LEFT JOIN poster ON c.id=poster.location GROUP BY room.id;", &[]).await.unwrap()
+        conn.query(
+            "
+        SELECT
+            room.id,
+            room.name,
+            count(c.poster_number) AS poster_location_count,
+            count(poster.id) AS poster_count,
+            max(c.x) AS max_x,
+            max(c.y) AS max_y
+        FROM
+            room
+            LEFT JOIN map_cell AS c ON room.id = c.room
+            LEFT JOIN poster ON c.id = poster.location
+        GROUP BY
+            room.id;
+            ",
+            &[],
+        )
+        .await
+        .unwrap()
     } else {
-        conn.query("SELECT room.id,room.name,count(c.poster_number) as poster_location_count,count(poster.id) as poster_count,max(c.x) as max_x,max(c.y) as max_y from room left join map_cell as c on room.id=c.room LEFT JOIN poster ON c.id=poster.location JOIN person_room_access AS a ON room.id=a.room WHERE a.person=$1 GROUP BY room.id;",&[&auth.user]).await.unwrap()
+        conn.query(
+            "
+        SELECT
+            room.id,
+            room.name,
+            count(c.poster_number) as poster_location_count,
+            count(poster.id) as poster_count,
+            max(c.x) as max_x,
+            max(c.y) as max_y
+        FROM
+            room
+            LEFT JOIN map_cell as c on room.id = c.room
+            LEFT JOIN poster ON c.id = poster.location
+            JOIN person_room_access AS a ON room.id = a.room
+        WHERE
+            a.person = $1
+        GROUP BY
+            room.id;",
+            &[&auth.user],
+        )
+        .await
+        .unwrap()
     };
     let ss = rows.iter().map(|r| Room {
         id: r.get(0),
@@ -37,6 +79,24 @@ pub async fn get_room(
     let conn = data.pg.get().await.unwrap();
     let end = start.elapsed();
     println!("connected {} µs", end.subsec_nanos() / 1000);
+
+    let start = Instant::now();
+    let one = data.redis.send(Command(resp_array![
+        "GET",
+        format!("map_cache:{}", &path.0)
+    ]));
+    let resp = one.await.unwrap().unwrap();
+    let s: Option<String> = match resp {
+        RespValue::BulkString(v) => Some(std::str::from_utf8(&v).unwrap().to_string()),
+        RespValue::SimpleString(s) => Some(s),
+        _ => None,
+    };
+    let end = start.elapsed();
+    println!("Redis read {} µs", end.subsec_nanos() / 1000);
+    if s.is_some() {
+        return HttpResponse::Ok().json(s.unwrap());
+    }
+
     let start = Instant::now();
     let rows = conn
         .query(
@@ -78,6 +138,19 @@ pub async fn get_room(
 
     let end = start.elapsed();
     println!("num_cols calc'd {} µs", end.subsec_nanos() / 1000);
+
+    let start = Instant::now();
+    let one = data.redis.send(Command(resp_array![
+        "SET",
+        format!("map_cache:{}", &path.0),
+        format!(
+            "{}",
+            json!({"cells": cells, "numCols": num_cols, "numRows": num_rows})
+        )
+    ]));
+    one.await.unwrap().unwrap();
+    let end = start.elapsed();
+    println!("Redis wrote {} µs", end.subsec_nanos() / 1000);
     HttpResponse::Ok().json(json!({"cells": cells, "numCols": num_cols, "numRows": num_rows}))
 }
 
@@ -97,7 +170,13 @@ pub async fn enter_room(
         //     },
         // )
         // .await;
-        json!({"ok": true, "socket_url": "ws://localhost:5000/ws/"})
+        // json!({"ok": true, "socket_url": "ws://localhost:5000/ws/"})
+        let socket_url = "ws://localhost:5000/ws".to_string();
+        json!({
+            "ok": true,
+          "socket_url": socket_url,
+          "socket_protocol": "WebSocket"
+        })
     } else {
         json!({"ok": false, "error": format!("{}",status)})
     })

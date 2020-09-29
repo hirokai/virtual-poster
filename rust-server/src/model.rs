@@ -231,7 +231,7 @@ pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Pos
         )
         .await
         .unwrap();
-    if rows.len() == 1 { 
+    if rows.len() == 1 {
         let x: i32 = rows[0].get("x");
         let y: i32 = rows[0].get("y");
         let direction: direction = rows[0].get("direction");
@@ -248,7 +248,7 @@ pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Pos
 pub mod chat {
     use crate::defs::*;
 
-    pub async fn addCommentEncrypted(e: &CommentEncrypted) -> bool {
+    pub async fn addCommentEncrypted(_e: &CommentEncrypted) -> bool {
         true
     }
 }

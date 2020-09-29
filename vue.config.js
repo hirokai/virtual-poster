@@ -88,6 +88,11 @@ module.exports = {
         ws: true,
         secure: false,
       },
+      "^/ws": {
+        target: "http://localhost:5000",
+        ws: true,
+        secure: false,
+      },
       "^/img": {
         target: "http://localhost:3000",
         ws: false,

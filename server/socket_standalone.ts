@@ -7,7 +7,7 @@ import sticky from "sticky-session"
 import * as bunyan from "bunyan"
 import fs from "fs"
 import path from "path"
-import { setupSocketHandlers, registerSocket } from "./socket"
+import { setupSocketHandlers, registerSocket, emit } from "./socket"
 import * as http from "http"
 import * as https from "https"
 import spdy from "spdy"
@@ -15,9 +15,10 @@ import cluster from "cluster"
 import SocketIO from "socket.io"
 import redis, { RedisAdapter } from "socket.io-redis"
 import * as model from "./model"
-import { RoomId } from "@/@types/types"
+import { EmitCommand, RoomId } from "@/@types/types"
 import dotenv from "dotenv"
 import { config } from "./config"
+import bodyParser from "body-parser"
 
 dotenv.config()
 
@@ -47,9 +48,28 @@ log.info("Settings", {
 
 const app = express()
 
+app.use(bodyParser.urlencoded({ extended: false }))
+app.use(bodyParser.json())
+
 app.get("/ping", (req, res) => {
   log.info("ping received")
   res.status(200).send("pong from socket server\n")
+})
+
+app.post("/input/:debug_token", (req, res) => {
+  if (req.params.debug_token != config.debug_token) {
+    res.send(403).send("Unauthorized")
+    return
+  }
+  log.info("Emit input received", req.body)
+  const data: { type: EmitCommand } & any = req.body.data
+  const topics: string[] = req.body.topics
+  if (data.type == "Group") {
+    emit.room(topics[0]).group(data.group)
+  } else if (data.type == "GroupRemove") {
+    emit.room(topics[0]).groupRemove(data.id)
+  }
+  res.status(200).send("OK")
 })
 
 let server: https.Server | http.Server | null = null

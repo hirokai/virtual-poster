@@ -6,14 +6,6 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-pub async fn join_group(
-    _data: web::Data<MyData>, 
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
 #[derive(Deserialize)]
 pub struct LeaveGroupPath {
     roomId: String,
@@ -59,14 +51,6 @@ pub async fn leave_group(
     }
 
     HttpResponse::Ok().json(json!({"ok": true}))
-}
-
-pub async fn add_people_to_group(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
 }
 
 pub async fn get_room_groups(
@@ -118,21 +102,9 @@ pub async fn post_group(
     let r = start_chat(&data.pg, room, &from_user, &to_users).await;
     match r {
         Ok(r) => {
-            emit(
-                &vec![&r.room],
-                &AppNotification::GroupNew { group: r.clone() },
-            )
-            .await;
+            emit(&vec![&r.room], &AppNotification::Group { group: r.clone() }).await;
             HttpResponse::Ok().json(json!({"ok": true, "group": r}))
         }
         Err(e) => HttpResponse::Ok().json(json!({"ok": false, "error": e})),
     }
-}
-
-pub async fn get_group_of_person(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
 }

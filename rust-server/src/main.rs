@@ -10,8 +10,10 @@ extern crate log;
 use actix_files as fs;
 use actix_redis::RedisActor;
 use actix_service::Service;
+use actix_web::http;
 use actix_web::http::header::{HeaderName, HeaderValue};
-use actix_web::{web, App, Error, HttpResponse, HttpServer, Responder};
+use actix_web::http::uri::Uri;
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use bb8_postgres::bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
 use clap::{App as AppClap, Arg};
@@ -31,6 +33,7 @@ mod model;
 mod people;
 mod posters;
 use actix_cors::Cors;
+use actix_web::client::Client;
 use auth::*;
 use chat::*;
 use dotenv::dotenv;
@@ -38,7 +41,85 @@ use groups::*;
 use maps::*;
 use people::*;
 use posters::*;
+use serde_json::json;
+
 // use sqlx::postgres::PgPoolOptions;
+
+pub async fn stub(req: HttpRequest, body: web::Payload) -> HttpResponse {
+    let uri = format!("{}{}", "http://localhost:3030", req.uri())
+        .parse::<Uri>()
+        .unwrap();
+
+    let c = req
+        .headers()
+        .get("Cookie")
+        .and_then(|c| c.to_str().ok())
+        .unwrap_or("");
+    let ct = req
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|c| c.to_str().ok())
+        .unwrap_or("applicaion/json");
+
+    let client = Client::default();
+    let res = match req.method() {
+        &http::Method::GET => {
+            client
+                .get(uri)
+                .header("User-Agent", "Actix-web")
+                .header(http::header::COOKIE, c)
+                .header(http::header::CONTENT_TYPE, ct)
+                .send_stream(body)
+                .await
+        }
+        &http::Method::POST => {
+            client
+                .post(uri)
+                .header("User-Agent", "Actix-web")
+                .header(http::header::COOKIE, c)
+                .header(http::header::CONTENT_TYPE, ct)
+                .send_stream(body)
+                .await
+        }
+        &http::Method::DELETE => {
+            client
+                .delete(uri)
+                .header("User-Agent", "Actix-web")
+                .header(http::header::COOKIE, c)
+                .header(http::header::CONTENT_TYPE, ct)
+                .send_stream(body)
+                .await
+        }
+        &http::Method::PATCH => {
+            client
+                .patch(uri)
+                .header("User-Agent", "Actix-web")
+                .header(http::header::COOKIE, c)
+                .header(http::header::CONTENT_TYPE, ct)
+                .send_stream(body)
+                .await
+        }
+        _ => {
+            panic!("Not supported");
+        }
+    };
+
+    println!("Response: {:?}", res);
+    let mut res = res.unwrap();
+    let body = res.body().await.unwrap();
+    let set_cookie = res.headers().get(http::header::SET_COOKIE);
+    let mut res_to_client = HttpResponse::Ok().body(body);
+    res_to_client.headers_mut().insert(
+        HeaderName::from_static("x-powered-by"),
+        HeaderValue::from_static("Fastify via Actix"),
+    );
+    if set_cookie.is_some() {
+        res_to_client
+            .headers_mut()
+            .insert(http::header::SET_COOKIE, set_cookie.unwrap().to_owned());
+    }
+    res_to_client
+}
 
 async fn ping() -> impl Responder {
     HttpResponse::Ok().body("pong")
@@ -61,8 +142,11 @@ fn gen_ascii_chars(size: usize) -> String {
 }
 
 async fn get_socket_url(_data: web::Data<MyData>) -> Result<HttpResponse, Error> {
-    let res = env::var("SOCKET_URL").unwrap_or("http://localhost:5000/ws/".to_string());
-    Ok(HttpResponse::Ok().json(res))
+    let socket_url = env::var("SOCKET_URL").unwrap_or("ws://localhost:8080/ws".to_string());
+    Ok(HttpResponse::Ok().json(json!({
+      "socket_url": socket_url,
+      "socket_protocol": "WebSocket"
+    })))
 }
 
 #[actix_rt::main]
@@ -126,12 +210,12 @@ async fn main() -> std::io::Result<()> {
     println!("Done.");
 
     let server = HttpServer::new(move || {
-        let redis_addr = RedisActor::start("127.0.0.1:6379");
         let mydata = MyData {
             pg: pool.clone(),
             // pgx: poolx.clone(),
-            redis: redis_addr,
+            redis: RedisActor::start("127.0.0.1:6379"),
             redis_sync: redis::Client::open("redis://127.0.0.1/0").unwrap(),
+            redis_sync_sessions: redis::Client::open("redis://127.0.0.1/3").unwrap(),
             debug_token: debug_token.clone(),
         };
 
@@ -145,74 +229,100 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/api")
-                    .route("/socket_url", web::get().to(get_socket_url))
-                    .route("/ping", web::get().to(ping))
-                    .route("/public_key", web::post().to(post_public_key))
-                    .route("/people", web::get().to(get_all_people))
-                    .route("/people", web::post().to(post_people))
-                    .route("/people_multi/{personIds}", web::get().to(get_people_multi))
-                    .route("/people/{userId}", web::get().to(get_person))
-                    .route("/people/{userId}", web::patch().to(patch_person))
+                    .route("/blind_sign/key_pair", web::get().to(get_encryption_keys))
+                    .route("/blind_sign/sign", web::post().to(stub))
+                    .route("/blind_sign/verify", web::get().to(stub))
+                    .route("/comments/{commentId}", web::patch().to(stub))
+                    .route("/comments/{commentId}", web::delete().to(stub))
+                    .route("/comments/{commentId}/reply", web::post().to(stub))
+                    .route("/groups", web::get().to(stub))
+                    .route("/id_token", web::post().to(stub))
+                    .route("/logout", web::post().to(stub))
+                    .route("/latency_report", web::post().to(stub))
                     .route("/maps/{roomId}/people", web::get().to(get_room_people))
-                    .route("/maps", web::get().to(get_rooms))
-                    .route("/maps/{room_id}", web::get().to(get_room))
+                    .route("/maps", web::get().to(get_rooms)) // 20200928 OK
+                    .route("/maps/{room_id}", web::get().to(get_room)) // 20200928 OK
                     .route("/maps/{roomId}/enter", web::post().to(enter_room))
-                    .route("/comments/{commentId}", web::patch().to(patch_comments))
-                    .route("/comments/{commentId}", web::delete().to(delete_comments))
-                    .route(
-                        "/maps/{roomId}/groups/{groupId}/join",
-                        web::post().to(join_group),
-                    )
+                    .route("/maps/{roomId}/groups/{groupId}/join", web::post().to(stub))
                     .route(
                         "/maps/{roomId}/groups/{groupId}/leave",
                         web::post().to(leave_group),
                     )
                     .route(
                         "/maps/{roomId}/groups/{groupId}/people",
-                        web::post().to(add_people_to_group),
+                        web::post().to(stub),
                     )
                     .route("/maps/{roomId}/groups", web::get().to(get_room_groups))
                     .route("/maps/{roomId}/groups", web::post().to(post_group))
                     .route(
                         "/maps/{roomId}/people/{personId}/groups",
-                        web::get().to(get_group_of_person),
+                        web::get().to(stub),
                     )
                     .route("/maps/{roomId}/comments", web::get().to(get_comments))
-                    .route("/maps/{roomId}/comments", web::post().to(post_comment))
                     .route(
                         "/maps/{roomId}/people/{personId}/poster",
-                        web::get().to(get_poster_of_person),
+                        web::get().to(stub),
                     )
                     .route(
                         "/maps/{roomId}/people/{personId}/poster/file",
-                        web::post().to(post_poster_of_person),
-                    )
-                    .route(
-                        "/people/{personId}/posters",
-                        web::get().to(get_posters_of_person),
+                        web::post().to(stub),
                     )
                     .route("/maps/{roomId}/posters", web::get().to(get_posters_of_room))
                     .route(
+                        "/maps/{roomId}/poster_slot/{posterNumber}",
+                        web::post().to(stub),
+                    )
+                    .route(
+                        "/maps/{roomId}/poster_slot/{posterNumber}",
+                        web::delete().to(stub),
+                    )
+                    .route(
+                        "/maps/{roomId}/groups/{groupId}/comments",
+                        web::post().to(post_comment),
+                    )
+                    .route(
+                        "/maps/{roomId}/posters/{posterId}/approach",
+                        web::post().to(stub),
+                    )
+                    .route(
+                        "/maps/{roomId}/posters/{posterId}/enter",
+                        web::post().to(stub),
+                    )
+                    .route(
+                        "/maps/{roomId}/posters/{posterId}/leave",
+                        web::post().to(stub),
+                    )
+                    .route("/people/{userId}", web::get().to(get_person))
+                    .route("/people/{userId}", web::patch().to(patch_person))
+                    .route("/people", web::get().to(get_all_people))
+                    .route("/people", web::post().to(stub))
+                    .route("/people_multi/{personIds}", web::get().to(stub))
+                    .route(
                         "/posters/{posterId}/comments/{commentId}",
-                        web::patch().to(patch_poster_comment),
-                    )
-                    .route("/posters/{posterId}/file", web::get().to(get_poster_file))
-                    .route("/posters/{posterId}/file", web::post().to(post_poster_file))
-                    .route(
-                        "/posters/{posterId}/file",
-                        web::delete().to(delete_poster_file),
+                        web::patch().to(stub),
                     )
                     .route(
-                        "/posters/{posterId}/comments",
-                        web::get().to(get_poster_comments),
+                        "/posters/{posterId}/comments/{commentId}",
+                        web::delete().to(stub),
                     )
+                    .route("/people/{personId}/posters", web::get().to(stub))
+                    .route("/posters/{posterId}/file", web::get().to(stub))
+                    .route("/posters/{posterId}/file", web::post().to(stub))
+                    .route("/posters/{posterId}/file", web::delete().to(stub))
+                    .route("/posters/{posterId}/comments", web::get().to(stub))
+                    .route("/posters/{posterId}/comments", web::post().to(stub))
+                    .route("/posters", web::get().to(stub))
+                    .route("/ping", web::get().to(ping))
+                    .route("/public_key", web::get().to(get_public_key))
+                    .route("/public_key", web::post().to(post_public_key))
+                    .route("/people/{personId}/access_code", web::post().to(stub))
+                    .route("/posters/{posterId}", web::patch().to(stub))
                     .route(
-                        "/posters/{posterId}/comments",
-                        web::post().to(post_poster_comments),
+                        "/posters/{posterId}/comments/{commentId}/reply",
+                        web::post().to(stub),
                     )
-                    // .route("/maps2/{room_id}", web::get().to(get_room_2))
-                    .route("/encryption_keys", web::get().to(get_encryption_keys))
-                    .route("/id_token", web::post().to(post_id_token)),
+                    .route("/register", web::post().to(stub))
+                    .route("/socket_url", web::get().to(get_socket_url)),
             )
             .default_service(fs::Files::new("/", "../public"))
             .wrap_fn(|req, srv| {
@@ -224,10 +334,13 @@ async fn main() -> std::io::Result<()> {
                     match res {
                         Ok(mut r) => {
                             // println!("{:?}", r);
-                            r.headers_mut().insert(
-                                HeaderName::from_static("x-powered-by"),
-                                HeaderValue::from_static("actix-web"),
-                            );
+                            let headers = r.headers_mut();
+                            if (!headers.contains_key("x-powered-by")) {
+                                headers.insert(
+                                    HeaderName::from_static("x-powered-by"),
+                                    HeaderValue::from_static("actix-web"),
+                                );
+                            }
                             Ok(r)
                         }
                         Err(e) => Err(e),

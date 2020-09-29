@@ -4,27 +4,11 @@ use crate::emit;
 use crate::model;
 use actix_web::{web, HttpResponse};
 use itertools::izip;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashSet;
 use tokio_postgres::row::Row;
 use uuid::Uuid;
-
-pub async fn patch_comments(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
-
-pub async fn delete_comments(
-    _data: web::Data<MyData>,
-    _auth: Auth,
-    _path: web::Path<(String,)>,
-) -> HttpResponse {
-    HttpResponse::Ok().json(json!({"ok": false, "error": "Stub"}))
-}
 
 pub async fn get_comments(
     data: web::Data<MyData>,
@@ -145,18 +129,14 @@ pub async fn get_comments(
       */
     HttpResponse::Ok().json(json!(ds))
 }
-#[derive(Deserialize)]
-pub struct PostCommentData {
-    comments_encrypted: Vec<CommentEncryptedEntry>,
-}
 
 pub async fn post_comment(
     data: web::Data<MyData>,
-    body: web::Json<PostCommentData>,
+    body: web::Json<Vec<CommentEncryptedEntry>>,
     auth: Auth,
-    room_id: web::Path<String>,
+    params: web::Path<(String, String)>,
 ) -> HttpResponse {
-    let room_id = room_id.to_string();
+    let room_id = params.0.to_string();
     let timestamp = get_timestamp().unwrap();
     match model::get_person_pos(&data.pg, &room_id, &auth.user).await {
         None => HttpResponse::Ok().json(json!({"ok": false, "error": "Position not found"})),
@@ -168,13 +148,13 @@ pub async fn post_comment(
                 x: pos.x,
                 y: pos.y,
                 kind: "person".to_string(),
-                texts: body.comments_encrypted.clone(),
+                texts: body.to_vec(),
                 timestamp,
                 last_updated: timestamp,
             };
             let r = model::chat::addCommentEncrypted(&e).await;
             if r {
-                let notification = AppNotification::CommentNew { comment: e.clone() };
+                let notification = AppNotification::Comment { comment: e.clone() };
                 emit::emit(&vec![&room_id], &notification).await;
                 HttpResponse::Ok().json(json!({"ok": true, "comment": e}))
             } else {

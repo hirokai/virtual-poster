@@ -197,7 +197,8 @@ async function routes(
         }
       }
       await model.initData(POSTGRES_CONNECTION_STRING)
-      emit.mapReset()
+      const all_rooms = Object.keys(model.maps)
+      emit.channels(all_rooms).mapReset()
       return {
         ok: true,
         ok_count: people_result.filter(r => r.ok).length,
@@ -230,7 +231,7 @@ async function routes(
         e => !isNaN(e.poster_number)
       )
       const poster_assigned = await map.importPosterAssignment(posters, true)
-      emit.posterReset()
+      emit.channel(req.params.room).posterReset()
 
       return { ok: !!poster_assigned, poster_assigned }
     }

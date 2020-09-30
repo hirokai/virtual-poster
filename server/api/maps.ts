@@ -6,6 +6,7 @@ import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
+const RUST_WS_SERVER = !!process.env.RUST_WS_SERVER
 
 async function maps_api_routes(
   fastify: FastifyInstance<any, any, any, any>
@@ -59,7 +60,7 @@ async function maps_api_routes(
             LEFT JOIN poster ON c.id = poster.location
             JOIN person_room_access AS a ON room.id = a.room
         WHERE
-            a.person = $ 1
+            a.person = $1
         GROUP BY
             room.id;`,
               [req["requester"]]
@@ -92,8 +93,10 @@ async function maps_api_routes(
   })
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
-    console.log("APPROACH", req["requester"])
-    emit.room(req["requester"]).moveRequest({ to_poster: req.params.posterId })
+    // console.log("APPROACH", req["requester"])
+    emit
+      .channel(req["requester"])
+      .moveRequest({ to_poster: req.params.posterId })
     return { ok: true }
   })
 
@@ -110,7 +113,7 @@ async function maps_api_routes(
       posterId
     )
     if (r.ok && r.joined_time) {
-      emit.peopleUpdate([
+      emit.channel(roomId).peopleUpdate([
         {
           id: req["requester"] as UserId,
           last_updated: r.joined_time,
@@ -130,7 +133,7 @@ async function maps_api_routes(
     }
     const r = await model.posters.endViewing(req["requester"], roomId, posterId)
     if (r.ok && r.left_time) {
-      emit.peopleUpdate([
+      emit.channel(roomId).peopleUpdate([
         {
           id: req["requester"] as UserId,
           last_updated: r.left_time,
@@ -155,8 +158,12 @@ async function maps_api_routes(
 
     const r2: MapEnterResponse = {
       ...r,
-      socket_url: PRODUCTION ? "/" : "http://localhost:5000/",
-      socket_protocol: "Socket.IO",
+      socket_url: PRODUCTION
+        ? "/"
+        : RUST_WS_SERVER
+        ? "ws://localhost:8080/ws"
+        : "http://localhost:5000/",
+      socket_protocol: RUST_WS_SERVER ? "WebSocket" : "Socket.IO",
     }
     if (r.ok) {
       const rows = await model.db.query(

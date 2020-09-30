@@ -20,7 +20,7 @@ async function routes(
       req.params.groupId
     )
     if (joinedGroup) {
-      emit.group(joinedGroup)
+      emit.channel(req.params.roomId).group(joinedGroup)
     }
     return { ok, error, joinedGroup }
   })
@@ -32,9 +32,9 @@ async function routes(
       req["requester"]
     )
     if (ok && leftGroup) {
-      emit.group(leftGroup)
+      emit.channel(room).group(leftGroup)
     } else if (ok && removedGroup) {
-      emit.groupRemove(removedGroup, emit.emitter.to(room))
+      emit.channel(room).groupRemove(removedGroup)
     }
     return { ok, error, leftGroup }
   })
@@ -48,7 +48,7 @@ async function routes(
       req.params.groupId
     )
     if (joinedGroup) {
-      emit.group(joinedGroup)
+      emit.channel(req.params.roomId).group(joinedGroup)
     }
     return { ok, error, joinedGroup }
   })
@@ -101,7 +101,7 @@ async function routes(
         to_users
       )
       if (group) {
-        emit.group(group)
+        emit.channel(roomId).group(group)
         return {
           ok: true,
           group,

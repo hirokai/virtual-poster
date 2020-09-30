@@ -115,12 +115,13 @@ export const initPeopleService = async (
     }
   })
 
-  socket.on("chat_typing", (d: TypingSocketData) => {
+  socket.on("ChatTyping", (d: TypingSocketData) => {
+    console.log("ChatTyping socket", d)
     if (d.room == props.room_id) {
       //Vue.set
       state.people_typing[d.user] = d.typing
     }
-    console.log("chat_typing", state.people_typing)
+    console.log("ChatTyping", state.people_typing)
   })
 
   const [r_people, { data: r_avatars }]: [

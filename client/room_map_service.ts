@@ -5,7 +5,8 @@ import {
   findRoute,
   lookingAt,
   decodeMoved,
-  keyBy,
+  personAt,
+  posterAt,
   isUserId,
 } from "../common/util"
 import {
@@ -76,24 +77,6 @@ export function showMessage(props: RoomAppProps, state: RoomAppState) {
   }
 }
 
-export const personAt = (
-  people: { [user_id: string]: PersonInMap },
-  pos: Point
-): PersonInMap | undefined => {
-  return Object.values(people).find(p => {
-    return p.x == pos.x && p.y == pos.y
-  })
-}
-
-export const posterAt = (
-  posters: { [id: string]: Poster },
-  pos: Point
-): Poster | undefined => {
-  return Object.values(posters).find(p => {
-    return p.x == pos.x && p.y == pos.y
-  })
-}
-
 export const enterPoster = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
@@ -132,7 +115,11 @@ export const enterPoster = (
     .enter.$post()
   if (!r.ok) {
     console.warn("Cannot start viewing a poster")
+    return
   }
+  state.socket?.emit("Subscribe", {
+    channel: pid,
+  })
 }
 
 export let moveOneStep = (
@@ -483,19 +470,24 @@ export const moveByArrow = (
   const nx = x + dx
   const ny = y + dy
   if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
-    const la: UserId | null = lookingAt(Object.values(state.people), me)
-    if (!la) {
+    const la = lookingAt(me)
+    const la_person: PersonInMap | undefined = la
+      ? personAt(state.people, la)
+      : undefined
+    const la_poster: Poster | undefined = la
+      ? posterAt(state.posters, la)
+      : undefined
+    if (!la_person && !la_poster) {
       if (state.people_typing[props.myUserId]) {
         const d: TypingSocketSendData = {
           user: me.id,
           room: props.room_id,
-          token: localStorage["virtual-poster:jwt_hash"],
           typing: false,
         }
         state.socket?.emit("ChatTyping", d)
       }
       state.selectedUsers.clear()
-      moveTo(
+      moved = moveTo(
         axios,
         props,
         state,
@@ -503,7 +495,6 @@ export const moveByArrow = (
         { x: nx, y: ny },
         localStorage["virtual-poster:jwt_hash"]
       )
-      moved = true
     } else {
       const d = {
         user: props.myUserId,
@@ -516,12 +507,10 @@ export const moveByArrow = (
   if (!moved) {
     //Only direction change
     const d: DirectionSendSocket = {
-      user: props.myUserId,
       room: props.room_id,
       direction: me.direction,
-      token: localStorage["virtual-poster:jwt_hash"],
-      debug_as: props.debug_as,
     }
+    console.log("Only direction", d)
     state.socket?.emit("Direction", d)
   }
   return { ok: true, moved }
@@ -645,8 +634,6 @@ export const dblClickHandler = (
         user: me.id,
         room: props.room_id,
         typing: false,
-        token: props.jwt_hash_initial,
-        debug_as: props.debug_as,
       }
       state.socket?.emit("ChatTyping", d)
     }

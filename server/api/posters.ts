@@ -115,7 +115,7 @@ async function routes(
         false
       )
       if (r.ok && r.poster) {
-        emit.poster(r.poster)
+        emit.channels([roomId, req["requester"]]).poster(r.poster)
       }
       return r
     }
@@ -137,8 +137,10 @@ async function routes(
       )
       const last_updated = Date.now()
       if (r.ok && r.poster_id) {
-        emit.posterRemove(roomId, req["requester"], r.poster_id)
-        emit.room(roomId).peopleUpdate(
+        emit
+          .channels([roomId, req["requester"]])
+          .posterRemove(roomId, req["requester"], r.poster_id)
+        emit.channels([roomId, req["requester"]]).peopleUpdate(
           r.viewers!.map(pid => {
             return { id: pid, last_updated, poster_viewing: null }
           })
@@ -156,7 +158,7 @@ async function routes(
       p.title = title
       p.last_updated = Date.now()
       const r = await model.posters.set(p)
-      emit.poster(p)
+      emit.channels([p.room, req["requester"]]).poster(p)
       return { ok: r }
     } else {
       return { ok: false }
@@ -249,7 +251,7 @@ async function routes(
           poster.last_updated = Date.now()
           const r = await updatePosterFile(poster, req["file"])
           if (r.ok) {
-            emit.poster(poster)
+            emit.channels([userId, poster.room]).poster(poster)
           }
           return r
         }
@@ -303,7 +305,7 @@ async function routes(
       if (r.ok) {
         const new_poster = await model.posters.get(poster_id)
         if (new_poster) {
-          emit.poster(new_poster)
+          emit.channels([new_poster.author, new_poster.room]).poster(new_poster)
         }
         return { ...r, poster: new_poster || undefined }
       } else {
@@ -347,7 +349,7 @@ async function routes(
         } else {
           await deleteFile("db/posters/" + poster.id + ".png")
         }
-        emit.poster(poster)
+        emit.channels([poster.author, poster.room]).poster(poster)
         return { ok: true, poster }
       }
     }
@@ -363,7 +365,7 @@ async function routes(
       } else {
         poster.last_updated = Date.now()
         await deleteFile("db/posters/" + poster.id + ".png")
-        emit.poster(poster)
+        emit.channels([poster.author, poster.room]).poster(poster)
         return { ok: true, poster }
       }
     }
@@ -420,7 +422,7 @@ async function routes(
       }
       const r = await model.chat.addPosterComment(c)
       if (r) {
-        emit.posterComment(c)
+        emit.channel(c.poster).posterComment(c)
         return { ok: true }
       } else {
         return { ok: false }
@@ -477,7 +479,7 @@ async function routes(
       }
       const r = await model.chat.addPosterComment(e)
       if (r) {
-        emit.posterComment(e)
+        emit.channel(posterId).posterComment(e)
         return { ok: true }
       } else {
         return { ok: false }

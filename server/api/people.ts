@@ -118,7 +118,8 @@ async function routes(
           u.name = obj.name
         }
         console.log("patch person", modified.keys, u)
-        emit.peopleUpdate([u])
+        const all_rooms = Object.keys(model.maps)
+        emit.channels(all_rooms).peopleUpdate([u])
         return { ok: true, modified }
       } else {
         return {
@@ -180,7 +181,7 @@ async function routes(
             chat_char_count: 0,
           },
         }
-        emit.room(room.room_id).peopleNew([p])
+        emit.channel(room.room_id).peopleNew([p])
       }
       return await res
         .setCookie("virtual_poster_session_id", sid, {
@@ -230,10 +231,14 @@ async function routes(
         console.log("Deleting firebase user", firebase_user.uid)
         await admin.auth().deleteUser(firebase_user.uid)
         console.log("Successfully deleted user")
-        emit.peopleRemove([userId])
       } catch (error) {
-        console.log("Error deleting user:", error)
+        console.log("Error deleting Firebase user:", error)
       }
+      if (r.ok) {
+        const all_rooms = Object.keys(model.maps)
+        emit.channels(all_rooms).peopleRemove([userId])
+      }
+
       return r
     } else {
       throw {

@@ -103,8 +103,8 @@
           id="participants"
           v-if="!replying && chatGroup && chatGroup.length > 0"
         >
-          <span :style="{ color: editing ? 'red' : 'black' }"
-            >{{ editing ? "編集中" : "" }} 会話の参加者：
+          <span :style="{ color: editingOld ? 'red' : 'black' }"
+            >{{ editingOld ? "編集中" : "" }} 会話の参加者：
           </span>
           <span
             class="person-in-local"

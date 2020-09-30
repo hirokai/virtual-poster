@@ -2,8 +2,8 @@
 #![allow(non_camel_case_types)]
 
 use actix::*;
-use actix_cors::Cors;
-use actix_web::{http, web, App, Error, HttpRequest, HttpResponse, HttpServer};
+// use actix_cors::Cors;
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use std::time::{Duration, Instant};
 mod defs;
@@ -37,7 +37,11 @@ fn show_time() -> () {
     );
 }
 
-fn check_token<'a>(user: &'a str, token: &'a str, debug_as: &'a Option<String>) -> Option<&'a str> {
+fn check_token<'a>(
+    user: &'a str,
+    _token: &'a str,
+    debug_as: &'a Option<String>,
+) -> Option<&'a str> {
     match debug_as {
         Some(user) => Some(user),
         None => {
@@ -71,8 +75,8 @@ async fn input_route(
     body: web::Json<DataFromAPIServer>,
     srv: web::Data<Addr<socket_server::PubSubServer>>,
 ) -> Result<HttpResponse, Error> {
-    println!("input from REST server");
-    let data = body.into_inner();
+    let data: DataFromAPIServer = body.into_inner();
+    debug!("Parsed input from REST server: {:?}", &data);
     srv.do_send(data);
     Ok(HttpResponse::Ok().body("OK"))
 }
@@ -168,18 +172,24 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                 let m = text.trim();
                 debug!("Text received: {:?}", m);
                 if m == "ping" {
+                    info!("Ping text received");
                     ctx.text("pong");
                 } else {
                     let obj: Option<MsgFromUser> = serde_json::from_str(&m).ok();
-                    info!("{:?}", &obj);
+                    info!("Parsed: {:?}", &obj);
+                    if obj.is_none() {
+                        info!("Parse failed");
+                        return;
+                    }
+                    let obj = obj.unwrap();
                     match (&obj, &self.user_id, &self.id) {
                         (
-                            Some(MsgFromUser::Active {
+                            MsgFromUser::Active {
                                 room,
                                 user,
                                 token,
                                 debug_as,
-                            }),
+                            },
                             _,
                             Some(session_id)
                         ) => {
@@ -203,45 +213,34 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                                 ),
                             }
                         }
-                        (Some(obj1), Some(user_id), Some(session_id)) => {
-                            if let MsgFromUser::Subscribe { channel, debug_as } = &obj1 {
-                                let user_verified: Option<&str> = check_token(&user_id, &"", &debug_as);
-                                if user_verified.is_some() {
+                        (obj1, Some(user_id), Some(session_id)) => {
+                            if let MsgFromUser::Subscribe { channel } = &obj1 {
                                     self.subscribed_to.push(channel.to_string());
-                                } else{
-                                    warn!("Unauthorized");
-                                    ctx.text(
-                                        &serde_json::to_string(&json!({"Error": {"error": "Invalid token"}})).unwrap(),
-                                    );
-                                }
                             }
                             self.addr.do_send(socket_server::DataFromUser {
-                                data: obj.unwrap(),
+                                data: obj,
                                 user_id: user_id.to_string(),
                                 session_id: *session_id,
                             });
                         }
-                        (Some(_), Some(user_id), None) => {
+                        (_, Some(_), None) => {
                             ctx.text(
                             &serde_json::to_string(
                                 &json!({"Error": {"error": "Session ID not assigned"}}),
                             )
                             .unwrap())
                         }
-                        (Some(_), None,_) => ctx.text(
+                        (_, None,_) => ctx.text(
                             &serde_json::to_string(
                                 &json!({"Error": {"error": "User ID has not been registered by Active message."}}),
                             )
                             .unwrap(),
-                        ),
-                        (None, _,_) => {
-                            warn!("Failed to parse a message from client: {}", &m);
-                        }
+                        )
                     }
                 }
             }
 
-            ws::Message::Binary(_) => println!("Unexpected binary"),
+            ws::Message::Binary(_) => warn!("Unexpected binary"),
             ws::Message::Close(reason) => {
                 ctx.close(reason);
                 ctx.stop();

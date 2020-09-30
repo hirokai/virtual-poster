@@ -62,7 +62,7 @@ pub struct DataFromUser {
     pub session_id: u128,
 }
 
-#[derive(Message, Deserialize)]
+#[derive(Message, Deserialize, Debug)]
 #[rtype(result = "()")]
 pub struct DataFromAPIServer {
     pub data: AppNotification,
@@ -118,13 +118,17 @@ fn send_message(
     skip_id: Option<u128>,
 ) {
     debug!("{:?}", topics);
+    let mut ids: HashSet<u128> = HashSet::new();
     if let Some(sessions_in_topic) = topics.get(room) {
         for id in sessions_in_topic {
             if *id != skip_id.unwrap_or(0) {
-                if let Some(addr) = sessions.get(id) {
-                    let _ = addr.do_send(Message(message.to_owned()));
-                }
+                ids.insert(*id);
             }
+        }
+    }
+    for id in ids {
+        if let Some(addr) = sessions.get(&id) {
+            let _ = addr.do_send(Message(message.to_owned()));
         }
     }
 }
@@ -182,30 +186,33 @@ impl Handler<Disconnect> for PubSubServer {
     type Result = ();
 
     fn handle(&mut self, msg: Disconnect, _: &mut Context<Self>) {
-        println!("Someone disconnected");
-
-        let mut rooms: Vec<String> = Vec::new();
+        info!("Someone disconnected");
 
         // remove address
         if self.sessions.remove(&msg.id).is_some() {
             // remove session from all rooms
-            for (name, sessions) in &mut self.topics {
-                if sessions.remove(&msg.id) {
-                    rooms.push(name.to_owned());
+            let mut topics_to_remove: HashSet<String> = HashSet::new();
+            for (name, sessions_in_topic) in &mut self.topics {
+                sessions_in_topic.remove(&msg.id);
+                if sessions_in_topic.is_empty() {
+                    topics_to_remove.insert(name.to_string());
                 }
             }
+            for t in topics_to_remove {
+                self.topics.remove(&t);
+            }
         }
-        // send message to other users
-        for room in rooms {
-            self.send_message(&room, "Someone disconnected", None);
-        }
+        debug!("{:?}", self.topics);
     }
 }
 
 fn encode_for_client(obj: &AppNotification) -> serde_json::Value {
     match obj {
-        AppNotification::Moved { room: _, move_data } => {
-            let s = move_data
+        AppNotification::Moved {
+            room: _room,
+            positions,
+        } => {
+            let s = positions
                 .iter()
                 .map(
                     |Move {
@@ -265,7 +272,15 @@ impl Handler<DataFromUser> for PubSubServer {
                     .or_insert(HashSet::new())
                     .insert(msg.session_id);
 
-                debug!("Rooms: {:?}", self.topics);
+                debug!("Channels: {:?}", self.topics);
+            }
+            MsgFromUser::Unsubscribe { channel, .. } => {
+                show_time();
+                self.topics
+                    .entry(channel.clone())
+                    .or_insert(HashSet::new())
+                    .remove(&msg.session_id);
+                debug!("Channels: {:?}", self.topics);
             }
             MsgFromUser::Move { room, x, y, .. } => {
                 let redis = self.redis.clone();
@@ -338,7 +353,7 @@ impl Handler<DataFromUser> for PubSubServer {
 
                                 let obj = AppNotification::Moved {
                                     room: room1.clone(),
-                                    move_data: vec![Move {
+                                    positions: vec![Move {
                                         user: user_id.clone(),
                                         x: x,
                                         y: y,
@@ -360,16 +375,138 @@ impl Handler<DataFromUser> for PubSubServer {
                 .then(|res, act, ctx| fut::ready(()))
                 .wait(ctx);
             }
-            MsgFromUser::Active { user, room, .. } => {
-                let obj = AppNotification::UserActive {
-                    user,
-                    room: room.clone(),
+            MsgFromUser::Direction { room, direction } => {
+                let redis = self.redis.clone();
+                let user_id = msg.user_id.clone();
+                let session_id = msg.session_id.clone();
+                let room1 = room.clone();
+                let addr = ctx.address();
+                let sessions = self.sessions.clone();
+                let topics = self.topics.clone();
+                let pg = self.pg.clone();
+                async move {
+                    if emulate_delay {
+                        let delay: u64 = rng.gen_range(20, 200);
+                        delay_for(Duration::from_millis(delay)).await;
+                    }
+                    let key = format!("pos:{}:{}", &room1, user_id.clone());
+                    let resp = redis
+                        .send(Command(resp_array!["GET", &key]))
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let s: String = match resp {
+                        RespValue::BulkString(v) => std::str::from_utf8(&v).unwrap().to_string(),
+                        RespValue::SimpleString(s) => s,
+                        _ => "".to_string(),
+                    };
+                    let pos: Option<(Point, direction)> = parse_pos(&s);
+                    match pos {
+                        None => warn!("Pos parse failed: '{}' (key: '{}')", s, &key),
+                        Some(pos) => {
+                            println!("{:?}", &pos);
+                            let new_pos = (pos.0, direction);
+                            let resp = redis
+                                .send(Command(resp_array![
+                                    "SET",
+                                    format!("pos:{}:{}", &room1, &user_id),
+                                    format!("{}.{}.{}", new_pos.0.x, new_pos.0.y, &new_pos.1)
+                                ]))
+                                .await
+                                .unwrap()
+                                .unwrap();
+                            let start = Instant::now();
+                            let conn = pg.get().await.unwrap();
+                            conn.query(
+                                "UPDATE
+                                            person_position
+                                        SET
+                                            direction=$3
+                                        WHERE
+                                            person=$1
+                                            AND room=$2",
+                                &[&user_id, &room, &(new_pos.1)],
+                            )
+                            .await
+                            .unwrap();
+                            let end = start.elapsed();
+                            debug!("Updated position: {} µs", end.subsec_nanos() / 1000);
+
+                            let obj = AppNotification::Moved {
+                                room: room1.clone(),
+                                positions: vec![Move {
+                                    user: user_id.clone(),
+                                    x: new_pos.0.x,
+                                    y: new_pos.0.y,
+                                    direction: new_pos.1,
+                                }],
+                            };
+                            let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
+                            for (n, _) in &topics {
+                                if n == &room1 {
+                                    send_message(&sessions, &topics, &n, &s, None);
+                                }
+                            }
+                            ()
+                        }
+                    }
+                }
+                .into_actor(self)
+                .then(|res, act, ctx| fut::ready(()))
+                .wait(ctx);
+            }
+            MsgFromUser::Active {
+                room,
+                token,
+                debug_as,
+                ..
+            } => {
+                self.topics
+                    .entry(msg.user_id.clone())
+                    .or_insert(HashSet::new())
+                    .insert(msg.session_id);
+                let obj = AppNotification::ActiveUsers {
+                    data: vec![ActiveUserData {
+                        user: msg.user_id,
+                        room: room.clone(),
+                        active: true,
+                    }],
                 };
                 self.send_message(
                     &room,
                     &serde_json::to_string(&encode_for_client(&obj)).unwrap(),
                     None,
                 );
+            }
+            MsgFromUser::ChatTyping { room, typing, .. } => {
+                let redis = self.redis.clone();
+                let user_id = msg.user_id.clone();
+                let room_id = room.clone();
+                async move {
+                    let key = format!("typing:{}:{}", &room_id, user_id);
+                    redis
+                        .send(Command(resp_array![
+                            "SET",
+                            &key,
+                            if typing { "1" } else { "0" }
+                        ]))
+                        .await
+                        .unwrap()
+                }
+                .into_actor(self)
+                .then(|res, act, ctx| fut::ready(()))
+                .wait(ctx);
+                let obj = AppNotification::ChatTyping {
+                    room: room.clone(),
+                    user: msg.user_id,
+                    typing,
+                };
+                let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
+                debug!("Emitting to client: {}", &s);
+                self.send_message(
+                    &room, &s, None,
+                    // Some(msg.session_id),
+                )
             }
         };
     }
@@ -381,7 +518,7 @@ impl Handler<DataFromAPIServer> for PubSubServer {
 
     fn handle(&mut self, msg: DataFromAPIServer, _: &mut Context<Self>) {
         let s: String = serde_json::to_string(&msg.data).unwrap();
-        debug!("From server: {:?}", s);
+        // debug!("From server: channels: {:?}, data: {:?}", msg.channels, s);
         match msg.data {
             _ => {
                 for n in msg.channels {

@@ -218,6 +218,7 @@ import {
 } from "vue"
 
 import {
+  RoomAppProps,
   RoomAppState,
   PersonInMap,
   Cell,
@@ -233,6 +234,7 @@ import {
   CommentId,
   CommentEvent,
   PosterCommentDecrypted,
+  AppNotification,
 } from "../@types/types"
 
 import Map from "./room/Map.vue"
@@ -247,7 +249,7 @@ import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import jsSHA from "jssha"
 import io from "socket.io-client"
-import { keyBy } from "../common/util"
+import { decodeNotificationData } from "../common/util"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import { initPeopleService } from "./room_people_service"
@@ -286,25 +288,75 @@ import { addLatencyLog } from "./room_log_service"
 import { deleteUserInfoOnLogout } from "./util"
 import { PosterId } from "@/api/@types"
 
+const setupSocketHandlers = (
+  props: RoomAppProps,
+  state: RoomAppState,
+  socket: SocketIO.Socket | MySocketObject
+) => {
+  console.log("Setting up socket handlers for", socket)
+  socket.on("connection", () => {
+    console.log("Socket connected")
+    socket.emit("Active", {
+      room: props.room_id,
+      user: props.myUserId,
+      token: props.jwt_hash_initial || props.debug_token,
+      debug_as: props.debug_as,
+    })
+    socket.emit("Subscribe", {
+      channel: props.room_id,
+      token: props.jwt_hash_initial,
+    })
+  })
+  socket.on("auth_error", () => {
+    console.log("socket auth_error")
+  })
+
+  socket.on("greeting", () => {
+    console.log("Greeting received.")
+    socket.emit("Active", { room: props.room_id, user: props.myUserId })
+  })
+
+  socket.on("Announce", d => {
+    console.log("socket announce", d)
+    state.announcement = d
+  })
+
+  socket.on("map.reset", () => {
+    console.log("map.reset not implemented")
+    // reloadData()
+  })
+  socket.on("app.reload", () => {
+    if (
+      confirm("アプリケーションが更新されました。リロードしても良いですか？")
+    ) {
+      location.reload()
+    }
+  })
+  socket.on("app.reload.silent", () => {
+    location.reload()
+  })
+}
+
 class MySocketObject {
+  props: RoomAppProps
+  state: RoomAppState
   listeners: Record<string, ((data: any) => void)[]> = {}
   ws: WebSocket
   connected?: boolean
+  url: string
 
-  constructor(url: string) {
-    this.ws = this.connect(url)
-    this.ws.onmessage = d => {
-      const dat = JSON.parse(d.data)
-      console.log("WebSocket received: ", dat)
-      const msg = dat.type
-      for (const listener of this.listeners[msg] || []) {
-        listener(dat.data)
-      }
-    }
-    this.ws.onopen = () => {
-      this.listeners["connection"][0](null)
-    }
+  constructor(url: string, props: RoomAppProps, state: RoomAppState) {
+    this.props = props
+    this.state = state
+    this.url = url
     this.connected = false
+    this.ws = this.connect()
+    console.log("constructor", this.ws)
+    setInterval(() => {
+      if (this.ws && this.ws.readyState >= 2) {
+        this.connect()
+      }
+    }, 2000)
   }
   on(message: string, handler: (data: any) => void) {
     if (!this.listeners[message]) {
@@ -320,37 +372,79 @@ class MySocketObject {
     } else if (message == "Subscribe") {
       this.ws.send(
         JSON.stringify({
-          Subscribe: { channel: data.channel, token: data.token },
+          Subscribe: { channel: data.channel },
         })
       )
+    } else if (message == "Unsubscribe") {
+      this.ws.send(
+        JSON.stringify({
+          Unsubscribe: { channel: data.channel },
+        })
+      )
+    } else if (message == "Direction") {
+      const obj = JSON.stringify({
+        Direction: { direction: data.direction, room: data.room },
+      })
+      console.log("Emitting", message, obj)
+      this.ws.send(obj)
+    } else if (message == "ChatTyping") {
+      const obj = JSON.stringify({
+        ChatTyping: { room: data.room, user: data.user, typing: data.typing },
+      })
+      console.log("Emitting", message, obj)
+      this.ws.send(obj)
+    } else {
+      console.error("Not implemented: ", message, data)
     }
   }
-  connect(url: string): WebSocket {
-    console.log("Connecting WS: ", url)
-    const ws = new WebSocket(url)
-    this.ws = ws
-    ws.onopen = () => {
+  connect(): WebSocket {
+    console.log("Connecting WS: ", this.url)
+    if (this.ws) {
+      this.ws.close()
+    }
+    this.ws = new WebSocket(this.url)
+    setupSocketHandlers(this.props, this.state, this)
+    this.ws.onmessage = d => {
+      const dat = JSON.parse(d.data)
+      // console.log("WebSocket received: ", dat)
+      const msg: AppNotification = dat.type
+      const decoded = decodeNotificationData(msg, dat)
+      if (decoded == null) {
+        console.error("Decode error for WebSocket notification: ", msg, dat)
+        return
+      }
+      for (const listener of this.listeners[msg] || []) {
+        listener(decoded)
+      }
+    }
+
+    this.ws.onopen = () => {
       console.log("WebSocket server connected")
       this.connected = true
+      this.listeners["connection"][0](null)
     }
 
-    ws.onclose = ev => {
+    this.ws.onclose = ev => {
+      /*
       console.log(
         "Socket is closed. Reconnect will be attempted in 5 seconds.",
-        ev.reason
+        ev
       )
+      this.connected = false
       setTimeout(() => {
         if (!this.connected) {
-          this.connect(url)
+          this.connect()
         }
       }, 5000)
+      */
     }
 
-    ws.onerror = err => {
+    this.ws.onerror = err => {
       console.error("Socket encountered error: ", err, "Closing socket")
-      ws.close()
+      // this.ws.close()
     }
-    return ws
+
+    return this.ws
   }
 }
 
@@ -580,62 +674,19 @@ export default defineComponent({
     }
 
     const leavePoster = async () => {
+      const poster_id = adjacentPoster.value!.id
       const r = await client.maps
         ._roomId(props.room_id)
-        .posters._posterId(adjacentPoster.value!.id)
+        .posters._posterId(poster_id)
         .leave.$post()
       if (r.ok) {
         state.posterComments = {}
+        state.socket?.emit("Unsubscribe", {
+          channel: poster_id,
+        })
       } else {
         console.error("Leave poster failed")
       }
-    }
-
-    const setupSocketHandlers = (socket: SocketIO.Socket | MySocketObject) => {
-      console.log("Setting up socket handlers")
-      socket.on("connection", () => {
-        console.log("Socket connected")
-        socket.emit("Active", {
-          room: props.room_id,
-          user: props.myUserId,
-          token: props.jwt_hash_initial || props.debug_token,
-          debug_as: props.debug_as,
-        })
-        socket.emit("Subscribe", {
-          channel: props.room_id,
-          token: props.jwt_hash_initial,
-        })
-      })
-      socket.on("auth_error", () => {
-        console.log("socket auth_error")
-      })
-
-      socket.on("greeting", () => {
-        console.log("Greeting received.")
-        socket.emit("Active", { room: props.room_id, user: props.myUserId })
-      })
-
-      socket.on("announce", d => {
-        console.log("socket announce", d)
-        state.announcement = d
-      })
-
-      socket.on("map.reset", () => {
-        console.log("map.reset not implemented")
-        // reloadData()
-      })
-      socket.on("app.reload", () => {
-        if (
-          confirm(
-            "アプリケーションが更新されました。リロードしても良いですか？"
-          )
-        ) {
-          location.reload()
-        }
-      })
-      socket.on("app.reload.silent", () => {
-        location.reload()
-      })
     }
 
     const myChatGroup = _myChatGroup(props, state)
@@ -808,7 +859,7 @@ export default defineComponent({
         if (data.socket_protocol == "Socket.IO") {
           state.socket = io(socket_url)
         } else if (data.socket_protocol == "WebSocket") {
-          state.socket = new MySocketObject(socket_url)
+          state.socket = new MySocketObject(socket_url, props, state)
         } else {
           console.error("Socket protocol not supported")
         }
@@ -819,7 +870,11 @@ export default defineComponent({
           return
         }
 
-        setupSocketHandlers(state.socket)
+        setupSocketHandlers(
+          props,
+          state,
+          state.socket as MySocketObject | SocketIO.Socket
+        )
         // We have to get public keys of users first.
         await initPeopleService(props.axios, state.socket, props, state)
         // Then chat comments, map data, poster data.
@@ -852,6 +907,10 @@ export default defineComponent({
 
         const me = myself.value
         if (me && me.x != undefined && me.y != undefined) {
+          const poster_viewing = me.poster_viewing
+          if (poster_viewing) {
+            state.socket?.emit("Subscribe", { channel: poster_viewing })
+          }
           state.center = {
             x: inRange(me.x, 5, state.cols - 6),
             y: inRange(me.y, 5, state.rows - 6),
@@ -901,7 +960,6 @@ export default defineComponent({
         user: me.id,
         room: props.room_id,
         typing: true,
-        debug_as: props.debug_as,
       }
       if (!state.people_typing[props.myUserId]) {
         state.socket?.emit("ChatTyping", d)
@@ -910,7 +968,6 @@ export default defineComponent({
             user: me.id,
             room: props.room_id,
             typing: false,
-            debug_as: props.debug_as,
           }
           state.socket?.emit("ChatTyping", d2)
         }, 8000)

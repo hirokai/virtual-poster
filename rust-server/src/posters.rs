@@ -40,6 +40,7 @@ pub async fn get_posters_of_room(
             author: r.get("author"),
             title: r.get("title"),
             poster_number: r.get::<_, i32>("poster_number") as usize,
+            location: r.get("location"),
             custom_image: r.get("custom_image"),
             x: r.get::<_, i32>("x") as usize,
             y: r.get::<_, i32>("y") as usize,

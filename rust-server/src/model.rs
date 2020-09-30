@@ -218,7 +218,7 @@ pub async fn start_chat(
     }
 }
 
-pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Position> {
+pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<PosDir> {
     let conn = pg.get().await.unwrap();
     let rows = conn
         .query(
@@ -235,7 +235,7 @@ pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Pos
         let x: i32 = rows[0].get("x");
         let y: i32 = rows[0].get("y");
         let direction: direction = rows[0].get("direction");
-        Some(Position {
+        Some(PosDir {
             x: x as u32,
             y: y as u32,
             direction,
@@ -248,7 +248,7 @@ pub async fn get_person_pos(pg: &PgPool, room: &str, person: &str) -> Option<Pos
 pub mod chat {
     use crate::defs::*;
 
-    pub async fn addCommentEncrypted(_e: &CommentEncrypted) -> bool {
+    pub async fn addCommentEncrypted(_e: &ChatComment) -> bool {
         true
     }
 }

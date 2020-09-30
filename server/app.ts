@@ -114,9 +114,12 @@ async function protected_api_routes(
     if (ok && req["requester"]) {
       const p = await model.people.get(req["requester"])
       if (p) {
-        emit.peopleUpdate([
-          { public_key, id: req["requester"], last_updated: Date.now() },
-        ])
+        const all_rooms = Object.keys(model.maps)
+        emit
+          .channels(all_rooms)
+          .peopleUpdate([
+            { public_key, id: req["requester"], last_updated: Date.now() },
+          ])
       }
     }
     return { ok, error: r != null ? "Exists" : undefined }

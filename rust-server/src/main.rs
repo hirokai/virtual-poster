@@ -5,6 +5,7 @@ extern crate dotenv;
 extern crate num_cpus;
 extern crate rand;
 extern crate redis_async;
+extern crate time;
 #[macro_use]
 extern crate log;
 use actix_files as fs;
@@ -239,7 +240,7 @@ async fn main() -> std::io::Result<()> {
                     .route("/id_token", web::post().to(stub))
                     .route("/logout", web::post().to(stub))
                     .route("/latency_report", web::post().to(stub))
-                    .route("/maps/{roomId}/people", web::get().to(get_room_people))
+                    .route("/maps/{roomId}/people", web::get().to(stub)) // get_room_people
                     .route("/maps", web::get().to(get_rooms)) // 20200928 OK
                     .route("/maps/{room_id}", web::get().to(get_room)) // 20200928 OK
                     .route("/maps/{roomId}/enter", web::post().to(enter_room))
@@ -278,7 +279,7 @@ async fn main() -> std::io::Result<()> {
                     )
                     .route(
                         "/maps/{roomId}/groups/{groupId}/comments",
-                        web::post().to(post_comment),
+                        web::post().to(stub), //post_comment
                     )
                     .route(
                         "/maps/{roomId}/posters/{posterId}/approach",
@@ -294,8 +295,8 @@ async fn main() -> std::io::Result<()> {
                     )
                     .route("/people/{userId}", web::get().to(get_person))
                     .route("/people/{userId}", web::patch().to(patch_person))
-                    .route("/people", web::get().to(get_all_people))
-                    .route("/people", web::post().to(stub))
+                    .route("/people", web::get().to(stub)) // get_all_people
+                    .route("/people", web::post().to(post_person))
                     .route("/people_multi/{personIds}", web::get().to(stub))
                     .route(
                         "/posters/{posterId}/comments/{commentId}",
@@ -321,7 +322,7 @@ async fn main() -> std::io::Result<()> {
                         "/posters/{posterId}/comments/{commentId}/reply",
                         web::post().to(stub),
                     )
-                    .route("/register", web::post().to(stub))
+                    .route("/register", web::post().to(register_user))
                     .route("/socket_url", web::get().to(get_socket_url)),
             )
             .default_service(fs::Files::new("/", "../public"))

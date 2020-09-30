@@ -5,6 +5,7 @@ use bb8_postgres::PostgresConnectionManager;
 use postgres_types::{FromSql, ToSql};
 use serde::{Deserialize, Serialize};
 // use sqlx;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use strum_macros::{Display, EnumString};
 
@@ -12,6 +13,8 @@ pub type UserId = String;
 pub type RoomId = String;
 pub type GroupId = String;
 pub type CommentId = String;
+pub type PosterId = String;
+pub type MapCellId = String;
 pub type PgPool = Pool<PostgresConnectionManager<tokio_postgres::NoTls>>;
 
 #[derive(Clone)]
@@ -37,6 +40,7 @@ pub struct Poster {
     pub title: Option<String>,
     pub author: Option<UserId>,
     pub room: RoomId,
+    pub location: MapCellId,
     pub x: usize,
     pub y: usize,
     pub poster_number: usize,
@@ -44,7 +48,7 @@ pub struct Poster {
 }
 #[derive(Debug, Serialize, Default, Clone)]
 pub struct MapCell {
-    pub id: String,
+    pub id: MapCellId,
     pub room: String,
     pub x: usize,
     pub y: usize,
@@ -69,14 +73,50 @@ pub enum direction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PersonPos {
+    pub x: u32,
+    pub y: u32,
+    pub direction: direction,
+    pub room: String,
+    pub user: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Person {
     pub id: String,
     pub last_updated: i64,
     pub name: String,
     pub avatar: Option<String>,
-    pub email: String,
-    pub role: Option<user_role>,
+    pub connected: Option<bool>,
+    pub stats: PersonStat,
+    pub public_key: Option<String>,
 }
+
+pub struct PersonWithEmail {
+    pub id: String,
+    pub last_updated: i64,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub connected: Option<bool>,
+    pub stats: PersonStat,
+    pub public_key: Option<String>,
+    pub email: Option<String>,
+}
+
+pub struct PersonWithEmailRooms {
+    pub id: String,
+    pub last_updated: i64,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub connected: Option<bool>,
+    pub stats: PersonStat,
+    pub public_key: Option<String>,
+    pub email: Option<String>,
+    pub rooms: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PersonStat {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PersonInMap {
@@ -84,11 +124,32 @@ pub struct PersonInMap {
     pub last_updated: i64,
     pub name: String,
     pub avatar: Option<String>,
-    pub email: String,
-    pub role: Option<user_role>,
+    pub connected: Option<bool>,
+    pub stats: PersonStat,
+    pub public_key: Option<String>,
+    pub room: String,
     pub x: u32,
     pub y: u32,
     pub direction: direction,
+    pub moving: bool,
+    pub poster_viewing: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PersonUpdate {
+    pub id: String,
+    pub last_updated: i64,
+    pub room: Option<String>,
+    pub x: Option<u32>,
+    pub y: Option<u32>,
+    pub moving: Option<bool>,
+    pub direction: Option<direction>,
+    pub name: Option<String>,
+    pub avatar: Option<String>,
+    pub connected: Option<bool>,
+    pub poster_viewing: Option<Option<String>>,
+    pub stats: Option<PersonStat>,
+    pub public_key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,7 +159,7 @@ pub struct Point {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Position {
+pub struct PosDir {
     pub x: u32,
     pub y: u32,
     pub direction: direction,
@@ -130,21 +191,6 @@ pub struct ChatGroup {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatComment {
-    pub id: CommentId,
-    pub texts: Vec<CommentEncryptedEntry>,
-    pub timestamp: i64,
-    pub last_updated: i64,
-    pub room: RoomId,
-    pub x: usize,
-    pub y: usize,
-    pub person: UserId,
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommentEncryptedEntry {
     pub text: String,
     pub to: UserId,
@@ -152,7 +198,7 @@ pub struct CommentEncryptedEntry {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CommentEncrypted {
+pub struct ChatComment {
     pub id: String,
     pub person: String,
     pub room: RoomId,
@@ -162,6 +208,7 @@ pub struct CommentEncrypted {
     pub timestamp: i64,
     pub last_updated: i64,
     pub kind: String,
+    pub reply_to: Option<CommentId>,
 }
 
 pub fn get_timestamp() -> Option<i64> {
@@ -178,60 +225,132 @@ pub struct Move {
     pub direction: direction,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Announcement {
+    pub room: String,
+    pub text: String,
+    pub marquee: bool,
+    pub period: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PosterCommentDecrypted {
+    pub id: String,
+    pub timestamp: i64,
+    pub last_updated: i64,
+    pub room: RoomId,
+    pub x: u32,
+    pub y: u32,
+    pub poster: PosterId,
+    pub person: UserId,
+    pub text_decrypted: String,
+    pub reply_to: Option<CommentId>,
+    pub reactions: Option<HashMap<String, HashMap<UserId, CommentId>>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActiveUserData {
+    pub room: RoomId,
+    pub user: String,
+    pub active: bool,
+}
+
 // Commanad from REST API server
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AppNotification {
-    Person { person: Person },
-    PersonNew { person: Person },
-    PersonUpdate { person: Person },
-    PersonRemove { id: String },
-    Group { group: ChatGroup },
-    GroupUpdate { group: ChatGroup },
-    GroupRemove { id: String },
-    PosterFileUpdate { id: String },
-    Poster { poster: Poster },
-    PosterRemove { id: String },
-    PosterComment { comment: CommentEncrypted },
-    PosterCommentRemove { id: String },
-    Comment { comment: CommentEncrypted },
-    CommentRemove { id: String },
-    Moved { room: RoomId, move_data: Vec<Move> },
-    UserActive { room: RoomId, user: String },
-    /*
-    | "Announce"
-    | "AuthError"
-    | "MoveError"
-    | "PosterReset"
-    | "MapReset"
-    | "ActiveUsers"
-    | "ChatTyping"
-    | "MoveRequest"
-    */
+    Announce {
+        announce: Announcement,
+    },
+    Person {
+        person: Person,
+    },
+    PersonNew {
+        person: Vec<PersonInMap>,
+    },
+    PersonUpdate {
+        person: Vec<PersonUpdate>,
+    },
+    PersonRemove {
+        id: Vec<String>,
+    },
+    AuthError,
+    Moved {
+        room: RoomId,
+        positions: Vec<Move>,
+    },
+    MoveError {
+        pos: Option<PosDir>,
+        user_id: String,
+        error: String,
+    },
+    Group {
+        group: ChatGroup,
+    },
+    GroupRemove {
+        id: String,
+    },
+    Comment {
+        comment: ChatComment,
+    },
+    CommentRemove {
+        id: String,
+    },
+    PosterComment {
+        comment: PosterCommentDecrypted,
+    },
+    PosterCommentRemove {
+        id: String,
+    },
+    PosterReset,
+    Poster {
+        poster: Poster,
+    },
+    PosterRemove {
+        id: String,
+    },
+    MapReset,
+    ActiveUsers {
+        data: Vec<ActiveUserData>,
+    },
+    ChatTyping {
+        room: RoomId,
+        user: UserId,
+        typing: bool,
+    },
+    MoveRequest {
+        to_poster: PosterId,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MsgFromUser {
     Move {
-        room: String,
+        room: RoomId,
         x: u32,
         y: u32,
-        user: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        debug_as: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        debug_token: Option<String>,
+        user: UserId,
+    },
+    Direction {
+        room: RoomId,
+        direction: direction,
     },
     Active {
-        user: String,
-        room: String,
+        user: UserId,
+        room: RoomId,
         token: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         debug_as: Option<String>,
     },
     Subscribe {
         channel: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        debug_as: Option<String>,
+    },
+    Unsubscribe {
+        channel: String,
+    },
+    ChatTyping {
+        user: UserId,
+        room: RoomId,
+        typing: bool,
     },
 }

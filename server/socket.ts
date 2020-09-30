@@ -8,8 +8,8 @@ import { SocketIOEmitter } from "socket.io-emitter"
 import {
   Announcement,
   Person,
+  PersonInMap,
   ChatComment,
-  ChatCommentDecrypted,
   CommentId,
   ChatGroupId,
   Poster,
@@ -26,7 +26,7 @@ import {
   RoomId,
   UserId,
   Emitter,
-  EmitCommand,
+  AppNotification,
   ActiveUsersSocketData,
   SocketMessageFromUser,
   PosterCommentDecrypted,
@@ -63,9 +63,16 @@ export class Emit {
     }, 100)
   }
 
-  room(name: string): Emit {
-    this.log.debug("emit.room", name)
+  channel(name: string): Emit {
     return new Emit(this.emitter.to(name))
+  }
+
+  channels(names: string[]): Emit {
+    let emit: Emit = new Emit(this.emitter.to(names[0]))
+    for (const c of names.slice(1)) {
+      emit = new Emit(emit.emitter.to(c))
+    }
+    return emit
   }
 
   emitQueuedMessages(msg: string): void {
@@ -121,7 +128,7 @@ export class Emit {
   moveError(d: MoveErrorSocketData, socket: Emitter): void {
     socket.emit("MoveError", d)
   }
-  peopleNew(d: Person[], socket: Emitter = this.emitter): void {
+  peopleNew(d: PersonInMap[], socket: Emitter = this.emitter): void {
     this.log.debug("PersonNew", d)
     socket.emit("PersonNew", d)
   }
@@ -184,12 +191,9 @@ export class Emit {
 }
 
 export let emit: Emit
-export let io: SocketIO.Server | SocketIOEmitter
+export let io: Emitter
 
-export function registerSocket(
-  _io: SocketIO.Server | SocketIOEmitter,
-  logger = bunyanLogger
-): void {
+export function registerSocket(_io: Emitter, logger = bunyanLogger): void {
   emit = new Emit(_io, logger)
   io = _io
 }
@@ -276,13 +280,13 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
     })
     if (result) {
       if (result.group_left) {
-        emit.group(result.group_left)
+        emit.channel(d.room).group(result.group_left)
       }
       if (result.group_joined) {
-        emit.group(result.group_joined)
+        emit.channel(d.room).group(result.group_joined)
       }
       if (result.group_removed) {
-        emit.groupRemove(result.group_removed)
+        emit.channel(d.room).groupRemove(result.group_removed)
       }
     }
   })().catch(err => {
@@ -307,50 +311,31 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
     log.info("Connected:", socket.id)
     socket.emit("greeting")
 
-    addHandler(socket, "Auth", (d: AuthSocket) => {
-      ;(async () => {
-        const verified = await model.people.authSocket({
-          user: d.user,
-          token: d.jwt_hash,
-        })
-        if (verified) {
-          await model.redis.sockets.setex("auth:" + socket.id, 60 * 60 * 3, "1")
-        } else {
-          log.warn("Auth failed")
-          socket.emit("auth_error")
-        }
-      })().catch(err => log.error(err))
-    })
     addHandler(socket, "Move", d => onMoveSocket(d, socket, log))
     addHandler(socket, "Direction", (d: DirectionSendSocket) => {
       ;(async () => {
-        const verified = await model.people.authSocket(d, socket.id)
-        if (!verified) {
-          socket.emit("auth_error")
+        const uid = await model.redis.sockets.get("auth:" + socket.id)
+        if (!uid) {
+          socket.emit("AuthError")
           return
         }
         userLog({
-          userId: d.user,
+          userId: uid,
           operation: "direction",
           data: { direction: d.direction },
         })
-        await model.people.setDirection(d.user, d.direction)
+        await model.people.setDirection(d.room, uid, d.direction)
       })().catch(err => log.error(err))
     })
     addHandler(socket, "ChatTyping", (d: TypingSocketSendData) => {
       ;(async () => {
-        const verified = await model.people.authSocket(d, socket.id)
-        if (!verified) {
-          socket.emit("auth_error")
-          return
-        }
         await model.maps[d.room].setTyping(d.user, d.typing)
         const r: TypingSocketData = {
           room: d.room,
           user: d.user,
           typing: d.typing,
         }
-        io.to(d.room).emit("chat_typing", r)
+        io.to(d.room).emit("ChatTyping", r)
       })().catch(err => log.error(err))
     })
     addHandler(socket, "Active", ({ room, user, token }) => {
@@ -359,9 +344,12 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           { user, token },
           socket.id
         )
-
         if (verified) {
-          await model.redis.sockets.set("auth:" + socket.id, "1")
+          await model.redis.sockets.setex(
+            "auth:" + socket.id,
+            60 * config.cookie_expires,
+            user
+          )
         } else {
           socket.emit("auth_error")
         }
@@ -398,7 +386,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
             marquee: rows[0].marquee,
             period: rows[0].period || 0,
           }
-          emit.announce(d, socket)
+          emit.channel(room).announce(d, socket)
         }
       })().catch(err => {
         log.error(err)
@@ -434,14 +422,14 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           if (count == 0) {
             //All clients of the user are disconneted
             await model.redis.sockets.srem("room:" + room + ":__all__", user)
-            const msg: EmitCommand = "ActiveUsers"
+            const msg: AppNotification = "ActiveUsers"
             io.to(room).emit(msg, [{ room, user, active: false }])
             const r: TypingSocketData = {
               room,
               user,
               typing: false,
             }
-            const msg2: EmitCommand = "ChatTyping"
+            const msg2: AppNotification = "ChatTyping"
             io.to(room).emit(msg2, r)
           }
         }
@@ -457,7 +445,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
       })
       log.debug("make_announcement", d)
       if (d.room && d.text) {
-        emit.announce(d)
+        emit.channel(d.room).announce(d)
         model.maps[d.room].announce(d)
       }
     })

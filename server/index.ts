@@ -21,7 +21,7 @@ import * as model from "./model"
 import fs from "fs"
 import path from "path"
 import { registerSocket } from "./socket"
-import { RoomId } from "@/@types/types"
+import { AppNotification, RoomId } from "@/@types/types"
 import io from "socket.io-emitter"
 import cluster from "cluster"
 import _ from "lodash"
@@ -29,8 +29,12 @@ import multer from "fastify-multer"
 import swaggerValidation from "openapi-validator-middleware"
 import fastifyCookie from "fastify-cookie"
 import { config } from "./config"
+import axios from "axios"
+import { encodeAppNotificationData } from "../common/util"
 
 const PRODUCTION: boolean = process.env.NODE_ENV == "production"
+
+const RUST_WS_SERVER = !!process.env.RUST_WS_SERVER
 
 const RUN_CLUSTER: number = config.api_server.cluster
 const PORT: number = config.api_server.port || (PRODUCTION ? 443 : 3000)
@@ -48,12 +52,41 @@ console.log({
   PORT,
   HTTP2,
   TLS,
+  RUST_WS_SERVER,
   DEBUG_LOG,
   RUN_CLUSTER,
   CERTIFICATE_FOLDER,
   POSTGRES_CONNECTION_STRING,
   GOOGLE_APPLICATION_CREDENTIALS,
 })
+
+class HTTPEmitter {
+  channels: string[] = []
+  url = "http://localhost:5000/input/" + config.debug_token
+  constructor(channels: string[] = []) {
+    this.channels = channels
+  }
+  emit(cmd: AppNotification, cmd_data?: any) {
+    const data_to_send = encodeAppNotificationData(cmd, cmd_data)
+    if (!data_to_send) {
+      console.error("Error in encoding notification", cmd, cmd_data)
+      return
+    }
+    console.log("Emitting: ", data_to_send)
+    const data = { channels: this.channels, data: data_to_send }
+    axios
+      .post(this.url, data)
+      .then(r => {
+        console.log("HTTPEmitter result:", r.status, r.data)
+      })
+      .catch(err => {
+        console.error("HTTPEmitter error with: ", data)
+      })
+  }
+  to(channel: string) {
+    return new HTTPEmitter(this.channels.concat([channel]))
+  }
+}
 
 async function workerInitData(): Promise<RoomId[]> {
   if (!(RUN_CLUSTER > 0) || cluster.worker?.id) {
@@ -115,9 +148,12 @@ workerInitData()
         })
       }
 
-      console.log("Registering socket")
-      const io_ = io({ host: "localhost", port: 6379 })
-      registerSocket(io_)
+      console.log("Registering socket.")
+      if (RUST_WS_SERVER) {
+        registerSocket(new HTTPEmitter())
+      } else {
+        registerSocket(io({ host: "localhost", port: 6379 }))
+      }
       ;(async () => {
         try {
           await server.register(fastifyCookie, {

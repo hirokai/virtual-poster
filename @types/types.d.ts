@@ -80,6 +80,7 @@ type SocketMessageFromUser =
   | "Auth"
   | "Move"
   | "Subscribe"
+  | "Unsubscribe"
   | "Active"
   | "ChatTyping"
   | "Direction"
@@ -423,11 +424,8 @@ type MoveSocketData = {
 }
 
 type DirectionSendSocket = {
-  user: UserId
   room: RoomId
   direction: Direction
-  token: string
-  debug_as?: UserId
 }
 
 type AuthSocket = {
@@ -454,8 +452,6 @@ type TypingSocketSendData = {
   room: RoomId
   user: UserId
   typing: boolean
-  token?: string
-  debug_as?: UserId
 }
 
 type TypingSocketData = {
@@ -470,7 +466,7 @@ type ActiveUsersSocketData = {
   active: boolean
 }[]
 
-type EmitCommand =
+export type AppNotification =
   | "Announce"
   | "Person"
   | "PersonNew"
@@ -494,7 +490,7 @@ type EmitCommand =
   | "MoveRequest"
 
 interface Emitter {
-  emit(msg: EmitCommand, data?: any): void
+  emit(msg: AppNotification, data?: any): void
   to(channel: string): this
 }
 // | SocketIO.Socket

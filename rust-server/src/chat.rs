@@ -24,6 +24,7 @@ pub async fn get_comments(
             "SELECT
             'from_me' AS mode,
             c.id AS id,c.person,c.x,c.y,array_agg(cp.encrypted) AS to_e,
+            c.reply_to,
             string_agg(cp.person,'::::') AS to,string_agg(cp.comment_encrypted,'::::') AS to_c,
             c.timestamp,c.last_updated,c.kind,c.text,c.room
         FROM comment AS c
@@ -43,6 +44,7 @@ pub async fn get_comments(
             "SELECT
             'to_me' as mode,
             c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,
+            c.reply_to,
             string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,
             c.timestamp,c.last_updated,c.kind,c.text,c.room
         FROM comment AS c
@@ -59,9 +61,9 @@ pub async fn get_comments(
         .await
         .unwrap();
 
-    let mut ds: Vec<CommentEncrypted> = Vec::with_capacity(from_me.len() + to_me.len());
+    let mut ds: Vec<ChatComment> = Vec::with_capacity(from_me.len() + to_me.len());
     let mut ids = HashSet::new();
-    fn read_row(r: Row) -> CommentEncrypted {
+    fn read_row(r: Row) -> ChatComment {
         let id: String = r.get("id");
         let to: Vec<String> = r
             .get::<_, String>("to")
@@ -84,7 +86,7 @@ pub async fn get_comments(
                 encrypted,
             })
             .collect();
-        CommentEncrypted {
+        ChatComment {
             id,
             texts,
             kind: r.get("kind"),
@@ -94,6 +96,7 @@ pub async fn get_comments(
             room: r.get("room"),
             x: r.get::<_, i32>("x") as u32,
             y: r.get::<_, i32>("y") as u32,
+            reply_to: r.get("reply_to"),
         }
     }
     for r in from_me {
@@ -141,7 +144,7 @@ pub async fn post_comment(
     match model::get_person_pos(&data.pg, &room_id, &auth.user).await {
         None => HttpResponse::Ok().json(json!({"ok": false, "error": "Position not found"})),
         Some(pos) => {
-            let e = CommentEncrypted {
+            let e = ChatComment {
                 id: Uuid::new_v4().to_hyphenated().to_string(),
                 person: auth.user,
                 room: room_id.clone(),
@@ -151,6 +154,7 @@ pub async fn post_comment(
                 texts: body.to_vec(),
                 timestamp,
                 last_updated: timestamp,
+                reply_to: None, //Stub
             };
             let r = model::chat::addCommentEncrypted(&e).await;
             if r {

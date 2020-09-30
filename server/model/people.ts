@@ -110,11 +110,30 @@ export async function get(
   }
   const rows = with_room_access
     ? await db.query(
-        `select person.*,string_agg(ra.room,'::::') as rooms from person left join person_room_access as ra on person.id=ra.person left join public_key as k on person.id=k.person where person.id=$1 group by person.id;`,
+        `
+        SELECT
+            person.*,
+            string_agg(ra.room, '::::') AS rooms
+        FROM
+            person
+            LEFT JOIN person_room_access AS ra ON person.id = ra.person
+            LEFT JOIN public_key AS k ON person.id = k.person
+        WHERE
+            person.id = $1
+        GROUP BY
+            person.id;
+    `,
         [user_id]
       )
     : await db.query(
-        `SELECT * from person left join public_key as k on person.id=k.person where id=$1;`,
+        `
+        SELECT
+            *
+        FROM
+            person
+            LEFT JOIN public_key AS k ON person.id = k.person
+        WHERE
+            id = $1;`,
         [user_id]
       )
   const p =
@@ -288,26 +307,65 @@ export async function getAllPeopleList(
   let rows2: { person: UserId; poster: PosterId }[]
   if (room_id) {
     rows = await db.query(
-      `select person.*,pos.x,pos.y,pos.direction,k.* from person left join person_position as pos on person.id=pos.person left join public_key as k on person.id=k.person
-          WHERE
-              pos.room=$1
-          GROUP BY person.id,pos.x,pos.y,pos.direction,k.person
-      ;`,
+      ` SELECT
+            person.*,
+            pos.x,
+            pos.y,
+            pos.direction,
+            k.*
+        FROM
+            person
+            LEFT JOIN person_position AS pos ON person.id = pos.person
+            LEFT JOIN public_key AS k ON person.id = k.person
+        WHERE
+            pos.room = $1
+        GROUP BY
+            person.id,
+            pos.x,
+            pos.y,
+            pos.direction,
+            k.person;`,
       [room_id]
     )
     rows2 = await db.query(
-      `SELECT * FROM poster_viewer
-      WHERE
-          poster IN (SELECT id FROM poster WHERE location IN (SELECT id FROM map_cell WHERE room=$1))
-        AND
-          left_time IS NULL;`,
+      ` SELECT
+            *
+        FROM
+            poster_viewer
+        WHERE
+            poster IN (
+                SELECT
+                    id
+                FROM
+                    poster
+                WHERE
+                    location IN (
+                        SELECT
+                            id
+                        FROM
+                            map_cell
+                        WHERE
+                            room = $1
+                    )
+            )
+            AND left_time IS NULL;`,
       [room_id]
     )
     //
   } else {
     rows = await (with_room_access
       ? db.query(
-          `select person.*,string_agg(ra.room,'::::') as rooms,k.public_key from person left join person_room_access as ra on person.id=ra.person left join public_key as k on person.id=k.person group by person.id,k.public_key;`
+          ` SELECT
+                person.*,
+                string_agg(ra.room, '::::') AS rooms,
+                k.public_key
+            FROM
+                person
+                LEFT JOIN person_room_access AS ra ON person.id = ra.person
+                LEFT JOIN public_key AS k ON person.id = k.person
+            GROUP BY
+                person.id,
+                k.public_key;`
         )
       : db.query("select * from person;"))
     rows2 = []
@@ -637,19 +695,23 @@ export async function isConnected(
 }
 
 export async function setDirection(
+  room_id: RoomId,
   user_id: UserId,
   direction: Direction
 ): Promise<void> {
   if (!initialized) {
     throw new Error("Not initialized")
   }
-  const person = await get(user_id)
-  if (person) {
-    const r = await db.query(
-      `UPDATE person_position SET direction=$1 where person=$2;`,
-      [direction, person.id]
+  const pos = await getPos(user_id, room_id)
+  if (pos) {
+    await redis.accounts.set(
+      "pos:" + room_id + ":" + user_id,
+      "" + pos.x + "." + pos.y + "." + direction
     )
-    log.debug(r)
+    const r = await db.query(
+      `UPDATE person_position SET direction=$1 where person=$2 and room=$3;`,
+      [direction, user_id, room_id]
+    )
   }
 }
 
@@ -724,12 +786,66 @@ export async function removePerson(
     await db.query(`DELETE FROM person_in_chat_group WHERE person=$1`, [
       user_id,
     ])
-    await db.query(`DELETE FROM comment_to_person WHERE person=$1`, [user_id])
     await db.query(
       `DELETE FROM comment_to_person WHERE comment IN (SELECT id FROM comment WHERE person=$1)`,
       [user_id]
     )
-    await db.query(`DELETE FROM comment WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM comment_to_person WHERE person=$1`, [user_id])
+    console.log("Reply to delete 1")
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)))));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)))));`,
+      [user_id]
+    )
+    console.log("Reply to delete 2")
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1))));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1))));`,
+      [user_id]
+    )
+    console.log("Reply to delete 3")
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)));`,
+      [user_id]
+    )
+    console.log("Reply to delete 4")
+    await db.query(
+      `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1));`,
+      [user_id]
+    )
+    console.log("Reply to delete 5")
+    await db.query(
+      `DELETE from comment_to_person WHERE comment IN (SELECT id FROM comment WHERE person=$1);`,
+      [user_id]
+    )
+    await db.query(`DELETE from comment where person=$1;`, [user_id])
+    console.log("Reply to delete 6")
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE person=$1);`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster where poster in (SELECT id FROM poster WHERE author=$1);`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE FROM poster_viewer WHERE poster IN (SELECT id FROM poster WHERE author=$1)`,
+      [user_id]
+    )
     await db.query(`DELETE FROM poster WHERE author=$1`, [user_id])
     await db.query(`DELETE FROM stat_encountered WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM token WHERE person=$1`, [user_id])

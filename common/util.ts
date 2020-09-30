@@ -2,6 +2,7 @@ import {
   Cell,
   Point,
   Person,
+  Poster,
   PersonInMap,
   ChatGroup,
   UserId,
@@ -10,6 +11,7 @@ import {
   RoomId,
   PersonPos,
   Tree,
+  AppNotification,
 } from "@/@types/types"
 import fromPairs from "lodash/fromPairs"
 import minBy from "lodash/minBy"
@@ -429,10 +431,7 @@ export function findRoute(
   }
 }
 
-export function lookingAt(
-  people_in_room: PersonInMap[],
-  me: PersonInMap
-): UserId | null {
+export function lookingAt(me: PersonInMap): Point | null {
   let [x, y] = [0, 0]
   if (me.x == undefined || me.y == undefined || me.direction == undefined) {
     return null
@@ -450,10 +449,25 @@ export function lookingAt(
     x = me.x
     y = me.y + 1
   }
-  const person: Person | undefined = people_in_room.find(
-    p => p.x == x && p.y == y
-  )
-  return person ? person.id : null
+  return { x, y }
+}
+
+export const personAt = (
+  people: { [user_id: string]: PersonInMap },
+  pos: Point
+): PersonInMap | undefined => {
+  return Object.values(people).find(p => {
+    return p.x == pos.x && p.y == pos.y
+  })
+}
+
+export const posterAt = (
+  posters: { [id: string]: Poster },
+  pos: Point
+): Poster | undefined => {
+  return Object.values(posters).find(p => {
+    return p.x == pos.x && p.y == pos.y
+  })
 }
 
 export function getGroupIdOfUser(
@@ -464,12 +478,13 @@ export function getGroupIdOfUser(
 }
 
 export function findAdjacentChatGroup(
-  people: PersonInMap[],
+  people: { [index: string]: PersonInMap },
   groups: { [index: string]: ChatGroup },
   me: PersonInMap
 ): { id: UserId; kind: "person" }[] {
-  const la = lookingAt(people, me)
-  if (la) {
+  const la = lookingAt(me)
+  const la_person = la ? personAt(people, la) : null
+  if (la_person) {
     const group_id = getGroupIdOfUser(me.id, Object.values(groups))
     if (group_id) {
       const peopleInSameGroup: UserId[] = groups[group_id].users
@@ -594,4 +609,87 @@ export function sortTree<T>(tree: Tree<T>, cmp: (a: T, b: T) => number): void {
   tree.children.sort((a, b) =>
     !a.node ? -1 : !b.node ? 1 : cmp(a.node, b.node)
   )
+}
+
+// On REST server, encode data for Rust WS server
+export function encodeAppNotificationData(
+  cmd: AppNotification,
+  data?: any
+): any {
+  if (cmd == "Group") {
+    return { type: cmd, group: data }
+  } else if (cmd == "GroupRemove") {
+    return { type: cmd, id: data }
+  } else if (cmd == "Comment") {
+    return { type: cmd, comment: data }
+  } else if (cmd == "CommentRemove") {
+    return { type: cmd, id: data }
+  } else if (cmd == "MoveRequest") {
+    return { type: cmd, to_poster: data.to_poster }
+  } else if (cmd == "PersonUpdate") {
+    return { type: cmd, person: data }
+  } else if (cmd == "Poster") {
+    return { type: cmd, poster: data }
+  } else if (cmd == "PosterRemove") {
+    return { type: cmd, id: data }
+  } else if (cmd == "PosterComment") {
+    return { type: cmd, comment: data }
+  } else if (cmd == "PosterCommentRemove") {
+    return { type: cmd, id: data }
+  } else if (cmd == "ActiveUsers") {
+    return { type: cmd, data: data }
+  } else if (cmd == "PersonNew") {
+    return { type: cmd, person: data }
+  } else if (cmd == "Person") {
+    return { type: cmd, person: data }
+  } else if (cmd == "PersonRemove") {
+    return { type: cmd, id: data }
+  } else if (cmd == "ChatTyping") {
+    return { type: cmd, ...data }
+  } else {
+    return null
+  }
+}
+
+// On client, decode data from Rust WS server
+export function decodeNotificationData(
+  cmd: AppNotification,
+  data?: any
+): any | null {
+  if (cmd == "Group") {
+    return data.group
+  } else if (cmd == "GroupRemove") {
+    return data.id
+  } else if (cmd == "Comment") {
+    return data.comment
+  } else if (cmd == "CommentRemove") {
+    return data.id
+  } else if (cmd == "Moved") {
+    return data.data
+  } else if (cmd == "MoveRequest") {
+    return { to_poster: data.to_poster }
+  } else if (cmd == "PersonUpdate") {
+    return data.person
+  } else if (cmd == "Poster") {
+    return data.poster
+  } else if (cmd == "PosterRemove") {
+    return data.id
+  } else if (cmd == "PosterComment") {
+    return data.comment
+  } else if (cmd == "PosterCommentRemove") {
+    return data.id
+  } else if (cmd == "ActiveUsers") {
+    return data.data
+  } else if (cmd == "PersonNew") {
+    return data.person
+  } else if (cmd == "Person") {
+    return data.person
+  } else if (cmd == "PersonRemove") {
+    return data.id
+  } else if (cmd == "ChatTyping") {
+    console.log("Paraing ChatTyping", data)
+    return { room: data.room, user: data.user, typing: data.typing }
+  } else {
+    return null
+  }
 }

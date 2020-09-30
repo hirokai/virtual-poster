@@ -52,7 +52,7 @@ async function routes(
 
     const to_users = comments_encrypted.map(c => c.to)
     if (!_.isEqual(group.users.sort(), to_users.sort())) {
-      emit.room(requester).group(group) // Emit correct group info
+      emit.channel(requester).group(group) // Emit correct group info
       throw { statusCode: 400, message: "Chat recipients are invalid" }
     }
 
@@ -69,7 +69,7 @@ async function routes(
     }
     const r = await model.chat.addCommentEncrypted(e)
     if (r) {
-      emit.comment(e)
+      emit.channel(roomId).comment(e)
     }
     return { ok: true }
   })
@@ -89,7 +89,7 @@ async function routes(
       commentId
     )
     if (ok) {
-      emit.posterCommentRemove(commentId)
+      emit.channel(posterId).posterCommentRemove(commentId)
     }
     return { ok, error }
   })
@@ -133,8 +133,9 @@ async function routes(
         person: comment_actual.person,
         poster: poster_id,
         text_decrypted: comment,
+        reply_to: comment_actual.reply_to,
       }
-      emit.posterComment(comment_not_encrypted)
+      emit.channel(poster_id).posterComment(comment_not_encrypted)
     }
     return { ok, comment: comment_actual, error }
   })
@@ -182,9 +183,10 @@ async function routes(
       kind: "person",
       reply_to,
     }
+    req.log.debug("ChatComment emitting", e)
     const r = await model.chat.addCommentEncrypted(e)
     if (r) {
-      emit.comment(e)
+      emit.channel(e.room).comment(e)
     }
     return { ok: true }
   })
@@ -203,7 +205,7 @@ async function routes(
       comments
     )
     if (comment) {
-      emit.comment(comment)
+      emit.channel(comment.room).comment(comment)
     }
     return { ok, comment, error }
   })
@@ -223,7 +225,9 @@ async function routes(
     fastify.log.info("removeComment result" + JSON.stringify({ ok, error }))
     if (ok) {
       if (removed_to_users) {
-        await emit.commentRemove(commentId, removed_to_users)
+        await emit
+          .channels(removed_to_users)
+          .commentRemove(commentId, removed_to_users)
       }
     }
     return { ok, error }

@@ -1,7 +1,17 @@
 <template>
   <div>
+    <canvas
+      id="minimap-canvas"
+      width="528"
+      height="360"
+      :style="{
+        opacity: hidden ? 0 : 1,
+      }"
+    >
+    </canvas>
     <svg
       id="minimap"
+      @dblclick="dblClick"
       :style="{
         opacity: hidden ? 0 : 1,
         height: '' + size * cells.length + 'px',
@@ -23,10 +33,11 @@
         top: isMobile ? '560px' : undefined,
       }"
     >
-      <g v-for="(row, yi) in cells" :key="yi">
+      <!-- <g v-for="(row, yi) in cells" :key="yi">
         <MiniMapCell
           v-for="(cell, xi) in row"
           :cell="cell"
+          :size="size"
           :key="xi"
           :left="cell.x * size"
           :top="cell.y * size"
@@ -36,7 +47,7 @@
           @select="select"
           @dbl-click="dblClick"
         />
-      </g>
+      </g> -->
       <g>
         <g
           v-for="person in people"
@@ -89,6 +100,7 @@
     <div
       id="minimap-area"
       :style="{
+        opacity: hidden ? 0 : 1,
         left: 8 + (this.center.x - 5) * size + 'px',
         top: 612 + (this.center.y - 5) * size + 'px',
         width: size * 11 - 1 + 'px',
@@ -99,13 +111,13 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType, computed } from "vue"
+import { defineComponent, PropType, computed, watch } from "vue"
 import { Cell, Point, ChatGroup, Person, Direction } from "../../@types/types"
 import MiniMapCell from "./MiniMapCell.vue"
 
 export default defineComponent({
   components: {
-    MiniMapCell,
+    // MiniMapCell,
   },
   props: {
     people_typing: {
@@ -146,16 +158,15 @@ export default defineComponent({
   },
 
   setup(props, context) {
-    const dblClick = (p: Point) => {
-      context.emit("dblClick", p)
-    }
     const select = (p: Point) => {
       context.emit("select", p)
     }
     const size = computed(() => {
-      return Math.floor(
-        528 / (props.cells.length > 0 ? props.cells[0].length : 500 / 9)
-      )
+      return props.cells.length == 0
+        ? 9
+        : Math.floor(
+            Math.min(528 / props.cells[0].length, 400 / props.cells.length)
+          )
     })
     const personImgOffset = (direction: Direction): string => {
       if (direction == "left") {
@@ -185,6 +196,83 @@ export default defineComponent({
       }
       return ""
     }
+    const dblClick = (ev: MouseEvent) => {
+      console.log(ev)
+      const p: Point = {
+        x: Math.floor(ev.offsetX / size.value),
+        y: Math.floor(ev.offsetY / size.value),
+      }
+      context.emit("dbl-click", p)
+      ev.stopPropagation()
+    }
+    watch(
+      () => [size, props.cells],
+      async () => {
+        const ti = performance.now()
+        const canvas = document.getElementById(
+          "minimap-canvas"
+        ) as HTMLCanvasElement
+
+        const s = size.value
+        // const s = 3.5
+        console.log("Minimap cell size", s, props.cells.length)
+        // Draw a image.
+        const loadImage = (url: string, size: number) => {
+          const img = new Image()
+          return new Promise<HTMLCanvasElement>(resolve => {
+            img.onload = () => {
+              const offscreenCanvas = document.createElement("canvas")
+              // document.body.appendChild(offscreenCanvas)
+              offscreenCanvas.width = Math.ceil(size)
+              offscreenCanvas.height = Math.ceil(size)
+              const ctx = offscreenCanvas.getContext("2d")!
+              ctx.drawImage(img, 0, 0, size, size)
+              resolve(offscreenCanvas)
+            }
+            img.src = url
+          })
+        }
+        const ps = [
+          "/img/map/kusa.png",
+          "/img/map/yama.png",
+          "/img/map/water.png",
+          "/img/map/kusa_red.png",
+          "/img/map/mud.png",
+          "/img/map/post.png",
+        ].map(u => loadImage(u, s))
+        const imgs = await Promise.all(ps)
+
+        console.log("Map size", props.cells[0].length, props.cells.length)
+        const ctx = canvas.getContext("2d")!
+        for (const y in props.cells) {
+          for (const x in props.cells[y]) {
+            // console.log(+x, +y)
+            const sx = s
+            const sy = s
+            if (props.cells[y][x].kind == "grass") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "wall") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+              ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "water") {
+              ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "poster_seat") {
+              ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "mud") {
+              ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "poster") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+              ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
+            }
+          }
+        }
+        const tf = performance.now()
+        console.log(
+          "%c" + "Drawing done " + (tf - ti).toFixed(2) + "ms",
+          "color: green"
+        )
+      }
+    )
 
     return {
       dblClick,
@@ -205,5 +293,16 @@ svg#minimap {
   left: 8px;
   user-select: none;
   transition: opacity 0.5s linear;
+}
+
+#minimap-area {
+  transition: opacity 0.3s linear;
+}
+canvas#minimap-canvas {
+  position: absolute;
+  top: 612px;
+  left: 8px;
+  transition: opacity 0.3s linear;
+  /* border: 2px solid #ccc; */
 }
 </style>

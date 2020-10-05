@@ -69,6 +69,10 @@
       />
       <div style="clear:both;"></div>
     </div>
+    <div id="connection-status" v-if="!hidden">
+      <span v-if="socket_active" class="connected">接続されています</span>
+      <span v-else class="disconnected">接続されていません</span>
+    </div>
     <div
       id="announce"
       :class="{
@@ -122,7 +126,7 @@
       :people_typing="people_typing"
       :selectedPos="selectedPos"
       @select="updateSelectedPos"
-      @dblClick="dblClick"
+      @dbl-click="dblClick"
     />
     <ChatLocal
       ref="chatLocal"
@@ -189,6 +193,9 @@
 
       <br />
       {{ adjacentPoster.title }}
+      <span id="access-log-notice" v-if="adjacentPoster.access_log">
+        このポスターを閲覧すると<br />足あとが記録されます
+      </span>
     </div>
     <button id="leave-poster-on-map" @click="leavePoster" v-if="posterLooking">
       ポスターから離脱
@@ -242,14 +249,14 @@ import MiniMap from "./room/MiniMap.vue"
 import Poster from "./room/Poster.vue"
 import CellInfo from "./room/CellInfo.vue"
 import ChatLocal from "./room/ChatLocal.vue"
-import { inRange } from "../common/util"
+import { inRange, decodeNotificationData } from "../common/util"
+import { formatTime, truncateComment } from "./util"
 
 import { AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import jsSHA from "jssha"
 import io from "socket.io-client"
-import { decodeNotificationData } from "../common/util"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import { initPeopleService } from "./room_people_service"
@@ -353,7 +360,11 @@ class MySocketObject {
     this.ws = this.connect()
     console.log("constructor", this.ws)
     setInterval(() => {
-      if (this.ws && this.ws.readyState >= 2) {
+      // console.log("readyState", this.ws?.readyState)
+      if (this.ws.readyState >= 2) {
+        this.connected = false
+      }
+      if (this.ws && !this.connected) {
         this.connect()
       }
     }, 2000)
@@ -406,7 +417,7 @@ class MySocketObject {
     setupSocketHandlers(this.props, this.state, this)
     this.ws.onmessage = d => {
       const dat = JSON.parse(d.data)
-      // console.log("WebSocket received: ", dat)
+      console.log("WebSocket received: ", dat)
       const msg: AppNotification = dat.type
       const decoded = decodeNotificationData(msg, dat)
       if (decoded == null) {
@@ -421,11 +432,13 @@ class MySocketObject {
     this.ws.onopen = () => {
       console.log("WebSocket server connected")
       this.connected = true
+      this.state.socket_active = true
       this.listeners["connection"][0](null)
     }
 
     this.ws.onclose = ev => {
-      /*
+      this.state.socket_active = false
+
       console.log(
         "Socket is closed. Reconnect will be attempted in 5 seconds.",
         ev
@@ -436,12 +449,11 @@ class MySocketObject {
           this.connect()
         }
       }, 5000)
-      */
     }
 
     this.ws.onerror = err => {
       console.error("Socket encountered error: ", err, "Closing socket")
-      // this.ws.close()
+      this.ws.close()
     }
 
     return this.ws
@@ -580,6 +592,8 @@ export default defineComponent({
         hide: boolean
         timer?: number
       },
+
+      socket_active: false,
 
       selectedUsers: new Set<UserId>(),
       selectedPos: null as { x: number; y: number } | null,
@@ -859,7 +873,20 @@ export default defineComponent({
         if (data.socket_protocol == "Socket.IO") {
           state.socket = io(socket_url)
         } else if (data.socket_protocol == "WebSocket") {
-          state.socket = new MySocketObject(socket_url, props, state)
+          let url
+          if (
+            socket_url.indexOf("http") != 0 &&
+            socket_url.indexOf("ws") != 0
+          ) {
+            url =
+              (location.protocol == "https:" ? "wss" : "ws") +
+              "://" +
+              location.host +
+              socket_url
+          } else {
+            url = socket_url
+          }
+          state.socket = new MySocketObject(url, props, state)
         } else {
           console.error("Socket protocol not supported")
         }
@@ -1172,6 +1199,8 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
+      formatTime,
+      truncateComment,
       commentTree: _commentTree(state, "chat"),
       posterCommentTree: _commentTree(state, "poster"),
       signOut,
@@ -1317,6 +1346,15 @@ button#leave-poster-on-map {
   top: 90px;
 }
 
+#access-log-notice {
+  font-size: 12px;
+  color: rgb(205, 130, 0);
+  font-weight: bold;
+  line-height: 1.2em;
+  display: inline-block;
+  margin: 0px;
+}
+
 .user-select {
   margin: 0px 10px;
 }
@@ -1410,6 +1448,22 @@ button#leave-poster-on-map {
 
 #login-button {
   float: right;
+}
+
+#connection-status {
+  position: absolute;
+  top: 35px;
+  left: 430px;
+  font-weight: bold;
+  font-size: 10px;
+}
+
+#connection-status .connected {
+  color: green;
+}
+
+#connection-status .disconnected {
+  color: red;
 }
 
 #start-chat {

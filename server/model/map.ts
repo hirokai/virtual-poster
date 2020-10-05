@@ -456,7 +456,9 @@ export class MapModel {
     poster_number: number,
     author: UserId,
     overwrite: boolean,
-    title?: string
+    title?: string,
+    access_log = false,
+    author_online_only = false
   ): Promise<{ ok: boolean; poster?: Poster; error?: string }> {
     log.debug("assignPosterLocation()", poster_number, author, title, overwrite)
     const poster_id = Posters.genPosterId()
@@ -472,14 +474,30 @@ export class MapModel {
     const location = cells[0].id
     if (overwrite) {
       res = await db.query(
-        `INSERT INTO poster (id,last_updated,title,author,location) VALUES ($1,$2,$3,$4,$5) ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
-        [poster_id, last_updated, title, author, location]
+        `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
+        [
+          poster_id,
+          last_updated,
+          title,
+          author,
+          location,
+          access_log,
+          author_online_only,
+        ]
       )
       log.debug("poster overwrite", res)
     } else {
       res = await db.query(
-        `INSERT INTO poster (id,last_updated,title,author,location) VALUES ($1,$2,$3,$4,$5) RETURNING id;`,
-        [poster_id, last_updated, title, author, location]
+        `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id;`,
+        [
+          poster_id,
+          last_updated,
+          title,
+          author,
+          location,
+          access_log,
+          author_online_only,
+        ]
       )
     }
     if (res.length == 0 || res[0].id != poster_id) {
@@ -501,6 +519,8 @@ export class MapModel {
         x: cells[0].x,
         y: cells[0].y,
         file_url: domain + "files/" + poster_id + ".png",
+        access_log,
+        author_online_only,
       },
     }
   }

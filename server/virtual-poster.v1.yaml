@@ -1496,8 +1496,10 @@ paths:
               properties:
                 title:
                   type: string
-              required:
-                - title
+                access_log:
+                  type: boolean
+                author_online_only:
+                  type: boolean
       description: Update poster info.
   "/comments/{commentId}/reply":
     parameters:
@@ -1598,6 +1600,10 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  error:
+                    type: string
+                  image_allowed:
+                    type: boolean
                 required:
                   - ok
       operationId: post-maps-roomId-posters-posterId-enter
@@ -1632,6 +1638,45 @@ paths:
                   - ok
       operationId: post-maps-roomId-posters-posterId-leave
       description: "Finish viewing a poster. After this, the user cannot get comments until they enter it again.  "
+  "/maps/{roomId}/posters/{posterId}/history":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    get:
+      summary: Get a view history of a poster
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                    joined_time:
+                      type: number
+                    left_time:
+                      type: number
+                    last_active:
+                      type: number
+                  required:
+                    - user_id
+                    - joined_time
+      operationId: get-maps-roomId-posters-posterId-history
+      description: "Get a view history of a poster. Only when the poster author and/or administrator enables logging, it has a public record."
 components:
   parameters:
     debug_token:
@@ -1938,6 +1983,8 @@ components:
     Poster:
       title: Poster
       type: object
+      x-tags:
+        - types
       properties:
         id:
           $ref: "#/components/schemas/PosterId"
@@ -1959,17 +2006,24 @@ components:
           type: number
         file_url:
           type: string
+        access_log:
+          type: boolean
+          description: Record access log
+        author_online_only:
+          type: boolean
+          description: Allow access only when the author is online
       required:
         - id
         - last_updated
         - author
         - room
         - location
+        - poster_number
         - x
         - "y"
         - file_url
-      x-tags:
-        - types
+        - access_log
+        - author_online_only
     PersonInMap:
       title: PersonInMap
       type: object

@@ -259,8 +259,7 @@ import {
   CommentEvent,
   DateEvent,
 } from "../../@types/types"
-import { CommonMixin } from "./util"
-import { countLines } from "../util"
+import { countLines, formatTime } from "../util"
 import { flattenTree, inRange } from "../../common/util"
 
 import { sameDate, formatDate } from "../room_chat_service"
@@ -615,7 +614,7 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
-      ...CommonMixin,
+      formatTime,
       localCommentHistory,
       onKeyDownEnterChatInput,
       clearInput,

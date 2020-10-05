@@ -106,12 +106,15 @@ export const initPeopleService = async (
   socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
     console.log("ActiveUsers socket", ds)
     for (const d of ds) {
-      const person: PersonInMap = {
-        ...state.people[d.user],
-        connected: d.active,
+      const p = state.people[d.user]
+      if (p) {
+        const person: PersonInMap = {
+          ...p,
+          connected: d.active,
+        }
+        //Vue.set
+        state.people[d.user] = person
       }
-      //Vue.set
-      state.people[d.user] = person
     }
   })
 

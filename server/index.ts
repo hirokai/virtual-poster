@@ -34,7 +34,9 @@ import { encodeAppNotificationData } from "../common/util"
 
 const PRODUCTION: boolean = process.env.NODE_ENV == "production"
 
-const RUST_WS_SERVER = !!process.env.RUST_WS_SERVER
+const RUST_WS_SERVER_PORT: number | null = process.env.RUST_WS_SERVER
+  ? parseInt(process.env.RUST_WS_SERVER)
+  : null
 
 const RUN_CLUSTER: number = config.api_server.cluster
 const PORT: number = config.api_server.port || (PRODUCTION ? 443 : 3000)
@@ -52,7 +54,7 @@ console.log({
   PORT,
   HTTP2,
   TLS,
-  RUST_WS_SERVER,
+  RUST_WS_SERVER_PORT,
   DEBUG_LOG,
   RUN_CLUSTER,
   CERTIFICATE_FOLDER,
@@ -62,7 +64,8 @@ console.log({
 
 class HTTPEmitter {
   channels: string[] = []
-  url = "http://localhost:5000/input/" + config.debug_token
+  url =
+    "http://localhost:" + RUST_WS_SERVER_PORT + "/input/" + config.debug_token
   constructor(channels: string[] = []) {
     this.channels = channels
   }
@@ -80,7 +83,7 @@ class HTTPEmitter {
         console.log("HTTPEmitter result:", r.status, r.data)
       })
       .catch(err => {
-        console.error("HTTPEmitter error with: ", data)
+        console.error("HTTPEmitter error with: ", data, err.message)
       })
   }
   to(channel: string) {
@@ -149,7 +152,7 @@ workerInitData()
       }
 
       console.log("Registering socket.")
-      if (RUST_WS_SERVER) {
+      if (RUST_WS_SERVER_PORT) {
         registerSocket(new HTTPEmitter())
       } else {
         registerSocket(io({ host: "localhost", port: 6379 }))

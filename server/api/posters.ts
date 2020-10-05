@@ -152,10 +152,22 @@ async function routes(
 
   fastify.patch<any>("/posters/:posterId", async req => {
     const poster_id = req.params.posterId as string
-    const title = req.body.title as string
+    const title = req.body.title as string | undefined
+    const access_log = req.body.access_log as boolean | undefined
+    const author_online_only = req.body.author_online_only as
+      | boolean
+      | undefined
     const p = await model.posters.get(poster_id)
     if (p) {
-      p.title = title
+      if (title) {
+        p.title = title
+      }
+      if (access_log != undefined) {
+        p.access_log = access_log
+      }
+      if (author_online_only != undefined) {
+        p.author_online_only = author_online_only
+      }
       p.last_updated = Date.now()
       const r = await model.posters.set(p)
       emit.channels([p.room, req["requester"]]).poster(p)
@@ -507,6 +519,15 @@ async function routes(
   fastify.get<any>("/maps/:roomId/posters", async req => {
     const room = req.params.roomId
     return await model.posters.getAll(room)
+  })
+
+  fastify.get<any>("/maps/:roomId/posters/:posterId/history", async req => {
+    const roomId: PosterId = req.params.roomId
+    const posterId: PosterId = req.params.posterId
+    const r = await model.posters.getViewHistory(roomId, posterId)
+    if (!r.error) {
+      return r.posters
+    }
   })
 }
 

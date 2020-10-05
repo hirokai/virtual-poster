@@ -45,6 +45,8 @@ pub struct Poster {
     pub y: usize,
     pub poster_number: usize,
     pub custom_image: Option<String>,
+    pub access_log: bool,
+    pub author_online_only: bool
 }
 #[derive(Debug, Serialize, Default, Clone)]
 pub struct MapCell {
@@ -230,7 +232,7 @@ pub struct Announcement {
     pub room: String,
     pub text: String,
     pub marquee: bool,
-    pub period: f32,
+    pub period: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 import _ from "lodash"
 import shortid from "shortid"
 import { Poster, RoomId, UserId, PosterId } from "@/@types/types"
-import { log, db, people } from "./index"
+import { log, db, people, redis } from "./index"
 import { config } from "../config"
 import { isAdjacent } from "../../common/util"
 
@@ -22,8 +22,21 @@ export async function get(poster_id: string): Promise<Poster | null> {
   const poster_file_domain = S3_BUCKET
     ? "https://" + CDN_DOMAIN
     : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
-  d["file_url"] = poster_file_domain + "/files/" + d["id"] + ".png"
-  return d as Poster
+  const file_url = poster_file_domain + "/files/" + d["id"] + ".png"
+  return {
+    id: d.id,
+    title: d.title,
+    author: d.author,
+    room: d.room,
+    x: d.x,
+    y: d.y,
+    last_updated: d.last_updated,
+    location: d.location,
+    file_url,
+    access_log: d.access_log,
+    author_online_only: d.author_online_only,
+    poster_number: d.poster_number,
+  }
 }
 
 export async function getByNumber(
@@ -44,12 +57,14 @@ export async function getByNumber(
 
 export async function set(poster: Poster): Promise<boolean> {
   await db.query(
-    `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4 where id=$5;`,
+    `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6 where id=$7;`,
     [
       poster.location,
       poster.title,
       poster.author,
       poster.last_updated,
+      poster.access_log,
+      poster.author_online_only,
       poster.id,
     ]
   )
@@ -74,9 +89,21 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
     ? "https://" + CDN_DOMAIN
     : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com"
   return rows.map(d => {
-    // d["room"] = room_id
-    d["file_url"] = poster_file_domain + "/files/" + d["id"] + ".png"
-    return d
+    const file_url = poster_file_domain + "/files/" + d["id"] + ".png"
+    return {
+      id: d.id,
+      title: d.title,
+      author: d.author,
+      room: d.room,
+      x: d.x,
+      y: d.y,
+      last_updated: d.last_updated,
+      location: d.location,
+      file_url,
+      access_log: d.access_log,
+      author_online_only: d.author_online_only,
+      poster_number: d.poster_number,
+    }
   })
 }
 
@@ -106,7 +133,12 @@ export async function startViewing(
   user_id: UserId,
   room_id: RoomId,
   poster_id: PosterId
-): Promise<{ ok: boolean; joined_time?: number; error?: string }> {
+): Promise<{
+  ok: boolean
+  joined_time?: number
+  error?: string
+  image_allowed?: boolean
+}> {
   const person_pos = await people.getPos(user_id, room_id)
   const poster = await get(poster_id)
   if (!person_pos || !poster || poster.room != room_id) {
@@ -114,6 +146,21 @@ export async function startViewing(
   }
   if (!isAdjacent(person_pos, poster)) {
     return { ok: false, error: "Poster is not ajacent to user" }
+  }
+  let image_allowed = true
+  if (poster.author_online_only) {
+    const author_connected = await redis.accounts.sismember(
+      "connected_users:room:" + poster.room + ":__all__",
+      poster.author
+    )
+    if (!author_connected) {
+      // return {
+      //   ok: false,
+      //   error:
+      //     "This poster is an online-only poster. Author of the poster is offline.",
+      // }
+      image_allowed = false
+    }
   }
   const joined_time = Date.now()
   try {
@@ -132,10 +179,10 @@ export async function startViewing(
       return { ok: false, error: "Only one poster can be viewed at one time" }
     }
     await db.query(
-      `INSERT INTO poster_viewer (person,poster,joined_time,last_active) VALUES ($1,$2,$3,$4);`,
-      [user_id, poster_id, joined_time, joined_time]
+      `INSERT INTO poster_viewer (person,poster,joined_time,last_active,access_log) VALUES ($1,$2,$3,$4,$5);`,
+      [user_id, poster.id, joined_time, joined_time, poster.access_log]
     )
-    return { ok: true, joined_time }
+    return { ok: true, joined_time, image_allowed }
   } catch (e) {
     console.log(e)
     return { ok: false, error: "DB error" }
@@ -186,5 +233,41 @@ export async function isViewing(
   } catch (e) {
     console.log(e)
     return { error: "DB error" }
+  }
+}
+
+export async function getViewHistory(
+  room_id: RoomId,
+  poster_id: PosterId
+): Promise<{
+  posters?: {
+    user_id: string
+    joined_time: number
+    left_time?: number
+    last_active?: number
+  }[]
+  error?: string
+}> {
+  const poster = await get(poster_id)
+  if (!poster) {
+    return { error: "Poster not found" }
+  }
+  if (poster.room != room_id) {
+    return { error: "Poster not found" }
+  }
+  const hs = await db.query(
+    `SELECT * FROM poster_viewer WHERE poster=$1 AND access_log=$2 ORDER BY last_active DESC`,
+    [poster.id, true]
+  )
+  return {
+    posters: hs.map(h => {
+      return {
+        user_id: h.person,
+        poster_id: h.poster,
+        joined_time: h.joined_time ? +h.joined_time : undefined,
+        left_time: h.left_time ? +h.left_time : undefined,
+        last_active: h.last_active ? +h.last_active : undefined,
+      }
+    }),
   }
 }

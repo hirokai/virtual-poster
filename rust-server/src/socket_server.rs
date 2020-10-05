@@ -84,6 +84,8 @@ pub struct Join {
 pub struct PubSubServer {
     sessions: HashMap<u128, Recipient<Message>>,
     topics: HashMap<String, HashSet<u128>>,
+    user_of_session: HashMap<u128, (UserId, RoomId)>,
+    session_of_user: HashMap<(UserId, RoomId), HashSet<u128>>,
     redis: Addr<RedisActor>,
     pg: bb8_postgres::bb8::Pool<bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>,
 }
@@ -99,6 +101,8 @@ impl PubSubServer {
 
         PubSubServer {
             sessions: HashMap::new(),
+            user_of_session: HashMap::new(),
+            session_of_user: HashMap::new(),
             topics,
             redis,
             pg,
@@ -161,7 +165,7 @@ impl Handler<Connect> for PubSubServer {
     type Result = u128;
 
     fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> u128 {
-        println!("Someone joined");
+        println!("Someone connected");
 
         // notify all users in same room
         // self.send_message(&"Main".to_owned(), "Someone joined", 0);
@@ -185,7 +189,7 @@ impl Handler<Connect> for PubSubServer {
 impl Handler<Disconnect> for PubSubServer {
     type Result = ();
 
-    fn handle(&mut self, msg: Disconnect, _: &mut Context<Self>) {
+    fn handle(&mut self, msg: Disconnect, ctx: &mut Context<Self>) {
         info!("Someone disconnected");
 
         // remove address
@@ -201,6 +205,44 @@ impl Handler<Disconnect> for PubSubServer {
             for t in topics_to_remove {
                 self.topics.remove(&t);
             }
+        }
+        if let Some((u, r)) = self.user_of_session.get(&msg.id) {
+            let mut remove_flag = false;
+            let ss = self
+                .session_of_user
+                .get_mut(&(u.to_string(), r.to_string()));
+            if let Some(ss) = ss {
+                ss.remove(&msg.id);
+                if ss.is_empty() {
+                    remove_flag = true;
+                    let obj = AppNotification::ActiveUsers {
+                        data: vec![ActiveUserData {
+                            room: r.to_string(),
+                            user: u.to_string(),
+                            active: false,
+                        }],
+                    };
+                    let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
+                    send_message(&self.sessions, &self.topics, &r, &s, None);
+                }
+            }
+            if remove_flag {
+                self.session_of_user.remove(&(u.to_string(), r.to_string()));
+                let redis = self.redis.clone();
+                let key = format!("connected_users:room:{}:__all__", &r);
+                let u = u.clone();
+                async move {
+                    redis
+                        .send(Command(resp_array!["SREM", &key, &u.to_string()]))
+                        .await
+                        .unwrap()
+                        .unwrap();
+                }
+                .into_actor(self)
+                .then(|res, act, ctx| fut::ready(()))
+                .wait(ctx);
+            }
+            self.user_of_session.remove(&msg.id);
         }
         debug!("{:?}", self.topics);
     }
@@ -455,25 +497,105 @@ impl Handler<DataFromUser> for PubSubServer {
                 .then(|res, act, ctx| fut::ready(()))
                 .wait(ctx);
             }
-            MsgFromUser::Active {
-                room,
-                token,
-                debug_as,
-                ..
-            } => {
+            MsgFromUser::Active { room, .. } => {
                 self.topics
                     .entry(msg.user_id.clone())
                     .or_insert(HashSet::new())
-                    .insert(msg.session_id);
+                    .insert(msg.session_id.clone());
+
+                let redis = self.redis.clone();
+                let user_id = msg.user_id.clone();
+                let session_id = msg.session_id.clone();
+                let room1 = room.clone();
+                let addr = ctx.address();
+                let sessions = self.sessions.clone();
+                let topics = self.topics.clone();
+                let pg = self.pg.clone();
+
+                self.user_of_session
+                    .insert(session_id, (user_id.clone(), room.clone()));
+
+                self.session_of_user
+                    .entry((user_id.clone(), room.clone()))
+                    .or_insert(HashSet::new())
+                    .insert(session_id.clone());
+
+                debug!("user_of_session: {:?}", self.user_of_session);
+                debug!("session_of_user: {:?}", self.session_of_user);
+
+                async move {
+                    let key = format!("connected_users:room:{}:__all__", &room);
+                    redis
+                        .send(Command(resp_array!["SADD", &key, &user_id]))
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let conn = pg.get().await.unwrap();
+                    let rows = conn
+                        .query("SELECT * FROM announce WHERE room=$1", &[&room])
+                        .await
+                        .unwrap();
+                    if rows.len() > 0 {
+                        let r = &rows[0];
+                        let obj = AppNotification::Announce {
+                            announce: Announcement {
+                                room: r.get("room"),
+                                text: r.get("text"),
+                                marquee: r.get("marquee"),
+                                period: r.get::<_, Option<i32>>("period").unwrap_or(0),
+                            },
+                        };
+                        send_message(
+                            &sessions,
+                            &topics,
+                            &room,
+                            &serde_json::to_string(&encode_for_client(&obj)).unwrap(),
+                            None,
+                        );
+                    }
+                }
+                .into_actor(self)
+                .then(|res, act, ctx| fut::ready(()))
+                .wait(ctx);
+
+                /*
+                let active_in_room: Vec<UserId> = self
+                    .session_of_user
+                    .iter()
+                    .filter_map(|((u, r), ss)| {
+                        if r == &room1 && !ss.is_empty() {
+                            Some(u.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                debug!("active_in_room: {:?}", active_in_room);
+                let obj1 = AppNotification::ActiveUsers {
+                    data: active_in_room
+                        .iter()
+                        .map(|u| ActiveUserData {
+                            user: u.to_string(),
+                            room: room1.clone(),
+                            active: true,
+                        })
+                        .collect(),
+                };
+                self.send_message(
+                    &msg.user_id,
+                    &serde_json::to_string(&encode_for_client(&obj1)).unwrap(),
+                    None,
+                );
+                */
                 let obj = AppNotification::ActiveUsers {
                     data: vec![ActiveUserData {
                         user: msg.user_id,
-                        room: room.clone(),
+                        room: room1.clone(),
                         active: true,
                     }],
                 };
                 self.send_message(
-                    &room,
+                    &room1,
                     &serde_json::to_string(&encode_for_client(&obj)).unwrap(),
                     None,
                 );

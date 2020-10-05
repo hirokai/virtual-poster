@@ -16,8 +16,9 @@
           ref="posterImage"
           :class="{ inactive: !poster }"
           :style="{
-            'background-image':
-              'url(data:image/png;base64,' + posterDataURI + ')',
+            'background-image': offline_disallowed
+              ? ''
+              : 'url(data:image/png;base64,' + posterDataURI + ')',
             'background-position': '' + imagePos.x + 'px ' + imagePos.y + 'px',
             'background-size': '' + imageMag * 100 + '%',
           }"
@@ -58,18 +59,29 @@
           >
             {{
               people[poster.author] ? people[poster.author].name : "（不明）"
-            }}さんのポスター（未アップロード）
+            }}さんのポスター<br />（ポスター板の場所が確保されていますが<br />画像はアップロードされていません。）
             <div class="note" v-if="poster.author == myself.id">
-              以下のいずれかの方法でファイル（PNGあるいはPDF）をアップロードできます。
+              以下のいずれかの方法でファイル（PNGあるいはPDF）を<br />アップロードできます。
               <ul>
                 <li>この枠内にPNGまたはPDFをドラッグ＆ドロップする</li>
                 <li>マップ中の木札のアイコンにドラッグ＆ドロップする</li>
                 <li>
-                  マイページ（画面上部の人型のアイコン）→ポスター
-                  でドラッグ＆ドロップする
+                  マイページ（画面上部の人型のアイコン）→ポスター で<br />ドラッグ＆ドロップする
                 </li>
               </ul>
             </div>
+          </div>
+          <div
+            id="poster-notfound"
+            v-if="offline_disallowed"
+            :class="{ dragover: dragOver }"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
+          >
+            {{
+              people[poster.author] ? people[poster.author].name : "（不明）"
+            }}さんのポスター<br />（発表者がオフラインのため閲覧できません）
           </div>
           <div
             id="poster-notfound"
@@ -217,7 +229,6 @@
 </template>
 
 <script lang="ts">
-import { CommonMixin } from "./util"
 import {
   Poster as PosterTyp,
   Point,
@@ -231,7 +242,7 @@ import {
 } from "../../@types/types"
 import { inRange, sortBy, flattenTree } from "../../common/util"
 import axiosDefault from "axios"
-import { countLines } from "../util"
+import { countLines, formatTime } from "../util"
 import { sameDate, formatDate } from "../room_chat_service"
 
 import {
@@ -342,6 +353,15 @@ export default defineComponent({
 
         return comments_with_date
       }
+    })
+
+    const offline_disallowed = computed(() => {
+      return (
+        !!props.poster &&
+        props.poster.author_online_only &&
+        !props.people[props.poster.author].connected &&
+        !!props.poster.author
+      )
     })
 
     const startUpdateComment = (cid: string) => {
@@ -589,6 +609,8 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
+      formatTime,
+      offline_disallowed,
       mouseDownPoster,
       mouseUpPoster,
       mouseMovePoster,
@@ -609,7 +631,6 @@ export default defineComponent({
       clickReaction,
       startReply,
       inRange,
-      ...CommonMixin,
     }
   },
 })
@@ -638,6 +659,7 @@ h3 {
 #poster-notfound .note {
   font-size: 14px;
   text-align: left;
+  margin-top: 30px;
   margin-left: 60px;
 }
 

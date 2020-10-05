@@ -371,7 +371,11 @@ export async function getAllPeopleList(
     rows2 = []
   }
   const connected = room_id
-    ? new Set(await redis.sockets.smembers("room:" + room_id + ":__all__"))
+    ? new Set(
+        await redis.accounts.smembers(
+          "connected_users:room:" + room_id + ":__all__"
+        )
+      )
     : new Set<string>()
 
   const count_all_sockets_for_users = await redis.sockets.hgetall(

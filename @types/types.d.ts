@@ -137,6 +137,8 @@ type RoomAppState = {
     timer?: number
   }
 
+  socket_active: boolean
+
   selectedUsers: Set<UserId>
   selectedPos: { x: number; y: number } | null
 
@@ -308,9 +310,11 @@ export type Poster = {
   room: RoomId
   location: MapCellId
   file_url: string
-  poster_number?: number
+  poster_number: number
   x: number
   y: number
+  access_log: boolean
+  author_online_only: boolean
 }
 
 export type Announcement = {

@@ -9,44 +9,48 @@
     }"
     :transform="'translate (' + left + ' ' + top + ')'"
     :style="{
-      width: 9 + 'px',
-      height: 9 + 'px',
+      width: '' + size + 'px',
+      height: '' + size + 'px',
     }"
     @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y }, $event)"
   >
-    <image xlink:href="/img/map/kusa.png" width="9px" height="9px" />
+    <image
+      xlink:href="/img/map/kusa.png"
+      :width="'' + size + 'px'"
+      :height="'' + size + 'px'"
+    />
     <image
       v-if="cell.kind == 'poster'"
       :xlink:href="'/img/map/' + (cell.custom_image || 'post.png')"
-      width="9px"
-      height="9px"
+      :width="'' + size + 'px'"
+      :height="'' + size + 'px'"
     />
     <image
       v-if="cell.kind == 'water'"
       xlink:href="/img/map/water.png"
-      width="9px"
-      height="9px"
+      :width="'' + size + 'px'"
+      :height="'' + size + 'px'"
     />
     <image
       v-if="cell.kind == 'mud'"
       xlink:href="/img/map/mud.png"
-      width="9px"
-      height="9px"
+      :width="'' + size + 'px'"
+      :height="'' + size + 'px'"
     />
     <image
       v-if="cell.kind == 'wall'"
       xlink:href="/img/map/yama.png"
-      width="9px"
-      height="9px"
+      :width="'' + size + 'px'"
+      :height="'' + size + 'px'"
     />
     <rect
       v-if="chat"
       class="minimap-outline"
       x="1"
       y="1"
-      width="7"
-      height="7"
+      :width="'' + size - 2 + 'px'"
+      :height="'' + size - 2 + 'px'"
       rx="1px"
       fill="none"
       stroke-width="1"
@@ -76,6 +80,10 @@ export default defineComponent({
     },
     cell: {
       type: Object as PropType<Cell>,
+      required: true,
+    },
+    size: {
+      type: Number,
       required: true,
     },
     left: {

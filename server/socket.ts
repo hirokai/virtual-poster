@@ -361,9 +361,16 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           data: { room, user },
         })
         await model.redis.sockets.set(socket.id, room + ":" + user)
-        await model.redis.sockets.hincrby("room:" + "__any__", user, 1)
-        await model.redis.sockets.sadd("room:" + room + ":__all__", user)
         await model.redis.sockets.sadd("room:" + room + ":" + user, socket.id)
+        await model.redis.accounts.hincrby(
+          "connected_users:room:" + "__any__",
+          user,
+          1
+        )
+        await model.redis.accounts.sadd(
+          "connected_users:room:" + room + ":__all__",
+          user
+        )
         socket.join(room)
         socket.join(user)
         socket.join(room + ":" + user)
@@ -408,20 +415,26 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           await model.redis.sockets.del(socket.id)
           await model.redis.sockets.srem("room:" + room + ":" + user, socket.id)
 
-          const count_all_sockets_for_user = await model.redis.sockets.hincrby(
-            "room:" + "__any__",
+          const count_all_sockets_for_user = await model.redis.accounts.hincrby(
+            "connected_users:room:" + "__any__",
             user,
             -1
           )
           if (count_all_sockets_for_user == 0) {
-            await model.redis.sockets.hdel("room:" + "__any__", user)
+            await model.redis.accounts.hdel(
+              "connected_users:room:" + "__any__",
+              user
+            )
           }
           const count = await model.redis.sockets.scard(
             "room:" + room + ":" + user
           )
           if (count == 0) {
             //All clients of the user are disconneted
-            await model.redis.sockets.srem("room:" + room + ":__all__", user)
+            await model.redis.accounts.srem(
+              "connected_users:room:" + room + ":__all__",
+              user
+            )
             const msg: AppNotification = "ActiveUsers"
             io.to(room).emit(msg, [{ room, user, active: false }])
             const r: TypingSocketData = {

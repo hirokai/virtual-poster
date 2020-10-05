@@ -113,8 +113,9 @@ export const enterPoster = (
     ._roomId(props.room_id)
     .posters._posterId(pid)
     .enter.$post()
+  console.log("Enter poster result", r)
   if (!r.ok) {
-    console.warn("Cannot start viewing a poster")
+    console.warn("Cannot start viewing a poster", r.error)
     return
   }
   state.socket?.emit("Subscribe", {
@@ -360,7 +361,7 @@ export const moveTo = (
           room: props.room_id,
           user: props.myUserId,
         }
-    console.log("Move emitting", d)
+    // console.log("Move emitting", d)
     state.socket?.emit("Move", d)
     state.move_emitted = performance.now()
     return true
@@ -549,19 +550,19 @@ const on_socket_move = (
     console.log("move rejecting")
     return
   }
-  if (pos.user == props.myUserId) {
-    state.oneStepAccepted = true
-  }
   if (pos.user == props.myUserId && state.move_emitted) {
     const latency =
       Math.round((performance.now() - state.move_emitted) * 100) / 100
-    state.move_emitted = null
     console.log("%c" + latency.toFixed(2) + "ms socket move", "color: green")
+    state.move_emitted = null
     addLatencyLog(axios, {
       url: "socket:move",
       latency,
       timestamp: Date.now(),
     })
+  }
+  if (pos.user == props.myUserId) {
+    state.oneStepAccepted = true
   }
   moveOneStep(
     axios,

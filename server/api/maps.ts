@@ -66,7 +66,7 @@ async function maps_api_routes(
               [req["requester"]]
             )
       const result = rows.map(r => {
-        const numCols: number = r["max_x"] + 1
+        const numCols: number = r["max_y"] + 1
         const numRows: number = r["max_x"] + 1
         const poster_count = parseInt(r.poster_count)
         const poster_location_count = parseInt(r.poster_location_count)
@@ -86,10 +86,29 @@ async function maps_api_routes(
   fastify.get<any>("/maps/:roomId", async (req, res) => {
     const map = model.maps[req.params.roomId]
     if (!map) {
-      await res.status(404).send("Static map get failed")
+      await res.status(404).send("Not found")
       return
     }
-    return await map.getStaticMap()
+    const key = "map_cache:" + map.room_id
+    const cache = await model.redis.staticMap.get(key)
+    if (cache) {
+      await res
+        .status(200)
+        .header("content-type", "application/json")
+        .send(cache)
+      return
+    } else {
+      const data = await map.getStaticMap()
+      model.redis.staticMap
+        .set(key, JSON.stringify(data))
+        .then(() => {
+          //
+        })
+        .catch(err => {
+          console.error(err)
+        })
+      return data
+    }
   })
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
@@ -121,7 +140,11 @@ async function maps_api_routes(
         },
       ])
     }
-    return r
+    return {
+      ok: r.ok,
+      error: r.error,
+      image_allowed: r.image_allowed,
+    }
   })
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/leave", async req => {
@@ -159,7 +182,9 @@ async function maps_api_routes(
     const r2: MapEnterResponse = {
       ...r,
       socket_url: PRODUCTION
-        ? "/"
+        ? RUST_WS_SERVER
+          ? "/ws"
+          : "/"
         : RUST_WS_SERVER
         ? "ws://localhost:8080/ws"
         : "http://localhost:5000/",

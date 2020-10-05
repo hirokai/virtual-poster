@@ -69,36 +69,17 @@
       </div>
       <div v-if="tab == 'poster'">
         <div>ドラッグ＆ドロップでポスターを掲載（10 MB以内）</div>
-
         <div v-if="!posters">
-          ポスターが見つかりません。
+          ポスターがありません。
         </div>
-        <div v-for="poster in posters" :key="poster.id" class="poster-entry">
-          <div class="poster_title">
-            <span>#{{ poster.poster_number }}: </span>
-            <input
-              v-if="editingTitle == poster.id"
-              v-model="editingTitleText"
-            />
-            <span v-else>{{ poster.title }}</span>
-            <div>
-              <button
-                v-if="editingTitle != poster.id"
-                @click="onClickEditTitle(poster)"
-              >
-                タイトルを変更
-              </button>
-              <button
-                v-if="editingTitle == poster.id"
-                @click="setTitle(poster.id)"
-              >
-                完了
-              </button>
-            </div>
-          </div>
+        <div
+          v-for="poster in postersSorted"
+          :key="poster.id"
+          class="poster-entry"
+        >
           <div
             v-if="!!poster"
-            class="poster"
+            class="poster-img"
             :class="{ 'drag-hover': dragover[poster.id] }"
             @dragover.prevent
             @drop.prevent="onDrop($event, poster.id)"
@@ -107,15 +88,94 @@
           >
             <img :src="dataURI[poster.id]" />
           </div>
-          <button class="remove-poster" @click="removePosterFile(poster.id)">
-            ポスター画像を削除
-          </button>
-          <button
-            class="release-poster-slot"
-            @click="releasePosterSlot(poster)"
-          >
-            ポスター枠を開放
-          </button>
+          <div class="poster_info">
+            <div class="poster_title">
+              <span class="room">{{ rooms[poster.room].name }}</span
+              ><span class="poster-number">#{{ poster.poster_number }}: </span
+              ><br />
+              <div>
+                <button
+                  v-if="editingTitle != poster.id"
+                  @click="onClickEditTitle(poster)"
+                >
+                  タイトルを変更
+                </button>
+                <button
+                  v-if="editingTitle == poster.id"
+                  @click="setTitle(poster.id)"
+                >
+                  完了
+                </button>
+              </div>
+              <input
+                id="input-title"
+                v-if="editingTitle == poster.id"
+                v-model="editingTitleText"
+                type="text"
+              />
+              <div class="title" v-else>
+                {{
+                  !poster.title || poster.title == "" ? "(無題)" : poster.title
+                }}
+              </div>
+            </div>
+            <div>
+              <label :for="'only-online-' + poster.id"
+                >自分がオフラインの時にポスター画像を隠す</label
+              >
+              <input
+                type="checkbox"
+                name=""
+                :id="'only-online-' + poster.id"
+                v-model="poster.author_online_only"
+                @change="
+                  onChangeToggle(
+                    'author_online_only',
+                    poster.id,
+                    $event.target.checked
+                  )
+                "
+              />
+            </div>
+            <div>
+              <label :for="'access-log-' + poster.id"
+                >ポスターへの足あと（閲覧記録）を記録・公開する</label
+              >
+              <input
+                type="checkbox"
+                name=""
+                :id="'access-log-' + poster.id"
+                v-model="poster.access_log"
+                @change="
+                  onChangeToggle('access_log', poster.id, $event.target.checked)
+                "
+              />
+            </div>
+
+            <div class="poster-logs">
+              <h4>ポスターの閲覧履歴</h4>
+              <div class="poster-logs-entries">
+                <ul>
+                  <li
+                    v-for="history in view_history[poster.id]"
+                    :key="'' + history.user_id + '-' + history.joined_time"
+                  >
+                    {{ people[history.user_id].name }}
+                    {{ formatTime(new Date(history.last_active)) }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <button class="remove-poster" @click="removePosterFile(poster.id)">
+              画像を削除
+            </button>
+            <button
+              class="release-poster-slot"
+              @click="releasePosterSlot(poster)"
+            >
+              ポスター枠を開放
+            </button>
+          </div>
         </div>
       </div>
 
@@ -272,6 +332,8 @@ import {
   Poster,
   PosterId,
   UserId,
+  Room,
+  RoomId,
   PersonWithEmail,
 } from "../@types/types"
 import { keyBy, difference, range, chunk } from "../common/util"
@@ -282,7 +344,7 @@ import * as encryption from "./encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
 import firebaseConfig from "../firebaseConfig"
-import { deleteUserInfoOnLogout } from "./util"
+import { deleteUserInfoOnLogout, formatTime } from "./util"
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"
@@ -349,6 +411,7 @@ export default defineComponent({
       debug_token,
       jwt_hash: localStorage["virtual-poster:jwt_hash"] as string | undefined,
 
+      rooms: {} as { [index: string]: Room },
       people: {} as { [index: string]: PersonWithEmail },
       posters: {} as { [index: string]: Poster },
       files: {} as { [index: string]: File },
@@ -356,6 +419,12 @@ export default defineComponent({
 
       editingTitle: null as PosterId | null,
       editingTitleText: "",
+
+      access_log: {} as { [index: string]: boolean },
+      online_only: {} as { [index: string]: boolean },
+      view_history: {} as {
+        [index: string]: { user_id: UserId; joined_time: number }[]
+      },
 
       editing: { name: null } as { name: string | null },
 
@@ -524,22 +593,44 @@ export default defineComponent({
           data_p,
           data_poster,
           { public_key: pub_str_from_server },
+          data_r,
         ] = await Promise.all([
           client.people.$get(),
           client.people._userId(state.myUserId).posters.$get(),
           client.public_key.$get(),
+          client.maps.$get(),
         ])
         state.people = keyBy(data_p, "id")
         state.posters = keyBy(data_poster.posters || [], "id")
+        state.rooms = keyBy(data_r, "id")
         state.privateKey =
           localStorage[
             "virtual-poster:" + state.myUserId + ":private_key_jwk"
           ] || localStorage["virtual-poster:private_key:" + state.myUserId]
         await setupEncryption(pub_str_from_server || null)
+        for (const p of data_poster.posters || []) {
+          const h = await client.maps
+            ._roomId(p.room)
+            .posters._posterId(p.id)
+            .history.$get()
+          state.view_history[p.id] = h
+        }
       })().catch(err => {
         console.error(err)
       })
     }
+    const postersSorted = computed(() => {
+      return Object.values(state.posters).sort((a, b) => {
+        return (
+          (a.room > b.room ? 10 : a.room == b.room ? 0 : -10) +
+          (a.poster_number > b.poster_number
+            ? 1
+            : a.poster_number == b.poster_number
+            ? 0
+            : -1)
+        )
+      })
+    })
     const clickAvatar = async (n: string) => {
       const data = await client.people
         ._userId(state.myUserId)
@@ -609,9 +700,7 @@ export default defineComponent({
     }
 
     const onClickEditTitle = (poster: Poster) => {
-      if (poster.title) {
-        state.editingTitleText = poster.title
-      }
+      state.editingTitleText = poster.title || ""
       state.editingTitle = poster.id
     }
 
@@ -1044,14 +1133,33 @@ export default defineComponent({
       if (!num) {
         return
       }
-      await client.maps
+      const r = await client.maps
         ._roomId(poster.room)
         .poster_slots._posterNumber(num)
         .$delete()
+      if (r.ok) {
+        delete state.posters[poster.id]
+      }
+    }
+
+    const onChangeToggle = async (
+      key: "access_log" | "author_online_only",
+      pid,
+      flag
+    ) => {
+      const body =
+        key == "access_log"
+          ? { access_log: flag }
+          : { author_online_only: flag }
+      await client.posters._posterId(pid).patch({
+        body,
+      })
     }
 
     return {
       ...toRefs(state),
+      formatTime,
+      postersSorted,
       onMouseOverAvatar,
       validateVote,
       setupEncryption,
@@ -1062,6 +1170,7 @@ export default defineComponent({
       signOut,
       reload,
       setTitle,
+      onChangeToggle,
       onClickEditTitle,
       clickAvatar,
       saveName,
@@ -1096,6 +1205,11 @@ h1 {
   font-size: 24px;
   margin: 0px;
 }
+
+h4 {
+  margin: 0px;
+}
+
 .tab {
   font-size: 16px;
   font-weight: bold;
@@ -1151,8 +1265,15 @@ div.avatar.current {
   box-sizing: border-box;
   display: inline-block;
 }
+
 input {
   height: 24px;
+}
+
+#input-title {
+  width: 100%;
+  min-width: 100px;
+  font-size: 16px;
 }
 
 h2 {
@@ -1167,9 +1288,10 @@ h2 {
 
 div.poster-entry {
   border: black 1px solid;
-  width: 440px;
-  height: 750px;
-  float: left;
+  border-radius: 3px;
+  width: calc(100% - 100px);
+  height: 430px;
+  margin: 10px;
 }
 
 .danger {
@@ -1183,29 +1305,30 @@ div.poster-entry {
   font-family: "Courier New", Courier, monospace;
 }
 
-div.poster {
+div.poster-img {
   border: 1px solid black;
-  width: 420px;
-  height: 594px;
+  width: 280px;
+  height: calc(280px * 1.414);
   top: 80px;
   margin: 10px;
+  float: left;
 }
 
-div.poster.drag-hover {
+div.poster-img.drag-hover {
   border: #99f 3px solid;
   box-sizing: border-box;
 }
 
-div.poster img {
+div.poster-img img {
   max-width: 100%;
   max-height: 100%;
 }
 
 .poster_info {
-  position: absolute;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  width: 208px;
-  background: rgba(255, 255, 255, 0.5);
+  /* position: absolute; */
+  width: calc(100% - 400px);
+  margin: 10px;
+  float: left;
 }
 
 .poster_author {
@@ -1213,20 +1336,37 @@ div.poster img {
 }
 
 .poster_title {
-  margin: 10px;
+  margin: 0px;
   height: 80px;
 }
 
+.poster_title .title {
+  margin: 3px 0px 0px 4px;
+}
+
+.poster-entry .room,
+.poster-entry .poster-number {
+  font-size: 12px;
+}
+
 button.remove-poster {
-  position: relative;
-  left: 10px;
-  bottom: 1px;
+  color: red;
+  margin: 10px 20px;
 }
 
 button.release-poster-slot {
-  position: relative;
-  left: 100px;
-  bottom: 1px;
+  color: red;
+  margin: 10px 20px;
+}
+.poster-logs-entries {
+  border: 1px solid #ccc;
+  height: 190px;
+  overflow-y: scroll;
+  font-size: 14px;
+}
+
+.poster-logs-entries ul {
+  margin: 0px;
 }
 
 .btn-danger {

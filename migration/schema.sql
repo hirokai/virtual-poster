@@ -132,7 +132,9 @@ CREATE TABLE poster (
 	last_updated bigint not null,
 	location text unique references map_cell(id),
 	title text,
-	author text references person(id)
+	author text references person(id),
+	access_log boolean,
+	author_online_only boolean,
 );
 
 CREATE TABLE comment_to_poster (

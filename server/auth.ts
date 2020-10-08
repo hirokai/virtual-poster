@@ -5,6 +5,7 @@ import * as admin from "firebase-admin"
 import * as jwt from "jsonwebtoken"
 import axios from "axios"
 import { config } from "./config"
+import firebaseConfig from "../firebaseConfig"
 
 const DEBUG_TOKEN = config.debug_token
 
@@ -34,6 +35,7 @@ export async function verifyIdToken(
   decoded?: admin.auth.DecodedIdToken
   error?: string
 }> {
+  const firebaseProject: string = firebaseConfig.projectId
   const decode = promisify(jwt.decode)
   try {
     let decoded: admin.auth.DecodedIdToken | null = null
@@ -55,10 +57,10 @@ export async function verifyIdToken(
         decoded: jwt.decode(token) as admin.auth.DecodedIdToken,
       }
     }
-    if (decoded.aud != "coi-conf") {
+    if (decoded.aud != firebaseProject) {
       throw "aud is invalid"
     }
-    if (decoded.iss != "https://securetoken.google.com/coi-conf") {
+    if (decoded.iss != "https://securetoken.google.com/" + firebaseProject) {
       throw "Error"
     }
     if (decoded.exp <= Date.now() / 1000) {
@@ -81,7 +83,9 @@ export async function verifyIdToken(
   } catch (err) {
     const decoded2 = (await decode(token, {
       complete: true,
-    })) as admin.auth.DecodedIdToken
+    }).catch(() => {
+      return undefined
+    })) as admin.auth.DecodedIdToken | undefined
     return { ok: false, error: err, decoded: decoded2 }
   }
 }
@@ -90,6 +94,22 @@ export async function protectedRoute(
   req: FastifyRequest<any, any>,
   reply: FastifyReply
 ): Promise<void> {
+  if (
+    DEBUG_TOKEN &&
+    req.query.debug_token == DEBUG_TOKEN &&
+    req.query.debug_as
+  ) {
+    const user_id = req.query.debug_as as string
+    req["requester"] = user_id
+    const typ = await model.people.getUserType(user_id)
+    req.log.debug({ type: typ })
+    if (typ) {
+      req["requester_type"] = typ
+    } else {
+      await reply.status(403).send("No user found")
+    }
+    return
+  }
   const cookie_session_id = req.cookies["virtual_poster_session_id"]
   const user_id = await model.redis.sessions.get(
     "cookie:uid:" + cookie_session_id
@@ -129,22 +149,7 @@ export async function protectedRoute(
   //   log.info(ip, req.path)
   // }
   req.log.info("Token: ", token || "(Not found)")
-  if (
-    DEBUG_TOKEN &&
-    req.query.debug_token == DEBUG_TOKEN &&
-    req.query.debug_as
-  ) {
-    const user_id = req.query.debug_as as string
-    req["requester"] = user_id
-    const typ = await model.people.getUserType(user_id)
-    req.log.debug({ type: typ })
-    if (typ) {
-      req["requester_type"] = typ
-    } else {
-      await reply.status(403).send("No user found")
-    }
-    return
-  }
+
   if (!token) {
     req.log.warn({ cookie_session_id, user_id, token })
     await reply.status(403).send("No token provided.")

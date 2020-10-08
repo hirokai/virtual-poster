@@ -855,10 +855,21 @@ export default defineComponent({
         const data = await client.maps
           ._roomId(props.room_id)
           .enter.$post()
-          .catch(() => null)
+          .catch(() => {
+            return { ok: false, status: "API error" }
+          })
         console.log("enter result", data)
-        if (!data || !data.ok) {
-          alert("部屋に入れませんでした")
+        if (!data.ok) {
+          alert(
+            "部屋に入れませんでした。" +
+              (data.status == "NoAccess"
+                ? " アクセス権がありません。"
+                : data.status == "NoSpace"
+                ? "スペースがありません。"
+                : data.status == "DoesNotExist"
+                ? "部屋が見つかりません。"
+                : "")
+          )
           location.href = "/"
           return
         }

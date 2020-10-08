@@ -4,9 +4,10 @@ import _ from "lodash"
 import { RoomId, MapEnterResponse, UserId } from "@/@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
+import { config } from "../config"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
-const RUST_WS_SERVER = !!process.env.RUST_WS_SERVER
+const RUST_WS_SERVER = config.socket_server.system == "Rust"
 
 async function maps_api_routes(
   fastify: FastifyInstance<any, any, any, any>

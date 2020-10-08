@@ -24,9 +24,12 @@ yarn-error.log*
 # Other files
 /coverage
 /.env
-rust-server/target/
+server-rust/target/
 *.pem
 *.secret.json
 /dist_server
 virtual_poster.yaml
 test-servers
+stats_app.*
+/api
+firebaseConfig.js

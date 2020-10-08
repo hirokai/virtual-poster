@@ -93,11 +93,17 @@ pub struct PubSubServer {
 impl PubSubServer {
     pub fn init(
         pg: bb8_postgres::bb8::Pool<bb8_postgres::PostgresConnectionManager<tokio_postgres::NoTls>>,
+        redis_conn_str: &str,
     ) -> PubSubServer {
         // default room
         let mut topics = HashMap::new();
         topics.insert("all".to_owned(), HashSet::new());
-        let redis = RedisActor::start("127.0.0.1:6379");
+        let ts = redis_conn_str.split("://").collect::<Vec<&str>>();
+        let mut redis_conn_str_normalized = redis_conn_str;
+        if ts.len() > 1 {
+            redis_conn_str_normalized = ts[1];
+        }
+        let redis = RedisActor::start(redis_conn_str_normalized.to_string());
 
         PubSubServer {
             sessions: HashMap::new(),

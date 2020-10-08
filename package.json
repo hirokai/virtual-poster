@@ -18,6 +18,7 @@
     "prod:log": "NODE_ENV=production DEBUG_LOG=1 ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "server": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "socket": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts | bunyan -o short",
+    "ws:rs": "cd rust-server && cargo run --release --bin ws",
     "socket:nohup": "sudo NODE_ENV=production NO_TLS=1 PORT=80 nohup node dist_server/server/socket_standalone.js > socket.nohup.out &",
     "test": "NODE_TEST=1 jest --runInBand --forceExit"
   },

@@ -1,5 +1,6 @@
 domain: localhost
 api_server:
+  system: Rust # Rust / Node
   port: 3000
   tls: false
   http2: false

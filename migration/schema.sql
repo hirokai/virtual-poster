@@ -134,7 +134,7 @@ CREATE TABLE poster (
 	title text,
 	author text references person(id),
 	access_log boolean,
-	author_online_only boolean,
+	author_online_only boolean
 );
 
 CREATE TABLE comment_to_poster (
@@ -180,5 +180,6 @@ CREATE TABLE poster_viewer (
 	person text references person(id) not null,
 	joined_time bigint not null,
 	left_time bigint,
-	last_active bigint
+	last_active bigint,
+	access_log boolean not null
 );

@@ -52,3 +52,4 @@ strum_macros = "0.19"
 time = "*"
 tokio = {version = "0.2.2", features = ["time"]}
 uuid = {version = "0.8", features = ["serde", "v4"]}
+yaml-rust = "0.4"

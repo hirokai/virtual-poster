@@ -213,6 +213,8 @@
         </div>
       </div>
       <div v-if="tab == 'account'">
+        <h2>ログのエクスポート</h2>
+        <button @click="exportLog">エクスポート</button>
         <h2>アクセスコード</h2>
         <label for="access_code">アクセスコード</label>
         <input type="text" id="access_code" v-model="access_code" />
@@ -345,6 +347,8 @@ import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
 import firebaseConfig from "../firebaseConfig"
 import { deleteUserInfoOnLogout, formatTime } from "./util"
+import { ChatCommentDecrypted } from "@/api/@types"
+import { decryptIfNeeded } from "./room_chat_service"
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"
@@ -379,6 +383,22 @@ location.hash = "#" + tab
 let socket: SocketIO.Socket | null = null
 
 const bgPositions: string[] = ["down", "left", "up", "right"]
+
+function download(filename, text) {
+  const element = document.createElement("a")
+  element.setAttribute(
+    "href",
+    "data:text/plain;charset=utf-8," + encodeURIComponent(text)
+  )
+  element.setAttribute("download", filename)
+
+  element.style.display = "none"
+  document.body.appendChild(element)
+
+  element.click()
+
+  document.body.removeChild(element)
+}
 
 export default defineComponent({
   setup: () => {
@@ -1156,6 +1176,42 @@ export default defineComponent({
       })
     }
 
+    const exportLog = async () => {
+      const myUserId = state.myUserId
+      if (myUserId) {
+        const comments_all = await client.people
+          ._userId(state.myUserId)
+          .comments.$get()
+
+        const comments: any[] = []
+        // Start file download.
+        for (const c of comments_all) {
+          const r = await decryptIfNeeded(
+            myUserId,
+            state.people,
+            c,
+            state.privateKey
+          )
+          if (r.text) {
+            comments.push({
+              id: c.id,
+              room: c.room,
+              text_decrypted: r.text,
+              timestamp: c.timestamp,
+              x: c.x,
+              y: c.y,
+              last_updated: c.last_updated,
+              recipients: c.texts.map(t => t.to),
+              // texts: c.texts,
+              person: c.person,
+              kind: c.kind,
+            })
+          }
+        }
+        download("export_log.json", JSON.stringify(comments))
+      }
+    }
+
     return {
       ...toRefs(state),
       formatTime,
@@ -1184,6 +1240,7 @@ export default defineComponent({
       page_from,
       myself,
       submitAccessCode,
+      exportLog,
     }
   },
 })

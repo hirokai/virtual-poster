@@ -64,6 +64,9 @@ const bot_mode = url.searchParams.get("bot_mode") == "1"
       firebase.auth().languageCode = "ja"
 
       console.log("Verification email sent")
+      alert(
+        "確認のメールを送信しました。メールボックスをチェックしてください。"
+      )
       location.href = "/"
     } else {
       const user_id: string | undefined = localStorage["virtual-poster:user_id"]

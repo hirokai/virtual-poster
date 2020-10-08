@@ -2,22 +2,19 @@ import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
-import { RoomId, PersonInMap, PersonUpdate } from "@/@types/types"
+import { RoomId, PersonInMap, PersonUpdate, ChatComment } from "@/@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
 import fs from "fs"
 import { config } from "../config"
 
-const serviceAccount = JSON.parse(
-  fs.readFileSync(
-    "./coi-conf-firebase-adminsdk-fc4p6-74c47d8a6b.secret.json",
-    "utf-8"
-  )
-)
+const serviceAccount: admin.ServiceAccount & {
+  databaseURL: string
+} = JSON.parse(fs.readFileSync(config.firebase_auth_credential, "utf-8"))
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://coi-conf.firebaseio.com",
+  databaseURL: serviceAccount.databaseURL,
 })
 
 async function routes(
@@ -245,6 +242,21 @@ async function routes(
         statusCode: 403,
         error: "Not admin, but " + req["requester_type"],
       }
+    }
+  })
+  fastify.get<any>("/people/:userId/comments", async req => {
+    const userId = req.params.userId
+    if (req["requester_type"] == "admin" || req["requester"] == userId) {
+      const rooms = Object.keys(model.maps)
+      req.log.debug(rooms)
+      let comments: ChatComment[] = []
+      for (const room_id of rooms) {
+        const cs = await model.chat.getAllComments(room_id, userId)
+        comments = comments.concat(cs || [])
+      }
+      return comments
+    } else {
+      throw { statusCode: 403 }
     }
   })
 }

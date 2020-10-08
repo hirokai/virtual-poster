@@ -44,6 +44,8 @@ pub async fn get_posters_of_room(
             custom_image: r.get("custom_image"),
             x: r.get::<_, i32>("x") as usize,
             y: r.get::<_, i32>("y") as usize,
+            access_log: r.get::<_, bool>("access_log"),
+            author_online_only: r.get::<_, bool>("author_online_only"),
         })
         .collect();
     HttpResponse::Ok().json(json!(posters))

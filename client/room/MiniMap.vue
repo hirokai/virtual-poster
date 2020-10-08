@@ -165,7 +165,7 @@ export default defineComponent({
       return props.cells.length == 0
         ? 9
         : Math.floor(
-            Math.min(528 / props.cells[0].length, 400 / props.cells.length)
+            Math.min(528 / props.cells[0].length, 360 / props.cells.length)
           )
     })
     const personImgOffset = (direction: Direction): string => {

@@ -25,6 +25,9 @@ paths:
       summary: Get a list of people
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -64,6 +67,9 @@ paths:
                 properties: {}
       operationId: get-people-userId
       description: Get a person
+      security:
+        - debugAs: []
+        - debugToken: []
       parameters:
         - schema:
             type: boolean
@@ -135,12 +141,18 @@ paths:
                   type: string
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
       description: "Update person info  "
   /people:
     get:
       summary: List all users
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -201,11 +213,17 @@ paths:
       description: Add new person
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
   "/people_multi/{userIds}":
     get:
       summary: Get information on users
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -241,6 +259,9 @@ paths:
       summary: Get a list of rooms
       tags:
         - map
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -291,6 +312,9 @@ paths:
       summary: Get a map
       tags:
         - map
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -352,6 +376,9 @@ paths:
                   - ok
       tags:
         - map
+      security:
+        - debugAs: []
+        - debugToken: []
       description: Enter a room
   "/maps/{roomId}/groups/{groupId}/join":
     post:
@@ -376,6 +403,9 @@ paths:
       description: "Join a chat group. You can only join one chat group at maximum.  "
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -426,6 +456,9 @@ paths:
       description: Leave a chat group.
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
   "/maps/{roomId}/groups/{groupId}/people":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -444,6 +477,9 @@ paths:
       summary: Add a new person to a chat
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -485,6 +521,9 @@ paths:
       summary: Make a new chat group
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -533,11 +572,17 @@ paths:
       description: List members of a chat group
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
   /groups:
     get:
       summary: Get chat groups
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -570,6 +615,9 @@ paths:
       summary: Get a group the user belongs to.
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -592,6 +640,9 @@ paths:
       summary: Get all comments in the room
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -646,6 +697,9 @@ paths:
                   type: string
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       description: Update poster comment
       parameters: []
     delete:
@@ -668,6 +722,9 @@ paths:
       description: Delete a poster comment
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
   "/comments/{commentId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -681,6 +738,9 @@ paths:
       summary: Edit a comment
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -729,6 +789,9 @@ paths:
       description: Delete a comment
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
   "/maps/{roomId}/people/{userId}/poster":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -747,6 +810,9 @@ paths:
       summary: Get a poster of a user in a room
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -774,6 +840,9 @@ paths:
       summary: Get all posters of the user
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -795,6 +864,9 @@ paths:
       summary: Upload a poster file
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -844,6 +916,9 @@ paths:
       summary: Get a poster file
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -876,6 +951,9 @@ paths:
       description: Upload a poster file
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
     delete:
       summary: Delete a poster file
       operationId: delete-posters-posterId-file
@@ -897,12 +975,18 @@ paths:
                   - ok
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       description: Delete a poster file
   "/posters/{posterId}/comments":
     post:
       summary: Post a comment on a poster
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -958,6 +1042,9 @@ paths:
       summary: Get all posters
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -982,6 +1069,9 @@ paths:
       summary: Get all posters in a room
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1001,6 +1091,9 @@ paths:
       summary: Submit ID token
       tags:
         - auth
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1063,6 +1156,9 @@ paths:
       summary: Ping
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1074,11 +1170,14 @@ paths:
                 default: pong
       operationId: get-ping
       description: "Return pong. Used for health check, etc.  "
-      security: []
   /socket_url:
     get:
       summary: Get socket URL
-      tags: []
+      tags:
+        - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1096,6 +1195,9 @@ paths:
       summary: Get my public key
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1142,11 +1244,17 @@ paths:
                 - key
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
   /logout:
     post:
       summary: Logout
       tags:
         - auth
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1177,6 +1285,9 @@ paths:
       summary: Take a poster slot
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1206,11 +1317,17 @@ paths:
       parameters: []
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
   /latency_report:
     post:
       summary: Submit a latency report
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1257,6 +1374,9 @@ paths:
       summary: Register a user
       tags:
         - people
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1297,6 +1417,9 @@ paths:
       summary: Get a key pair for blind signature
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1319,6 +1442,9 @@ paths:
       summary: Sign a message with blind signature
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1350,6 +1476,9 @@ paths:
       summary: Verify blind signature
       tags:
         - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1402,6 +1531,9 @@ paths:
       description: Post a comment in a room
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
   "/maps/{roomId}/posters/{posterId}/approach":
     parameters:
       - schema:
@@ -1418,6 +1550,9 @@ paths:
       summary: Approach the poster
       tags:
         - map
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1439,7 +1574,11 @@ paths:
         required: true
     post:
       summary: Post an access code
-      tags: []
+      tags:
+        - misc
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1477,6 +1616,9 @@ paths:
       summary: Update poster info
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1512,6 +1654,9 @@ paths:
       summary: Add a reply to a comment
       tags:
         - chat
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1551,6 +1696,9 @@ paths:
       summary: Post a reply to a poster comment
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1590,6 +1738,9 @@ paths:
       summary: Start viewing a poster
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1624,6 +1775,9 @@ paths:
       summary: Start viewing a poster
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1654,6 +1808,9 @@ paths:
       summary: Get a view history of a poster
       tags:
         - poster
+      security:
+        - debugAs: []
+        - debugToken: []
       responses:
         "200":
           description: OK
@@ -1677,6 +1834,30 @@ paths:
                     - joined_time
       operationId: get-maps-roomId-posters-posterId-history
       description: "Get a view history of a poster. Only when the poster author and/or administrator enables logging, it has a public record."
+  "/people/{userId}/comments":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    get:
+      summary: Export all comment logs
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatComment"
+      operationId: get-people-userId-comments
+      description: "Export all comment logs  "
 components:
   parameters:
     debug_token:
@@ -2092,6 +2273,7 @@ components:
       type: apiKey
       in: query
       name: debug_as
+      description: ""
     debugToken:
       type: apiKey
       in: query
@@ -2105,3 +2287,4 @@ tags:
   - name: misc
 security:
   - debugToken: []
+  - debugAs: []

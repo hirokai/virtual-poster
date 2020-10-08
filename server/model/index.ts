@@ -72,10 +72,10 @@ const user_log = bunyan.createLogger({
 })
 
 export const redis = {
-  accounts: new Redis({ db: 0 }),
-  staticMap: new Redis({ db: 1 }),
-  sockets: new Redis({ db: 2 }),
-  sessions: new Redis({ db: 3 }),
+  accounts: new Redis(config.redis + "/0"),
+  staticMap: new Redis(config.redis + "/1"),
+  sockets: new Redis(config.redis + "/2"),
+  sessions: new Redis(config.redis + "/3"),
 }
 
 export function userLog(obj: UserOperationLog): void {

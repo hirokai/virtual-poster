@@ -34,10 +34,7 @@ import { encodeAppNotificationData } from "../common/util"
 
 const PRODUCTION: boolean = process.env.NODE_ENV == "production"
 
-const RUST_WS_SERVER_PORT: number | null = process.env.RUST_WS_SERVER
-  ? parseInt(process.env.RUST_WS_SERVER)
-  : null
-
+const RUST_WS_SERVER: boolean = config.socket_server.system == "Rust"
 const RUN_CLUSTER: number = config.api_server.cluster
 const PORT: number = config.api_server.port || (PRODUCTION ? 443 : 3000)
 const HTTP2: boolean = config.api_server.http2
@@ -54,7 +51,7 @@ console.log({
   PORT,
   HTTP2,
   TLS,
-  RUST_WS_SERVER_PORT,
+  RUST_WS_SERVER,
   DEBUG_LOG,
   RUN_CLUSTER,
   CERTIFICATE_FOLDER,
@@ -65,7 +62,10 @@ console.log({
 class HTTPEmitter {
   channels: string[] = []
   url =
-    "http://localhost:" + RUST_WS_SERVER_PORT + "/input/" + config.debug_token
+    "http://localhost:" +
+    config.socket_server.port +
+    "/input/" +
+    config.debug_token
   constructor(channels: string[] = []) {
     this.channels = channels
   }
@@ -152,7 +152,7 @@ workerInitData()
       }
 
       console.log("Registering socket.")
-      if (RUST_WS_SERVER_PORT) {
+      if (RUST_WS_SERVER) {
         registerSocket(new HTTPEmitter())
       } else {
         registerSocket(io({ host: "localhost", port: 6379 }))
@@ -173,13 +173,7 @@ workerInitData()
             console.log("ERROR!!!!!", err)
             if (err instanceof swaggerValidation.InputValidationError) {
               server.log.warn(err.errors)
-              return reply
-                .status(400)
-                .send(
-                  PRODUCTION
-                    ? "Invalid request body or query/path parameters."
-                    : err.errors.join("\n")
-                )
+              return reply.status(400).send(err.errors.join("\n"))
             }
             console.log(err)
             await reply.status(err.statusCode || 500).send(err.message)

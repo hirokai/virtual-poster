@@ -21,6 +21,8 @@ use std::env;
 use std::time::SystemTime;
 #[macro_use]
 extern crate log;
+extern crate yaml_rust;
+use yaml_rust::YamlLoader;
 
 /// How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -297,6 +299,11 @@ async fn main() -> std::io::Result<()> {
     //     "actix_server=info,actix_web=info,websocket=debug",
     // );
 
+    let s = std::fs::read_to_string("./virtual_poster.yaml")
+        .unwrap_or(std::fs::read_to_string("../virtual_poster.yaml").unwrap());
+    let doc = &YamlLoader::load_from_str(&s).unwrap()[0];
+    let port = doc["socket_server"]["port"].as_i64().unwrap();
+
     let app = AppClap::new("WebSocket server")
         .version("0.1.0")
         .arg(
@@ -314,14 +321,18 @@ async fn main() -> std::io::Result<()> {
         );
     let matches = app.get_matches();
 
-    let port = env::var("PORT").unwrap_or("5000".to_string());
-    let secret_path = std::env::var("DEBUG_TOKEN").expect("DEBUG_TOKEN is needed");
+    let port = env::var("PORT").unwrap_or(format!("{}", port));
+    let secret_path =
+        std::env::var("DEBUG_TOKEN").unwrap_or(doc["debug_token"].as_str().unwrap().to_string());
     let input_path = format!("/input/{}", secret_path);
     println!("Secret input path: {}", input_path);
 
-    let conn_str = dotenv::var("POSTGRES_CONNECTION_STRING").unwrap_or(String::from(
-        "postgresql://postgres@localhost:5432/virtual_poster",
-    ));
+    let conn_str = doc["postgresql"].as_str().unwrap();
+    let redis_conn_str = doc["redis"].as_str().unwrap();
+
+    debug!("PostgreSQL: {}", conn_str);
+    debug!("Redis: {}", redis_conn_str);
+
     let pg_mgr =
         PostgresConnectionManager::new_from_stringlike(conn_str, tokio_postgres::NoTls).unwrap();
 
@@ -330,7 +341,7 @@ async fn main() -> std::io::Result<()> {
         Err(e) => panic!("builder error: {:?}", e),
     };
     // Start chat server actor
-    let actor = socket_server::PubSubServer::init(pg);
+    let actor = socket_server::PubSubServer::init(pg, &redis_conn_str);
     let server = actor.start();
 
     let num_cpus = num_cpus::get();

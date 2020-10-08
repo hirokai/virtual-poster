@@ -43,6 +43,7 @@ use maps::*;
 use people::*;
 use posters::*;
 use serde_json::json;
+use yaml_rust::{YamlEmitter, YamlLoader};
 
 // use sqlx::postgres::PgPoolOptions;
 
@@ -206,7 +207,13 @@ async fn main() -> std::io::Result<()> {
     println!("Debug token: {}", debug_token);
 
     println!("Initializing Redis cache...");
-    let redis_addr_1 = RedisActor::start("127.0.0.1:6379");
+
+    let s = std::fs::read_to_string("./virtual_poster.yaml")
+        .unwrap_or(std::fs::read_to_string("../virtual_poster.yaml").unwrap());
+    let docs = YamlLoader::load_from_str(&s).unwrap();
+    let redis_conn_str = docs[0]["redis"].as_str().as_ref().unwrap().to_string();
+
+    let redis_addr_1 = RedisActor::start(&redis_conn_str);
     model::init_redis_cache(&pool, redis_addr_1).await;
     println!("Done.");
 
@@ -214,9 +221,9 @@ async fn main() -> std::io::Result<()> {
         let mydata = MyData {
             pg: pool.clone(),
             // pgx: poolx.clone(),
-            redis: RedisActor::start("127.0.0.1:6379"),
-            redis_sync: redis::Client::open("redis://127.0.0.1/0").unwrap(),
-            redis_sync_sessions: redis::Client::open("redis://127.0.0.1/3").unwrap(),
+            redis: RedisActor::start(&redis_conn_str),
+            redis_sync: redis::Client::open(format!("{}/0", redis_conn_str)).unwrap(),
+            redis_sync_sessions: redis::Client::open(format!("{}/3", redis_conn_str)).unwrap(),
             debug_token: debug_token.clone(),
         };
 

@@ -9,11 +9,12 @@
 
 export interface Config {
   domain: string
-  api_server: Server
-  socket_server: Server
+  api_server: APIServer
+  socket_server: SocketServer
   default_rooms: string[]
   certificate_folder: string
   postgresql: string
+  redis: string
   aws: Aws
   firebase_auth_credential: string
   user_registration: boolean
@@ -21,7 +22,7 @@ export interface Config {
   debug_token: string
 }
 
-export interface Server {
+export interface APIServer {
   port: number
   tls: boolean
   http2: boolean
@@ -46,6 +47,15 @@ export interface S3 {
   upload: boolean
   bucket: string
   via_cdn: boolean
+}
+
+export interface SocketServer {
+  system: string
+  port: number
+  tls: boolean
+  http2: boolean
+  cluster: number
+  debug_log: boolean
 }
 
 // Converts JSON strings to/from your types
@@ -213,11 +223,12 @@ const typeMap: any = {
   Config: o(
     [
       { json: "domain", js: "domain", typ: "" },
-      { json: "api_server", js: "api_server", typ: r("Server") },
-      { json: "socket_server", js: "socket_server", typ: r("Server") },
+      { json: "api_server", js: "api_server", typ: r("APIServer") },
+      { json: "socket_server", js: "socket_server", typ: r("SocketServer") },
       { json: "default_rooms", js: "default_rooms", typ: a("") },
       { json: "certificate_folder", js: "certificate_folder", typ: "" },
       { json: "postgresql", js: "postgresql", typ: "" },
+      { json: "redis", js: "redis", typ: "" },
       { json: "aws", js: "aws", typ: r("Aws") },
       {
         json: "firebase_auth_credential",
@@ -230,7 +241,7 @@ const typeMap: any = {
     ],
     false
   ),
-  Server: o(
+  APIServer: o(
     [
       { json: "port", js: "port", typ: 0 },
       { json: "tls", js: "tls", typ: true },
@@ -262,6 +273,17 @@ const typeMap: any = {
       { json: "upload", js: "upload", typ: true },
       { json: "bucket", js: "bucket", typ: "" },
       { json: "via_cdn", js: "via_cdn", typ: true },
+    ],
+    false
+  ),
+  SocketServer: o(
+    [
+      { json: "system", js: "system", typ: "" },
+      { json: "port", js: "port", typ: 0 },
+      { json: "tls", js: "tls", typ: true },
+      { json: "http2", js: "http2", typ: true },
+      { json: "cluster", js: "cluster", typ: 0 },
+      { json: "debug_log", js: "debug_log", typ: true },
     ],
     false
   ),

@@ -266,7 +266,7 @@ export class MapModel {
     user_id: UserId
   ): Promise<{
     ok: boolean
-    status: "New" | "ComeBack" | "NoAccess" | "Deleted" | "NoSpace"
+    status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
   }> {
     console.log("assignUserPosition()", user_id)
     const r = await db.query(
@@ -295,14 +295,14 @@ export class MapModel {
     user_id: UserId
   ): Promise<{
     ok: boolean
-    status: "New" | "ComeBack" | "NoAccess" | "Deleted" | "NoSpace"
+    status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
   }> {
     const r1 = (
       await db.query(`SELECT count(*) from room where id=$1`, [this.room_id])
     )[0].count
     if (r1 == 0) {
       log.warn("Room was deleted")
-      return { ok: false, status: "Deleted" }
+      return { ok: false, status: "DoesNotExist" }
     }
     const rows = await db.query(
       `SELECT count(*) FROM person_position where person=$1 and room=$2;`,

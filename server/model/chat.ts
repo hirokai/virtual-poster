@@ -12,7 +12,7 @@ import {
   CommentId,
   CommentEncryptedEntry,
   PosterCommentDecrypted,
-} from "@/@types/types"
+} from "../../@types/types"
 import * as bunyan from "bunyan"
 import { db, pgp } from "../model"
 import * as model from "../model"
@@ -261,16 +261,85 @@ export async function getAllComments(
 ): Promise<ChatComment[]> {
   console.log("getAllComments()", room_id, user_id)
   const from_me = await db.query(
-    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment where c.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          'from_me' AS mode,
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          array_agg(cp.encrypted) AS to_e,
+          array_agg(cp.person) AS to_p,
+          array_agg(cp.comment_encrypted) AS to_c,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to
+      FROM
+          comment AS c
+          LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
+      WHERE
+          c.person = $1
+          AND room = $2
+          AND kind = 'person'
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp;
+      `,
     [user_id, room_id]
   )
   const to_me = await db.query(
-    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment where cp.person=$1 and room=$2 and kind='person' group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          'to_me' AS mode,
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          array_agg(cp2.encrypted) AS to_e,
+          array_agg(cp2.person) AS to_p,
+          array_agg(cp2.comment_encrypted) AS to_c,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to
+      FROM
+          comment AS c
+          LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
+          LEFT JOIN comment_to_person AS cp2 ON c.id = cp2.comment
+      WHERE
+          cp.person = $1
+          AND room = $2
+          AND kind = 'person'
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp;
+`,
     [user_id, room_id]
   )
   const ds: ChatComment[] = from_me.concat(to_me).map(r => {
-    const for_users: string[] = (r["to"] || "").split("::::")
-    const comments_for_users: string[] = (r["to_c"] || "").split("::::")
+    const for_users: string[] = r["to_p"]
+    const comments_for_users: string[] = r["to_c"]
     const encrypted_for_users: boolean[] = r["to_e"]
     const r2: ChatComment = {
       id: r.id,

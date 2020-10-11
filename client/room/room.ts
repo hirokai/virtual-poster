@@ -3,8 +3,8 @@ import Room from "./Room.vue"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import axiosDefault from "axios"
-import { UserId, RoomId } from "../@types/types"
-import firebaseConfig from "../firebaseConfig"
+import { UserId, RoomId } from "@/@types/types"
+import firebaseConfig from "@/firebaseConfig"
 
 const url = new URL(location.href)
 

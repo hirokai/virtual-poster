@@ -1,7 +1,7 @@
-import { HttpMethod } from "../@types/types"
+import { HttpMethod } from "@/@types/types"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 
 let latency_log: {
   url: string

@@ -144,11 +144,11 @@
 </template>
 
 <script lang="ts">
-import { mapValues, intersection } from "../../common/util"
+import { mapValues, intersection } from "@/common/util"
 
 import { AxiosStatic } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../../api/$api"
+import api from "@/api/$api"
 
 import { PersonWithEmailRooms, RoomId } from "@/@types/types"
 

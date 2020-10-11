@@ -8,7 +8,7 @@ import {
   personAt,
   posterAt,
   isUserId,
-} from "../common/util"
+} from "@/common/util"
 import {
   startChat,
   myChatGroup,
@@ -41,15 +41,14 @@ import {
   MySocketObject,
   PosDir,
   PosterId,
-} from "../@types/types"
+} from "@/@types/types"
 
-import { getClosestAdjacentPoints, isAdjacent } from "../common/util"
+import { getClosestAdjacentPoints, isAdjacent, range } from "@/common/util"
 
 const BATCH_MOVE_INTERVAL = 100
-import { range } from "../common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
   return (msg: string, timeout = 5000): void => {
@@ -410,7 +409,9 @@ moveOneStep = (
   if (
     p.id != props.myUserId &&
     state.batchMove &&
-    state.batchMove.batchMovePoints.find(p => p.x == to.x && p.y == to.y)
+    state.batchMove.batchMovePoints
+      .slice(0, 5)
+      .find(p => p.x == to.x && p.y == to.y)
   ) {
     console.log("Recalculate paths")
     moveTo(

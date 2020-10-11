@@ -347,8 +347,7 @@ import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
 import firebaseConfig from "../firebaseConfig"
 import { deleteUserInfoOnLogout, formatTime } from "./util"
-import { ChatCommentDecrypted } from "@/api/@types"
-import { decryptIfNeeded } from "./room_chat_service"
+import { decryptIfNeeded } from "./room/room_chat_service"
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"

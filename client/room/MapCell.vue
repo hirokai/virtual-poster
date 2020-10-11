@@ -113,7 +113,7 @@
 </template>
 
 <script lang="ts">
-import { Cell, Person, Poster } from "../../@types/types"
+import { Cell, Person, Poster } from "@/@types/types"
 
 import { defineComponent, reactive, toRefs, PropType } from "vue"
 

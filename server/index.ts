@@ -21,7 +21,7 @@ import * as model from "./model"
 import fs from "fs"
 import path from "path"
 import { registerSocket } from "./socket"
-import { AppNotification, RoomId } from "@/@types/types"
+import { AppNotification, RoomId } from "../@types/types"
 import io from "socket.io-emitter"
 import cluster from "cluster"
 import _ from "lodash"
@@ -92,6 +92,10 @@ class HTTPEmitter {
 }
 
 async function workerInitData(): Promise<RoomId[]> {
+  const poster_data_folder = "db/posters"
+  if (!fs.existsSync(poster_data_folder)) {
+    fs.mkdirSync(poster_data_folder, { recursive: true })
+  }
   if (!(RUN_CLUSTER > 0) || cluster.worker?.id) {
     const rooms = await model.initData(POSTGRES_CONNECTION_STRING)
     return rooms
@@ -125,6 +129,7 @@ workerInitData()
       if (HTTP2) {
         const opt = {
           http2: true,
+          // logger: pino({ level: "warn" }),
           logger: DEBUG_LOG ? pino({ level: "debug" }) : false,
         }
         if (TLS && CERTIFICATE_FOLDER) {
@@ -147,16 +152,17 @@ workerInitData()
         server = fastify(opt)
       } else {
         server = fastify({
+          // logger: pino({ level: "warn" }),
           logger: DEBUG_LOG ? pino({ level: "debug" }) : false,
         })
       }
 
-      console.log("Registering socket.")
       if (RUST_WS_SERVER) {
         registerSocket(new HTTPEmitter())
       } else {
         registerSocket(io({ host: "localhost", port: 6379 }))
       }
+      console.log("Setup of socket done.")
       ;(async () => {
         try {
           await server.register(fastifyCookie, {
@@ -220,8 +226,8 @@ workerInitData()
             // log.info(
             //   "Worker #" + cluster.worker?.id + " is listening on port " + PORT
             // )
+            console.log(`Server started: listening on ${PORT}`)
             if (err) throw err
-            // server.log.info(`server listening on ${address}`)
           })
         } catch (e) {
           console.log(e)

@@ -65,7 +65,7 @@
 <script lang="ts">
 import { RoomId, Room } from "@/@types/types"
 import { AxiosStatic } from "axios"
-import { keyBy } from "../../common/util"
+import { keyBy } from "@/common/util"
 const API_ROOT = "/api"
 
 import { defineComponent, reactive, onMounted, toRefs, PropType } from "vue"

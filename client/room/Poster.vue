@@ -239,11 +239,11 @@ import {
   CommentEvent,
   DateEvent,
   Tree,
-} from "../../@types/types"
-import { inRange, sortBy, flattenTree } from "../../common/util"
+} from "@/@types/types"
+import { inRange, flattenTree } from "@/common/util"
 import axiosDefault from "axios"
 import { countLines, formatTime } from "../util"
-import { sameDate, formatDate } from "../room_chat_service"
+import { sameDate, formatDate } from "./room_chat_service"
 
 import {
   defineComponent,

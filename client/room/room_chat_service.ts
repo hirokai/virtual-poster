@@ -16,16 +16,16 @@ import {
   MySocketObject,
   CommentEncryptedEntry,
   Tree,
-} from "../@types/types"
-import { keyBy, compact, sortTree } from "../common/util"
-import * as encryption from "./encryption"
+} from "@/@types/types"
+import { keyBy, compact, sortTree } from "@/common/util"
+import * as encryption from "../encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
 import { SocketIO } from "socket.io-client"
 import Peer from "skyway-js"
 
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 
 export const sameDate = (a: number, b: number): boolean => {
   const ta = new Date(a)

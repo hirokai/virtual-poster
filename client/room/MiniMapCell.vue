@@ -60,7 +60,7 @@
 </template>
 
 <script lang="ts">
-import { Cell } from "../../@types/types"
+import { Cell } from "@/@types/types"
 
 import { defineComponent, PropType } from "vue"
 

@@ -1,6 +1,6 @@
 import _ from "lodash"
 import shortid from "shortid"
-import { Poster, RoomId, UserId, PosterId } from "@/@types/types"
+import { Poster, RoomId, UserId, PosterId } from "../../@types/types"
 import { log, db, people, redis } from "./index"
 import { config } from "../config"
 import { isAdjacent } from "../../common/util"

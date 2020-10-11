@@ -88,7 +88,7 @@
 </template>
 
 <script lang="ts">
-import { PersonInMap } from "../../@types/types"
+import { PersonInMap } from "@/@types/types"
 import { defineComponent, reactive, computed, PropType, toRefs } from "vue"
 
 export default defineComponent({

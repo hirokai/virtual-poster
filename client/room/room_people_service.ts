@@ -7,11 +7,11 @@ import {
   TypingSocketData,
   MySocketObject,
   UserId,
-} from "../@types/types"
-import { keyBy } from "../common/util"
+} from "@/@types/types"
+import { keyBy } from "@/common/util"
 import axiosDefault, { AxiosStatic, AxiosResponse, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 
 import { moveOneStep } from "./room_map_service"
 import { SocketIO } from "socket.io-client"

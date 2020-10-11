@@ -11,7 +11,8 @@ import {
   TryToMoveResult,
   MapCellRDB,
   Direction,
-} from "@/@types/types"
+  ChatGroupId,
+} from "../../@types/types"
 import shortid from "shortid"
 import { redis, log, db, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
@@ -20,6 +21,7 @@ import { mkKey, calcDirection, isOpenCell } from "../../common/util"
 import cluster from "cluster"
 import * as Posters from "./posters"
 import { config } from "../config"
+import { emit } from "../socket"
 
 const USE_S3_CDN = config.aws.s3.via_cdn
 const S3_BUCKET = config.aws.s3.bucket
@@ -314,6 +316,47 @@ export class MapModel {
     } else {
       return { ok: true, status: "ComeBack" }
     }
+  }
+
+  async leaveRoom(
+    user_id: UserId
+  ): Promise<{
+    ok: boolean
+  }> {
+    const left_time = Date.now()
+    await db.query(
+      `UPDATE
+              poster_viewer
+          SET
+              left_time = $1
+          WHERE
+              left_time IS NULL
+              AND person = $2
+              AND poster IN (
+                  SELECT
+                      id
+                  FROM
+                      poster
+                  WHERE
+                      LOCATION IN (
+                          SELECT
+                              id
+                          FROM
+                              map_cell
+                          WHERE
+                              room = $3
+                              AND poster_number IS NOT NULL))
+              RETURNING
+                  poster;`,
+      [left_time, user_id, this.room_id]
+    )
+    const r = await model.chat.leaveChat(this.room_id, user_id)
+    if (r.ok && r.leftGroup) {
+      emit.channel(this.room_id).group(r.leftGroup)
+    } else if (r.ok && r.removedGroup) {
+      emit.channel(this.room_id).groupRemove(r.removedGroup)
+    }
+    return { ok: r.ok }
   }
 
   async setTyping(user: UserId, typing: boolean): Promise<void> {

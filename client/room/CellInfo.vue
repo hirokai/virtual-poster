@@ -26,7 +26,7 @@
 </template>
 
 <script lang="ts">
-import { Cell, Person } from "../../@types/types"
+import { Cell, Person } from "@/@types/types"
 
 import { defineComponent, PropType } from "vue"
 

@@ -8,11 +8,11 @@ import {
   PosterId,
   CommentEvent,
   PosterCommentDecrypted,
-} from "../@types/types"
-import { keyBy } from "../common/util"
+} from "@/@types/types"
+import { keyBy } from "@/common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 import { SocketIO } from "socket.io-client"
 
 export const adjacentPosters = (
@@ -203,8 +203,8 @@ export const initPosterService = async (
     }
   })
   socket.on("PosterComment", async (d: PosterCommentDecrypted) => {
+    console.log("PosterComment socket", d)
     if (activePoster.value && d.poster == activePoster.value.id) {
-      console.log("PosterComment socket", d)
       //Vue.set
       state.posterComments[d.id] = d
       await nextTick(() => {

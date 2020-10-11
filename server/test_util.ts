@@ -1,5 +1,5 @@
 import * as model from "./model"
-import { RoomId, UserId, Point, PosDir } from "@/@types/types"
+import { RoomId, UserId, Point, PosDir } from "../@types/types"
 import { inRange } from "../common/util"
 import _ from "lodash"
 

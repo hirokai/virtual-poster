@@ -1858,6 +1858,31 @@ paths:
                   $ref: "#/components/schemas/ChatComment"
       operationId: get-people-userId-comments
       description: "Export all comment logs  "
+  "/maps/{roomId}/leave":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Leave a map
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-maps-roomId-leave
+      description: Leave a map. Poster viewing and group chat will also be finished.
 components:
   parameters:
     debug_token:

@@ -1,7 +1,7 @@
 import { initData, dbWith, resetDb } from "."
 import * as model from "."
 import _ from "lodash"
-import { UserId } from "@/@types/types"
+import { UserId } from "../../@types/types"
 import { createUser, mkMapData, rand_non_adjacent } from "../test_util"
 
 beforeEach(async () => {

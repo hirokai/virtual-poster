@@ -3,7 +3,7 @@ import Redis from "ioredis"
 import dotenv from "dotenv"
 dotenv.config()
 
-import { UserOperationLog, RoomId } from "@/@types/types"
+import { UserOperationLog, RoomId } from "../../@types/types"
 import * as ChatModule from "./chat"
 export const chat = ChatModule
 import { MapModel } from "./map"
@@ -14,7 +14,7 @@ export const posters = PosterModule
 export { MapModel } from "./map"
 import _ from "lodash"
 import { config } from "../config"
-
+import fs from "fs"
 import cluster from "cluster"
 import { join as joinPath } from "path"
 
@@ -33,7 +33,7 @@ export const dbWith = (
   connection: string
 ): pg.IDatabase<unknown, pgt.IClient> => {
   if (!(connection in connections)) {
-    connections[connection] = pg()(connection)
+    connections[connection] = pg()({ connectionString: connection, max: 100 })
   }
   return connections[connection]
 }
@@ -55,6 +55,11 @@ export const log = bunyan.createLogger({
   src: !PRODUCTION,
   level: DEBUG_LOG ? 1 : bunyan.FATAL + 1,
 })
+
+const data_folder = "db"
+if (!fs.existsSync(data_folder)) {
+  fs.mkdirSync(data_folder, { recursive: true })
+}
 
 const user_log = bunyan.createLogger({
   name: "user_operations",
@@ -88,7 +93,7 @@ export async function initData(
   pg_connection_string: string,
   monitoring = true
 ): Promise<RoomId[]> {
-  log.info("initData() with", pg_connection_string)
+  // log.info("initData() with", pg_connection_string)
   db = dbWith(pg_connection_string)
   await redis.accounts.flushdb()
   await redis.staticMap.flushdb()

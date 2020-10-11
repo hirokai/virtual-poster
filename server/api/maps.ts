@@ -1,7 +1,7 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { RoomId, MapEnterResponse, UserId } from "@/@types/types"
+import { RoomId, MapEnterResponse, UserId } from "../../@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 import { config } from "../config"
@@ -199,6 +199,16 @@ async function maps_api_routes(
       r2.public_key = rows[0]?.public_key
     }
     return r2
+  })
+
+  fastify.post<any>("/maps/:roomId/leave", async req => {
+    const roomId = req.params.roomId
+    const map = model.maps[roomId]
+    if (!map) {
+      throw { statusCode: 404, message: "Room not found" }
+    }
+    const r = await map.leaveRoom(req["requester"])
+    return r
   })
 }
 

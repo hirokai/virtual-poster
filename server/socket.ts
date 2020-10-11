@@ -30,7 +30,7 @@ import {
   ActiveUsersSocketData,
   SocketMessageFromUser,
   PosterCommentDecrypted,
-} from "@/@types/types"
+} from "../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
 import { encodeMoved } from "../common/util"

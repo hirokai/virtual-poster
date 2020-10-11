@@ -1,5 +1,5 @@
 import axios from "axios"
-import { Person, Room } from "@/@types/types"
+import { Person, Room } from "../../@types/types"
 import _ from "lodash"
 import { exec } from "child_process"
 import { promisify } from "util"

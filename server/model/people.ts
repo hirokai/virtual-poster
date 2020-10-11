@@ -17,7 +17,7 @@ import {
   RoomId,
   PosterId,
   PosDir,
-} from "@/@types/types"
+} from "../../@types/types"
 import { redis, log, db, pgp, maps } from "./index"
 
 import { config } from "../config"

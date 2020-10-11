@@ -18,7 +18,7 @@
 
       <img
         class="toolbar-icon"
-        @click="signOut"
+        @click="leaveRoom"
         src="/img/icon/logout.png"
         width="25"
         height="25"
@@ -242,19 +242,19 @@ import {
   CommentEvent,
   PosterCommentDecrypted,
   AppNotification,
-} from "../@types/types"
+} from "@/@types/types"
 
-import Map from "./room/Map.vue"
-import MiniMap from "./room/MiniMap.vue"
-import Poster from "./room/Poster.vue"
-import CellInfo from "./room/CellInfo.vue"
-import ChatLocal from "./room/ChatLocal.vue"
-import { inRange, decodeNotificationData } from "../common/util"
-import { formatTime, truncateComment } from "./util"
+import Map from "./Map.vue"
+import MiniMap from "./MiniMap.vue"
+import Poster from "./Poster.vue"
+import CellInfo from "./CellInfo.vue"
+import ChatLocal from "./ChatLocal.vue"
+import { inRange, decodeNotificationData } from "@/common/util"
+import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 import jsSHA from "jssha"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
@@ -291,8 +291,9 @@ import {
 } from "./room_poster_service"
 
 import { addLatencyLog } from "./room_log_service"
+import { MySocketObject } from "../socket"
 
-import { deleteUserInfoOnLogout } from "./util"
+import { deleteUserInfoOnLogout } from "../util"
 import { PosterId } from "@/api/@types"
 
 const setupSocketHandlers = (
@@ -301,8 +302,12 @@ const setupSocketHandlers = (
   socket: SocketIO.Socket | MySocketObject
 ) => {
   console.log("Setting up socket handlers for", socket)
-  socket.on("connection", () => {
+  socket.on("disconnect", () => {
+    state.socket_active = false
+  })
+  const onConnected = () => {
     console.log("Socket connected")
+    state.socket_active = true
     socket.emit("Active", {
       room: props.room_id,
       user: props.myUserId,
@@ -313,7 +318,10 @@ const setupSocketHandlers = (
       channel: props.room_id,
       token: props.jwt_hash_initial,
     })
-  })
+  }
+  socket.on("connection", onConnected)
+  socket.on("connect", onConnected)
+
   socket.on("auth_error", () => {
     console.log("socket auth_error")
   })
@@ -342,122 +350,6 @@ const setupSocketHandlers = (
   socket.on("app.reload.silent", () => {
     location.reload()
   })
-}
-
-class MySocketObject {
-  props: RoomAppProps
-  state: RoomAppState
-  listeners: Record<string, ((data: any) => void)[]> = {}
-  ws: WebSocket
-  connected?: boolean
-  url: string
-
-  constructor(url: string, props: RoomAppProps, state: RoomAppState) {
-    this.props = props
-    this.state = state
-    this.url = url
-    this.connected = false
-    this.ws = this.connect()
-    console.log("constructor", this.ws)
-    setInterval(() => {
-      // console.log("readyState", this.ws?.readyState)
-      if (this.ws.readyState >= 2) {
-        this.connected = false
-      }
-      if (this.ws && !this.connected) {
-        this.connect()
-      }
-    }, 2000)
-  }
-  on(message: string, handler: (data: any) => void) {
-    if (!this.listeners[message]) {
-      this.listeners[message] = []
-    }
-    this.listeners[message].push(handler)
-  }
-  emit(message: SocketMessageFromUser, data: any) {
-    if (message == "Move") {
-      this.ws.send(JSON.stringify({ Move: data }))
-    } else if (message == "Active") {
-      this.ws.send(JSON.stringify({ Active: data }))
-    } else if (message == "Subscribe") {
-      this.ws.send(
-        JSON.stringify({
-          Subscribe: { channel: data.channel },
-        })
-      )
-    } else if (message == "Unsubscribe") {
-      this.ws.send(
-        JSON.stringify({
-          Unsubscribe: { channel: data.channel },
-        })
-      )
-    } else if (message == "Direction") {
-      const obj = JSON.stringify({
-        Direction: { direction: data.direction, room: data.room },
-      })
-      console.log("Emitting", message, obj)
-      this.ws.send(obj)
-    } else if (message == "ChatTyping") {
-      const obj = JSON.stringify({
-        ChatTyping: { room: data.room, user: data.user, typing: data.typing },
-      })
-      console.log("Emitting", message, obj)
-      this.ws.send(obj)
-    } else {
-      console.error("Not implemented: ", message, data)
-    }
-  }
-  connect(): WebSocket {
-    console.log("Connecting WS: ", this.url)
-    if (this.ws) {
-      this.ws.close()
-    }
-    this.ws = new WebSocket(this.url)
-    setupSocketHandlers(this.props, this.state, this)
-    this.ws.onmessage = d => {
-      const dat = JSON.parse(d.data)
-      console.log("WebSocket received: ", dat)
-      const msg: AppNotification = dat.type
-      const decoded = decodeNotificationData(msg, dat)
-      if (decoded == null) {
-        console.error("Decode error for WebSocket notification: ", msg, dat)
-        return
-      }
-      for (const listener of this.listeners[msg] || []) {
-        listener(decoded)
-      }
-    }
-
-    this.ws.onopen = () => {
-      console.log("WebSocket server connected")
-      this.connected = true
-      this.state.socket_active = true
-      this.listeners["connection"][0](null)
-    }
-
-    this.ws.onclose = ev => {
-      this.state.socket_active = false
-
-      console.log(
-        "Socket is closed. Reconnect will be attempted in 5 seconds.",
-        ev
-      )
-      this.connected = false
-      setTimeout(() => {
-        if (!this.connected) {
-          this.connect()
-        }
-      }, 5000)
-    }
-
-    this.ws.onerror = err => {
-      console.error("Socket encountered error: ", err, "Closing socket")
-      this.ws.close()
-    }
-
-    return this.ws
-  }
 }
 
 const ArrowKeyInterval = 200
@@ -856,9 +748,14 @@ export default defineComponent({
           ._roomId(props.room_id)
           .enter.$post()
           .catch(() => {
-            return { ok: false, status: "API error" }
+            return {
+              ok: false,
+              status: "API error",
+              socket_url: undefined,
+              socket_protocol: undefined,
+              public_key: undefined,
+            }
           })
-        console.log("enter result", data)
         if (!data.ok) {
           alert(
             "部屋に入れませんでした。" +
@@ -897,7 +794,12 @@ export default defineComponent({
           } else {
             url = socket_url
           }
-          state.socket = new MySocketObject(url, props, state)
+          state.socket = new MySocketObject(
+            url,
+            props,
+            state,
+            setupSocketHandlers
+          )
         } else {
           console.error("Socket protocol not supported")
         }
@@ -973,17 +875,12 @@ export default defineComponent({
       }
     )
 
-    const signOut = async () => {
-      if (!confirm("ログアウトしますか？")) {
-        return
-      }
+    const leaveRoom = async () => {
       try {
-        deleteUserInfoOnLogout()
-        await firebase.auth().signOut()
-        console.log("Firebase signed out")
-        await client.logout.$post()
-        console.log("App signed out")
-        location.href = "/login"
+        const r = await client.maps._roomId(props.room_id).leave.$post()
+        if (r.ok) {
+          location.href = "/"
+        }
       } catch (err) {
         console.log(err)
       }
@@ -1214,7 +1111,7 @@ export default defineComponent({
       truncateComment,
       commentTree: _commentTree(state, "chat"),
       posterCommentTree: _commentTree(state, "poster"),
-      signOut,
+      leaveRoom,
       setEncryption,
       addEmojiReaction,
       adjacentPosters,

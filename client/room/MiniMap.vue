@@ -111,9 +111,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType, computed, watch } from "vue"
-import { Cell, Point, ChatGroup, Person, Direction } from "../../@types/types"
-import MiniMapCell from "./MiniMapCell.vue"
+import { defineComponent, PropType, computed, watch, onMounted } from "vue"
+import { Cell, Point, ChatGroup, Person, Direction } from "@/@types/types"
 
 export default defineComponent({
   components: {
@@ -205,74 +204,76 @@ export default defineComponent({
       context.emit("dbl-click", p)
       ev.stopPropagation()
     }
-    watch(
-      () => [size, props.cells],
-      async () => {
-        const ti = performance.now()
-        const canvas = document.getElementById(
-          "minimap-canvas"
-        ) as HTMLCanvasElement
+    const drawMap = async () => {
+      const ti = performance.now()
+      const canvas = document.getElementById(
+        "minimap-canvas"
+      ) as HTMLCanvasElement
 
-        const s = size.value
-        // const s = 3.5
-        console.log("Minimap cell size", s, props.cells.length)
-        // Draw a image.
-        const loadImage = (url: string, size: number) => {
-          const img = new Image()
-          return new Promise<HTMLCanvasElement>(resolve => {
-            img.onload = () => {
-              const offscreenCanvas = document.createElement("canvas")
-              // document.body.appendChild(offscreenCanvas)
-              offscreenCanvas.width = Math.ceil(size)
-              offscreenCanvas.height = Math.ceil(size)
-              const ctx = offscreenCanvas.getContext("2d")!
-              ctx.drawImage(img, 0, 0, size, size)
-              resolve(offscreenCanvas)
-            }
-            img.src = url
-          })
-        }
-        const ps = [
-          "/img/map/kusa.png",
-          "/img/map/yama.png",
-          "/img/map/water.png",
-          "/img/map/kusa_red.png",
-          "/img/map/mud.png",
-          "/img/map/post.png",
-        ].map(u => loadImage(u, s))
-        const imgs = await Promise.all(ps)
+      const s = size.value
+      // const s = 3.5
+      console.log("Minimap cell size", s, props.cells.length)
+      // Draw a image.
+      const loadImage = (url: string, size: number) => {
+        const img = new Image()
+        return new Promise<HTMLCanvasElement>(resolve => {
+          img.onload = () => {
+            const offscreenCanvas = document.createElement("canvas")
+            // document.body.appendChild(offscreenCanvas)
+            offscreenCanvas.width = Math.ceil(size)
+            offscreenCanvas.height = Math.ceil(size)
+            const ctx = offscreenCanvas.getContext("2d")!
+            ctx.drawImage(img, 0, 0, size, size)
+            resolve(offscreenCanvas)
+          }
+          img.src = url
+        })
+      }
+      const ps = [
+        "/img/map/kusa.png",
+        "/img/map/yama.png",
+        "/img/map/water.png",
+        "/img/map/kusa_red.png",
+        "/img/map/mud.png",
+        "/img/map/post.png",
+      ].map(u => loadImage(u, s))
+      const imgs = await Promise.all(ps)
 
-        console.log("Map size", props.cells[0].length, props.cells.length)
-        const ctx = canvas.getContext("2d")!
-        for (const y in props.cells) {
-          for (const x in props.cells[y]) {
-            // console.log(+x, +y)
-            const sx = s
-            const sy = s
-            if (props.cells[y][x].kind == "grass") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "wall") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-              ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "water") {
-              ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "poster_seat") {
-              ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "mud") {
-              ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "poster") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-              ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
-            }
+      console.log("Map size", props.cells[0].length, props.cells.length)
+      const ctx = canvas.getContext("2d")!
+      for (const y in props.cells) {
+        for (const x in props.cells[y]) {
+          // console.log(+x, +y)
+          const sx = s
+          const sy = s
+          if (props.cells[y][x].kind == "grass") {
+            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+          } else if (props.cells[y][x].kind == "wall") {
+            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+            ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
+          } else if (props.cells[y][x].kind == "water") {
+            ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
+          } else if (props.cells[y][x].kind == "poster_seat") {
+            ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
+          } else if (props.cells[y][x].kind == "mud") {
+            ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
+          } else if (props.cells[y][x].kind == "poster") {
+            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+            ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
           }
         }
-        const tf = performance.now()
-        console.log(
-          "%c" + "Drawing done " + (tf - ti).toFixed(2) + "ms",
-          "color: green"
-        )
       }
-    )
+      const tf = performance.now()
+      console.log(
+        "%c" + "Drawing done " + (tf - ti).toFixed(2) + "ms",
+        "color: green"
+      )
+    }
+
+    watch(() => [size, props.cells], drawMap)
+    onMounted(async () => {
+      await drawMap()
+    })
 
     return {
       dblClick,

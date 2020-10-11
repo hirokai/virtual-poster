@@ -1,7 +1,7 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { UserId, PostIdTokenResponse } from "@/@types/types"
+import { UserId, PostIdTokenResponse } from "../../@types/types"
 import { verifyIdToken } from "../auth"
 import { config } from "../config"
 

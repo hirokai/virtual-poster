@@ -109,10 +109,10 @@ import {
   PosterId,
   UserId,
   ArrowKey,
-} from "../../@types/types"
+} from "@/@types/types"
 import MapCell from "./MapCell.vue"
 import MapCellPerson from "./MapCellPerson.vue"
-import { keyBy } from "../../common/util"
+import { keyBy } from "@/common/util"
 
 export default defineComponent({
   components: {

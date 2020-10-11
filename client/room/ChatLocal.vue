@@ -258,11 +258,11 @@ import {
   CommentHistoryEntry,
   CommentEvent,
   DateEvent,
-} from "../../@types/types"
+} from "@/@types/types"
 import { countLines, formatTime } from "../util"
-import { flattenTree, inRange } from "../../common/util"
+import { flattenTree, inRange } from "@/common/util"
 
-import { sameDate, formatDate } from "../room_chat_service"
+import { sameDate, formatDate } from "./room_chat_service"
 
 import {
   defineComponent,

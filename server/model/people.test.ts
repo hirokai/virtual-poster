@@ -1,4 +1,4 @@
-import { Person } from "@/@types/types"
+import { Person } from "../../@types/types"
 import _ from "lodash"
 import { dbWith, resetDb, initData } from "."
 import * as model from "."

@@ -96,13 +96,13 @@ import * as firebase from "firebase/app"
 import "firebase/auth"
 
 import * as encryption from "../encryption"
-import { chunk } from "../../common/util"
+import { chunk } from "@/common/util"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
 import axiosClient from "@aspida/axios"
-import api from "../../api/$api"
+import api from "@/api/$api"
 const client = api(axiosClient(axios))
 
 export default defineComponent({

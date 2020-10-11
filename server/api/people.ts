@@ -2,7 +2,12 @@ import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
-import { RoomId, PersonInMap, PersonUpdate, ChatComment } from "@/@types/types"
+import {
+  RoomId,
+  PersonInMap,
+  PersonUpdate,
+  ChatComment,
+} from "../../@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
 import fs from "fs"

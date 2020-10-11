@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { UserId, ChatGroup, ChatGroupId } from "@/@types/types"
+import { UserId, ChatGroup, ChatGroupId } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"

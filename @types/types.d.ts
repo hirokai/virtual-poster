@@ -1,7 +1,7 @@
 import { admin } from "firebase-admin/lib/auth"
 import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
-import { BatchMove } from "../client/room_map_service"
+import { BatchMove } from "@/client/room/room_map_service"
 export type Point = { x: number; y: number }
 
 export type Direction = "none" | "up" | "left" | "right" | "down"
@@ -172,6 +172,7 @@ type Room = {
   name: string
   poster_location_count: number
   poster_count: number
+  owner?: UserId
 }
 
 type CellType = "grass" | "wall" | "water" | "poster" | "poster_seat" | "mud"

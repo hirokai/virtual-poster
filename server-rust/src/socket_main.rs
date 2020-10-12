@@ -180,7 +180,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsChatSession {
                     let obj: Option<MsgFromUser> = serde_json::from_str(&m).ok();
                     info!("Parsed: {:?}", &obj);
                     if obj.is_none() {
-                        info!("Parse failed");
+                        info!("Parse failed: {}", m);
                         return;
                     }
                     let obj = obj.unwrap();

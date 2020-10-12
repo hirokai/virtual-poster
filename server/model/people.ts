@@ -776,6 +776,21 @@ export async function removePerson(
   user_id: UserId
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    const owned_rooms = (
+      await db.query<{ id: RoomId }[]>(
+        `SELECT id FROM room WHERE room_owner=$1`,
+        [user_id]
+      )
+    ).map(r => r.id)
+    for (const room_id of owned_rooms) {
+      const ok = await maps[room_id].deleteRoomFromDB()
+      if (!ok) {
+        log.warn("Deleteing owneed room failed. This must be a bug.")
+        return { ok: false, error: "Deleteing owneed room failed." }
+      } else {
+        delete maps[room_id]
+      }
+    }
     const row = (
       await db.query(`SELECT email FROM person WHERE id=$1`, [user_id])
     )[0]
@@ -784,6 +799,7 @@ export async function removePerson(
     }
     const email = row.email
     await db.query(`BEGIN`)
+    await db.query(`DELETE FROM poster_viewer WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_stats WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_room_access WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_position WHERE person=$1`, [user_id])

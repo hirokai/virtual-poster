@@ -16,9 +16,9 @@
     "nohup": "sudo NODE_ENV=production nohup node dist_server/server/index.js &",
     "prod": "NODE_ENV=production ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "prod:log": "NODE_ENV=production DEBUG_LOG=1 ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
-    "server": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
-    "socket": "nodemon --exec ts-node -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts | bunyan -o short",
-    "ws:rs": "cd rust-server && cargo run --release --bin ws",
+    "server": "nodemon --exec ts-node -r tsconfig-paths/register -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
+    "socket": "nodemon --exec ts-node -r tsconfig-paths/register -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts | bunyan -o short",
+    "socket:rs": "cd server-rust && cargo run --release --bin ws",
     "socket:nohup": "sudo NODE_ENV=production NO_TLS=1 PORT=80 nohup node dist_server/server/socket_standalone.js > socket.nohup.out &",
     "test": "NODE_TEST=1 jest --runInBand --forceExit"
   },
@@ -68,7 +68,8 @@
     "socket.io-redis": "^5.2.0",
     "spdy": "^4.0.2",
     "sticky-session": "^1.1.2",
-    "vue": "3.0.0"
+    "vue": "3.0.0",
+    "ws": "^7.3.1"
   },
   "devDependencies": {
     "@babel/plugin-proposal-optional-chaining": "^7.9.0",
@@ -102,6 +103,7 @@
     "prettier-eslint": "^9.0.1",
     "ts-jest": "^26.1.3",
     "ts-node": "^8.8.2",
+    "tsconfig-paths": "^3.9.0",
     "typescript": "^3.9.7"
   },
   "husky": {

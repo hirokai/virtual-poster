@@ -38,7 +38,8 @@ async function maps_api_routes(
             count(c.poster_number) AS poster_location_count,
             count(poster.id) AS poster_count,
             max(c.x) AS max_x,
-            max(c.y) AS max_y
+            max(c.y) AS max_y,
+            room.room_owner
         FROM
             room
             LEFT JOIN map_cell AS c ON room.id = c.room
@@ -54,7 +55,8 @@ async function maps_api_routes(
             count(c.poster_number) as poster_location_count,
             count(poster.id) as poster_count,
             max(c.x) as max_x,
-            max(c.y) as max_y
+            max(c.y) as max_y,
+            room.room_owner
         FROM
             room
             LEFT JOIN map_cell as c on room.id = c.room
@@ -78,11 +80,33 @@ async function maps_api_routes(
           poster_count,
           numCols,
           numRows,
+          owner: r["room_owner"],
         }
       })
       return result
     }
   )
+
+  fastify.post<any>("/maps", async req => {
+    const name: string = req.body.name
+    const template: string = req.body.template
+
+    const { map_data } = await model.MapModel.loadTemplate(template)
+    if (!map_data) {
+      return { ok: false, error: "Template not found" }
+    } else {
+      const { map: mm, error } = await model.MapModel.mkNewRoom(
+        name,
+        map_data,
+        req["requester"]
+      )
+      if (!mm) {
+        return { ok: false, error }
+      }
+      await model.maps[mm.room_id].addUser(req["requester"], true)
+      return { ok: true, room: { id: mm.room_id, name } }
+    }
+  })
 
   fastify.get<any>("/maps/:roomId", async (req, res) => {
     const map = model.maps[req.params.roomId]
@@ -110,6 +134,31 @@ async function maps_api_routes(
         })
       return data
     }
+  })
+
+  fastify.delete<any>("/maps/:roomId", async (req, res) => {
+    const userId = req["requester"]
+    const roomId = req.params.roomId
+    const m = model.maps[roomId]
+    if (!m) {
+      throw { statusCode: 404 }
+    }
+    if (req["requester_type"] != "admin") {
+      const owned_rooms = (
+        await model.db.query<{ id: RoomId }[]>(
+          `SELECT 1 FROM room WHERE room_owner=$1 AND id=$2`,
+          [userId, roomId]
+        )
+      ).map(r => r.id)
+      if (owned_rooms.length != 1) {
+        return { ok: false, error: "You are not the owner of the room." }
+      }
+    }
+    const ok = await m.deleteRoomFromDB()
+    if (ok) {
+      delete model.maps[roomId]
+    }
+    return { ok }
   })
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {

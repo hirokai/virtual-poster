@@ -1,34 +1,37 @@
 <template>
   <div id="app" v-cloak v-show="logged_in">
-    <div id="login-info" v-if="!!user">
-      {{ user.name }}({{ user.email }})としてログイン
-      <button class="btn" @click="location.href = '/mypage'">マイページ</button>
-      <button class="btn" @click="signOut">ログアウト</button>
-    </div>
     <div v-if="registered">
       <div v-if="loggedIn == 'Yes'">
-        <h1>会場の一覧</h1>
-        <div id="rooms">
-          <a
-            v-for="room in rooms"
-            :key="room.id"
-            class="room"
-            :href="
-              '/room?room_id=' + room.id + (isMobile ? '&mobile=true' : '')
-            "
-          >
-            <h2 :class="{ small: room.name.length >= 13 }">{{ room.name }}</h2>
-            <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
-          </a>
-        </div>
-        <div style="clear:both"></div>
-        <div style="margin-top: 30px" id="create-room">
-          <a v-if="user" href="/create_room"
-            >新しく会場を作成する</a
-          >
-        </div>
-        <div style="margin-top: 30px">
-          <a v-if="user && user.admin" href="/admin">管理画面</a>
+        <a href="/">トップページに戻る</a>
+
+        <h1>会場を作成する</h1>
+        <div>
+          <h2>会場の管理者</h2>
+          {{ user.name }} ({{ user.email }})
+          <div>
+            <h2>会場の種類を選択</h2>
+            <div
+              class="room-kind-entry"
+              :class="{ active: roomKind == room.kind }"
+              v-for="room in room_templates"
+              :key="room.kind"
+              @click="selectKind(room.kind)"
+            >
+              <h3>{{ room.name }}</h3>
+              <div>{{ room.description || "" }}</div>
+            </div>
+            <div style="clear:both"></div>
+          </div>
+          <div>
+            <h2>会場の名前</h2>
+            <input type="text" v-model="roomName" />
+          </div>
+          <div>
+            <button class="btn" id="submit" @click="submit">作成する</button>
+            <p>
+              作成した会場の削除はマイページの「マップ」タブから可能です。
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -76,6 +79,12 @@ const debug_as: UserId | undefined =
 const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
+type RoomTemplate = {
+  name: string
+  kind: "small" | "medium" | "large"
+  description?: string
+}
+
 const logged_in = !!JSON.parse(url.searchParams.get("logged_in") || "false")
 export default defineComponent({
   setup() {
@@ -101,6 +110,25 @@ export default defineComponent({
       rooms: [] as Room[],
       required_action: undefined as undefined | "register" | "verify",
       logged_in: false,
+      room_templates: [
+        {
+          name: "小さい会場",
+          kind: "small",
+          description: "20 x 20マス，ポスター板16ヶ所の会場です",
+        },
+        {
+          name: "中くらいの会場",
+          kind: "medium",
+          description: "55 x 42マス，ポスター板68ヶ所の会場です",
+        },
+        {
+          name: "大きな会場",
+          kind: "large",
+          description: "161 x 88マス，ポスター板408ヶ所の会場です",
+        },
+      ] as RoomTemplate[],
+      roomName: "",
+      roomKind: "small",
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
@@ -181,6 +209,27 @@ export default defineComponent({
 
     firebase.initializeApp(firebaseConfig)
 
+    const selectKind = (kind: string) => {
+      state.roomKind = kind
+    }
+
+    const submit = async () => {
+      const client = api(axiosClient(axios))
+      const r = await client.maps.$post({
+        body: { name: state.roomName, template: state.roomKind },
+      })
+      if (r.ok) {
+        alert("部屋が作成されました。")
+        location.href = "/mypage#map"
+      } else {
+        const detail =
+          r.error == "Room name already exists"
+            ? "すでに同じ名前の部屋が存在します。"
+            : ""
+        alert("部屋が作成できませんでした。" + detail)
+      }
+    }
+
     const signOut = () => {
       const client = api(axiosClient(axios))
       firebase
@@ -208,7 +257,15 @@ export default defineComponent({
     const enterRoom = (room_id: string) => {
       location.href = "/room?room_id=" + room_id
     }
-    return { ...toRefs(state), signOut, enterRoom, location, isMobile }
+    return {
+      ...toRefs(state),
+      signOut,
+      enterRoom,
+      location,
+      isMobile,
+      submit,
+      selectKind,
+    }
   },
 })
 </script>
@@ -261,67 +318,28 @@ body {
   font-size: 14px;
 }
 
-h1 {
-  margin: 0px;
-  line-height: 1;
-}
-
-#login-info {
-  background: #f3f3ff;
-  height: 45px;
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0px;
-}
-
-.room {
-  width: 260px;
-  height: 200px;
-  border-radius: 8px;
-  background: #eee;
-  cursor: pointer;
+.room-kind-entry {
+  background: #ccc;
+  width: 200px;
+  height: 150px;
+  margin: 10px;
+  padding: 20px;
   float: left;
-  margin: 10px 15px 10px 0px;
-  padding: 10px;
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.room {
-  color: black;
+.room-kind-entry.active {
+  border: 2px solid blue;
 }
 
-.room:hover {
-  filter: drop-shadow(2px 2px 1px #ccc);
-}
-
-.room h2 {
+input {
+  width: 300px;
+  height: 24px;
   font-size: 21px;
-  display: block;
-  position: relative;
-  text-align: center;
-  margin: 0px;
-  padding: 0px;
-  height: 32px;
 }
 
-.room h2.small {
-  font-size: 14px;
-}
-
-.room img {
-  max-width: 300px;
-  max-height: 140px;
-  margin: auto;
-  display: block;
-}
-
-#login-info button {
-  font-size: 14px;
-  margin-right: 10px;
-  vertical-align: 1px;
-}
-
-#create-room {
+#submit {
+  margin: 20px 0px 20px 0px;
 }
 
 [v-cloak] {

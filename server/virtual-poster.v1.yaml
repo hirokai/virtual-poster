@@ -256,7 +256,7 @@ paths:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
     get:
-      summary: Get a list of rooms
+      summary: Get or create rooms
       tags:
         - map
       security:
@@ -290,6 +290,8 @@ paths:
                     poster_count:
                       type: integer
                       minimum: 0
+                    owner:
+                      $ref: "#/components/schemas/UserId"
                   required:
                     - numCols
                     - numRows
@@ -299,6 +301,37 @@ paths:
                     - poster_count
       operationId: get-maps
       description: Get a list of rooms
+    post:
+      summary: ""
+      operationId: post-maps-roomId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+      description: Create a new map
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                template:
+                  type: string
+              required:
+                - name
+                - template
+      tags:
+        - map
   "/maps/{roomId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -309,7 +342,7 @@ paths:
         in: path
         required: true
     get:
-      summary: Get a map
+      summary: Get or delete a map
       tags:
         - map
       security:
@@ -339,6 +372,24 @@ paths:
                   - cells
       operationId: get-maps-roomId
       description: Get room information
+    delete:
+      summary: ""
+      operationId: delete-maps-roomId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      description: Delete an owned map
+      tags:
+        - map
   "/maps/{roomId}/enter":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -1281,6 +1332,8 @@ paths:
         name: posterNumber
         in: path
         required: true
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
     post:
       summary: Take a poster slot
       tags:
@@ -1504,6 +1557,8 @@ paths:
       description: "Verify blind signature  "
   "/maps/{roomId}/groups/{groupId}/comments":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1591,6 +1646,10 @@ paths:
                     type: boolean
                   error:
                     type: string
+                  added:
+                    type: array
+                    items:
+                      type: string
                 required:
                   - ok
       operationId: post-people-userId-access_code
@@ -1645,6 +1704,8 @@ paths:
       description: Update poster info.
   "/comments/{commentId}/reply":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: commentId
@@ -1682,6 +1743,8 @@ paths:
       description: "Add a comment reply  "
   "/posters/{posterId}/comments/{commentId}/reply":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: posterId
@@ -1724,6 +1787,8 @@ paths:
                 - text
   "/maps/{roomId}/posters/{posterId}/enter":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1761,6 +1826,8 @@ paths:
       description: "Start viewing a poster. After this, the user can get comments.  "
   "/maps/{roomId}/posters/{posterId}/leave":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1794,6 +1861,8 @@ paths:
       description: "Finish viewing a poster. After this, the user cannot get comments until they enter it again.  "
   "/maps/{roomId}/posters/{posterId}/history":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1860,6 +1929,8 @@ paths:
       description: "Export all comment logs  "
   "/maps/{roomId}/leave":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId

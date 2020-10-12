@@ -12,4 +12,6 @@ bin           = @["server_nim"]
 # Dependencies
 
 requires "nim >= 1.2.6"
+requires "redis >= 0.2.0"
 requires "jester"
+requires "redpool"

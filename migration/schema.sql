@@ -30,9 +30,9 @@ DROP TABLE IF EXISTS stat_encountered;
 
 DROP TABLE IF EXISTS token;
 
-DROP TABLE IF EXISTS person;
-
 DROP TABLE IF EXISTS room;
+
+DROP TABLE IF EXISTS person;
 
 DROP TYPE IF EXISTS user_role;
 
@@ -46,7 +46,16 @@ CREATE TYPE user_role AS ENUM ('user', 'admin');
 
 CREATE TYPE direction AS ENUM ('left', 'up', 'down', 'right', 'none');
 
-CREATE TABLE room (id text primary key, "name" text not null);
+CREATE TABLE person (
+	id text primary key,
+	last_updated bigint not null,
+	name text not null,
+	avatar text,
+	email text not null unique,
+	"role" user_role not null
+);
+
+CREATE TABLE room (id text primary key, "name" text not null, room_owner text references person(id));
 
 CREATE TABLE announce (
 	room text references room(id) primary key,
@@ -64,15 +73,6 @@ CREATE TABLE map_cell (
 	poster_number integer,
 	custom_image text,
 	unique (room, x, y)
-);
-
-CREATE TABLE person (
-	id text primary key,
-	last_updated bigint not null,
-	name text not null,
-	avatar text,
-	email text not null unique,
-	"role" user_role not null
 );
 
 CREATE TABLE person_position (

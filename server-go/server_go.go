@@ -48,64 +48,64 @@ func main() {
 		authedRoutes.GET("/maps/:roomId", api.Map)
 		authedRoutes.POST("/maps/:roomId/enter", api.MapEnter)
 		authedRoutes.GET("/maps/:roomId/posters", api.MapPosters)
+		authedRoutes.GET("/maps/:roomId/comments", api.MapComments)
 	}
-	stubRoutes := engine.Group("/api")
-	stubRoutes.Use(stubRoute("fastify"))
+	fastifyRoutes := engine.Group("/api")
+	fastifyRoutes.Use(stubRoute("Fastify"))
 	{
-		stubRoutes.GET("/blind_sign/key_pair", api.Stub)
-		stubRoutes.POST("/blind_sign/sign", api.Stub)
-		stubRoutes.GET("/blind_sign/verify", api.Stub)
-		stubRoutes.PATCH("/comments/:commentId", api.Stub)
-		stubRoutes.DELETE("/comments/:commentId", api.Stub)
-		stubRoutes.POST("/comments/:commentId/reply", api.Stub)
-		stubRoutes.GET("/groups", api.Stub)
-		stubRoutes.POST("/id_token", api.Stub)
-		stubRoutes.POST("/logout", api.Stub)
-		stubRoutes.POST("/latency_report", api.Stub)
-		stubRoutes.POST("/maps/:roomId/groups/:groupId/join", api.Stub)
-		stubRoutes.POST("/maps/:roomId/groups/:groupId/leave", api.Stub)
-		stubRoutes.POST("/maps/:roomId/groups/:groupId/people", api.Stub)
-		stubRoutes.GET("/maps/:roomId/groups", api.Stub)
-		stubRoutes.POST("/maps/:roomId/groups", api.Stub)
-		stubRoutes.GET("/maps/:roomId/people/:userId/groups", api.Stub)
-		stubRoutes.GET("/maps/:roomId/comments", api.Stub)
-		stubRoutes.GET("/maps/:roomId/people/:userId/poster", api.Stub)
-		stubRoutes.POST("/maps/:roomId/people/:userId/poster/file", api.Stub)
-		stubRoutes.POST("/maps/:roomId/poster_slots/:posterNumber", api.Stub)
-		stubRoutes.DELETE("/maps/:roomId/poster_slots/:posterNumber", api.Stub)
-		stubRoutes.POST("/maps/:roomId/groups/:groupId/comments", api.Stub)
-		stubRoutes.POST("/maps/:roomId/posters/:posterId/approach", api.Stub)
-		stubRoutes.POST("/maps/:roomId/posters/:posterId/enter", api.Stub)
-		stubRoutes.POST("/maps/:roomId/posters/:posterId/leave", api.Stub)
-		stubRoutes.GET("/maps/:roomId/posters/:posterId/history", api.Stub)
-		stubRoutes.GET("/people/:userId", api.Stub)
-		stubRoutes.GET("/people", api.Stub)
-		stubRoutes.POST("/people", api.Stub)
-		stubRoutes.DELETE("/people/:userId", api.Stub)
-		stubRoutes.GET("/people_multi/:userIds", api.Stub)
-		stubRoutes.PATCH("/posters/:posterId/comments/:commentId", api.Stub)
-		stubRoutes.DELETE("/posters/:posterId/comments/:commentId", api.Stub)
-		stubRoutes.GET("/people/:userId/posters", api.Stub)
-		stubRoutes.GET("/posters/:posterId/file", api.Stub)
-		stubRoutes.POST("/posters/:posterId/file", api.Stub)
-		stubRoutes.DELETE("/posters/:posterId/file", api.Stub)
-		stubRoutes.GET("/posters/:posterId/comments", api.Stub)
-		stubRoutes.POST("/posters/:posterId/comments", api.Stub)
-		stubRoutes.GET("/posters", api.Stub)
-		stubRoutes.GET("/public_key", api.Stub)
-		stubRoutes.POST("/public_key", api.Stub)
-		stubRoutes.POST("/people/:userId/access_code", api.Stub)
-		stubRoutes.PATCH("/posters/:posterId", api.Stub)
-		stubRoutes.POST("/posters/:posterId/comments/:commentId/reply", api.Stub)
-		stubRoutes.GET("/people/:userId/comments", api.Stub)
-		stubRoutes.POST("/register", api.Stub)
-		stubRoutes.GET("/socket_url", api.Stub)
+		fastifyRoutes.GET("/blind_sign/key_pair", api.Stub)
+		fastifyRoutes.POST("/blind_sign/sign", api.Stub)
+		fastifyRoutes.GET("/blind_sign/verify", api.Stub)
+		fastifyRoutes.PATCH("/comments/:commentId", api.Stub)
+		fastifyRoutes.DELETE("/comments/:commentId", api.Stub)
+		fastifyRoutes.POST("/comments/:commentId/reply", api.Stub)
+		fastifyRoutes.GET("/groups", api.Stub)
+		fastifyRoutes.POST("/id_token", api.Stub)
+		fastifyRoutes.POST("/logout", api.Stub)
+		fastifyRoutes.POST("/latency_report", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/groups/:groupId/join", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/groups/:groupId/leave", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/groups/:groupId/people", api.Stub)
+		fastifyRoutes.GET("/maps/:roomId/groups", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/groups", api.Stub)
+		fastifyRoutes.GET("/maps/:roomId/people/:userId/groups", api.Stub)
+		fastifyRoutes.GET("/maps/:roomId/people/:userId/poster", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/people/:userId/poster/file", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/poster_slots/:posterNumber", api.Stub)
+		fastifyRoutes.DELETE("/maps/:roomId/poster_slots/:posterNumber", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/groups/:groupId/comments", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/posters/:posterId/approach", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/posters/:posterId/enter", api.Stub)
+		fastifyRoutes.POST("/maps/:roomId/posters/:posterId/leave", api.Stub)
+		fastifyRoutes.GET("/maps/:roomId/posters/:posterId/history", api.Stub)
+		fastifyRoutes.GET("/people/:userId", api.Stub)
+		fastifyRoutes.GET("/people", api.Stub)
+		fastifyRoutes.POST("/people", api.Stub)
+		fastifyRoutes.DELETE("/people/:userId", api.Stub)
+		fastifyRoutes.GET("/people_multi/:userIds", api.Stub)
+		fastifyRoutes.PATCH("/posters/:posterId/comments/:commentId", api.Stub)
+		fastifyRoutes.DELETE("/posters/:posterId/comments/:commentId", api.Stub)
+		fastifyRoutes.GET("/people/:userId/posters", api.Stub)
+		fastifyRoutes.GET("/posters/:posterId/file", api.Stub)
+		fastifyRoutes.POST("/posters/:posterId/file", api.Stub)
+		fastifyRoutes.DELETE("/posters/:posterId/file", api.Stub)
+		fastifyRoutes.GET("/posters/:posterId/comments", api.Stub)
+		fastifyRoutes.POST("/posters/:posterId/comments", api.Stub)
+		fastifyRoutes.GET("/posters", api.Stub)
+		fastifyRoutes.GET("/public_key", api.Stub)
+		fastifyRoutes.POST("/public_key", api.Stub)
+		fastifyRoutes.POST("/people/:userId/access_code", api.Stub)
+		fastifyRoutes.PATCH("/posters/:posterId", api.Stub)
+		fastifyRoutes.POST("/posters/:posterId/comments/:commentId/reply", api.Stub)
+		fastifyRoutes.GET("/people/:userId/comments", api.Stub)
+		fastifyRoutes.POST("/register", api.Stub)
+		fastifyRoutes.GET("/socket_url", api.Stub)
 	}
 
-	stubRoutes2 := engine.Group("/api")
-	stubRoutes2.Use(stubRoute("jester"))
+	jesterRoutes := engine.Group("/api")
+	jesterRoutes.Use(stubRoute("Jester"))
 	{
-		stubRoutes2.GET("/maps/:roomId/people", api.Stub)
+		jesterRoutes.GET("/maps/:roomId/people", api.Stub)
 	}
 
 	// engine.GET("/api/maps/:roomId/comments", api.MapComments)
@@ -122,15 +122,22 @@ func authedRoute() gin.HandlerFunc {
 		cookie, _ := c.Cookie("virtual_poster_session_id")
 		v, _ := model.ClientSessions.Get("cookie:uid:" + cookie).Result()
 		log.Println("Auth: '" + v + "'")
-		if v != "" {
-			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "requester", v))
-
-		}
-		if v == "" {
-			c.String(403, "Unauthorized\n")
-			c.Abort()
-		} else {
+		debug_as := c.Query("debug_as")
+		debug_token := c.Query("debug_token")
+		if debug_as != "" && debug_token != "" {
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "requester", debug_as))
 			c.Next()
+			return
+		} else {
+			if v != "" {
+				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "requester", v))
+			}
+			if v == "" {
+				c.String(403, "Unauthorized\n")
+				c.Abort()
+			} else {
+				c.Next()
+			}
 		}
 	}
 }
@@ -138,7 +145,7 @@ func authedRoute() gin.HandlerFunc {
 func stubRoute(backend string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var port string
-		if backend == "fastify" {
+		if backend == "Fastify" {
 			port = FastifyPort
 			c.Header("X-Powered-By", "Fastify via Gin")
 		} else {
@@ -146,7 +153,7 @@ func stubRoute(backend string) gin.HandlerFunc {
 			c.Header("X-Powered-By", "Jester via Gin")
 		}
 		url := "http://localhost:" + port + c.Request.URL.String()
-		log.Println("Route Not found, redirecting to Node.js:", url)
+		log.Println("Route Not found, redirecting to "+backend+".", url)
 		cookie, _ := c.Cookie("virtual_poster_session_id")
 		b, _ := ioutil.ReadAll(c.Request.Body)
 		req, _ := http.NewRequest(c.Request.Method, url, bytes.NewReader(b))

@@ -338,6 +338,9 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         io.to(d.room).emit("ChatTyping", r)
       })().catch(err => log.error(err))
     })
+    addHandler(socket, "Subscribe", ({ channel }: { channel: string }) => {
+      socket.join(channel)
+    })
     addHandler(socket, "Active", ({ room, user, token }) => {
       ;(async () => {
         const verified = await model.people.authSocket(

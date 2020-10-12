@@ -28,11 +28,18 @@ module.exports = {
       chunks: ["chunk-vendors", "chunk-common", "index"],
     },
     room: {
-      entry: "client/room.ts",
+      entry: "client/room/room.ts",
       template: "public/room.html",
       filename: "room.html",
       title: "Main Room Page",
       chunks: ["chunk-vendors", "chunk-common", "room"],
+    },
+    create_room: {
+      entry: "client/create_room.ts",
+      template: "public/create_room.html",
+      filename: "create_room.html",
+      title: "Create room",
+      chunks: ["chunk-vendors", "chunk-common", "create_room"],
     },
     poster_list: {
       entry: "client/poster_list.ts",
@@ -80,6 +87,12 @@ module.exports = {
           })
         : []
     ),
+    resolve: {
+      alias: {
+        // "@/*": "./*",
+        "@": path.resolve(__dirname),
+      },
+    },
   },
   devServer: {
     proxy: {
@@ -88,7 +101,12 @@ module.exports = {
         ws: true,
         secure: false,
       },
-      "^/ws": {
+      // "^/ws": {
+      //   target: "http://localhost:5000",
+      //   ws: true,
+      //   secure: false,
+      // },
+      "^/socket.io": {
         target: "http://localhost:5000",
         ws: true,
         secure: false,

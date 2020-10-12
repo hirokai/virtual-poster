@@ -200,15 +200,23 @@ async function routes(
       req.body.access_code || ""
     ).toString() as string).trim()
     const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
+    const added_rooms: RoomId[] = []
     if (rooms) {
+      const p = await model.people.get(req["requester"], false, true)
+      console.log(p)
+      const rooms_already = (p?.rooms || []).map(r => r.room_id)
       for (const rid of rooms) {
+        if (rooms_already.indexOf(rid) != -1) {
+          continue
+        }
         const r = await model.maps[rid].addUser(req["requester"], true, "user")
         if (!r.ok) {
           req.log.debug(r)
           return { ok: false }
         }
+        added_rooms.push(rid)
       }
-      return { ok: true }
+      return { ok: added_rooms.length > 0, added: added_rooms }
     } else {
       return { ok: false, error: "Access code is invalid" }
     }

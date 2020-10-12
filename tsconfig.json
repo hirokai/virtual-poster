@@ -16,8 +16,8 @@
     "types": ["webpack-env", "node", "jest"],
     "baseUrl": "./",
     "paths": {
-      // "@types/*": ["@types/*"]
-      "@/*": ["./*", "./"]
+      "@/*": ["./*"],
+      "@": ["./"]
     },
     "lib": ["esnext", "dom", "dom.iterable", "scripthost"],
     "outDir": "./dist_server"
@@ -27,8 +27,8 @@
     "**/*.ts",
     "**/*.tsx",
     "*.vue",
-    "client/*/*.vue",
-    "client/*.ts",
+    // "client/*/*.vue",
+    // "client/*.ts",
     "**/*.vue",
     "tests/**/*.ts",
     "tests/*.js",

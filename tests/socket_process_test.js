@@ -1,14 +1,18 @@
+const performance = require("perf_hooks").performance
+
+const EMIT_TIMEOUT = 2000
+
 const _ = require("lodash")
 const axios = require("axios")
-const client = require("socket.io-client")
+const WebSocket = require("ws")
 
 const API_URL = process.env.API_URL || "http://localhost:3000/api"
+const RUST_WS = false
+const SOCKET_URL =
+  process.env.SOCKET_URL ||
+  (RUST_WS ? "http://localhost:5000/ws" : "http://localhost:5000/")
+
 axios.defaults.baseURL = API_URL
-// "https://posters.coi-conference.org/api"
-
-const SOCKET_URL = process.env.SOCKET_URL || "http://localhost:5000/"
-// "https://posters.coi-conference.org:80/"
-
 const myUserId = process.env.TEST_USER || ""
 const room = process.env.ROOM || ""
 
@@ -54,7 +58,8 @@ const quantile = (arr, q) => {
   }
 }
 
-const socket = client.connect(SOCKET_URL)
+const client = RUST_WS ? undefined : require("socket.io-client")
+
 let uids = []
 const positions = {}
 let emitted_ts = null
@@ -62,7 +67,7 @@ const latency_logs = []
 
 let hallMap = {}
 let people = {}
-function terminate() {
+function terminate(ws) {
   console.log(
     "\n" + ["--INTERVAL", "MAX_NUM_LOGS", INTERVAL, MAX_NUM_LOGS].join(",")
   )
@@ -75,18 +80,20 @@ function terminate() {
       JSON.stringify({
         user: myUserId,
         count: vs.length,
-        mean: Math.round(_.mean(vs)),
+        mean: +_.mean(vs).toFixed(2),
         min: _.min(vs),
-        q5: Math.round(quantile(vs, 0.05)),
-        median: Math.round(quantile(vs, 0.5)),
-        q95: Math.round(quantile(vs, 0.95)),
+        q5: +quantile(vs, 0.05).toFixed(2),
+        median: +quantile(vs, 0.5).toFixed(2),
+        q95: +quantile(vs, 0.95).toFixed(2),
         max: _.max(vs),
       })
   )
+  if (ws) {
+    ws.close()
+  }
+
   process.exit(0)
 }
-
-process.on("SIGINT", terminate)
 
 function isPersonInCell(x, y) {
   const p1 = _.find(Object.values(positions), p => {
@@ -95,31 +102,254 @@ function isPersonInCell(x, y) {
   return !!p1
 }
 
-function runFor(uid) {
-  socket.on("connect", function() {
-    console.log("Connected", myUserId, socket.id)
-  })
+const initial_wait_time = 2000 + Math.random() * INTERVAL
 
-  socket.emit("active", {
-    room,
-    user: uid,
-    active: true,
+function runForSocketIO(uid) {
+  const socket = client.connect(SOCKET_URL)
+  console.log(SOCKET_URL, socket.connected)
+  process.on("SIGINT", () => {
+    terminate()
+  })
+  console.log("runForSocketIO")
+  socket.on("connect", () => {
+    console.log("Connected", myUserId)
+    socket.emit("Active", {
+      room,
+      user: uid,
+      token: debug_token,
+      debug_as: myUserId,
+    })
+    socket.emit("Subscribe", {
+      channel: room,
+    })
+    console.log(`Waiting to start: ${initial_wait_time.toFixed(0)} ms.`)
+    // socket.send(JSON.stringify({ type: "Active" }))
   })
 
   socket.on("disconnect", function() {
     console.log("Disconnected", uid, socket.id)
   })
 
-  socket.on("greeting", () => {
-    // console.log("Greeting received, emitting active")
-    socket.emit("active", {
-      room,
-      user: uid,
-      active: true,
-    })
+  const onMoved = str => {
+    // console.log("moved_multi", dat)
+    const ss = str.split(";")
+
+    for (const s of ss) {
+      const [u, x_, y_, direction] = s.split(",")
+      const [x, y] = [x_, y_].map(s => parseInt(s))
+      positions[u] = { x, y, direction }
+      if (emitted_ts) {
+        const latency = +(performance.now() - emitted_ts).toFixed(2)
+        if (u == myUserId) {
+          // console.log(positions[u])
+          latency_logs.push(latency)
+          if (latency_logs.length % 10 == 0) {
+            console.log(
+              `${
+                latency_logs.length
+              } logs recorded: ${uid} Mean latency = ${_.mean(
+                latency_logs
+              ).toFixed(2)} ms.`
+            )
+          }
+          if (latency_logs.length >= MAX_NUM_LOGS) {
+            terminate()
+          }
+        }
+        // console.log(uid, "" + latency + "ms", x, y)
+        emitted_ts = null
+        // console.log(d)
+        // moving = false
+      }
+    }
+  }
+
+  socket.on("Moved", data => {
+    onMoved(data)
   })
 
-  socket.on("move.error", d => {
+  socket.on("MoveError", d => {
+    positions[d.user_id] = d.pos
+    console.log(
+      "MoveError",
+      [d.user_id, ":", d.pos.x, ".", d.pos.y, ":", d.error].join("")
+    )
+    if (emitted_ts) {
+      const latency = +(performance.now() - emitted_ts).toFixed(2)
+      if (d.user_id == uid) {
+        latency_logs.push(latency)
+        if (latency_logs.length % 10 == 0) {
+          console.log(
+            `${latency_logs.length} logs recorded: ${uid} Mean = ${_.mean(
+              latency_logs
+            )}`
+          )
+        }
+        if (latency_logs.length >= MAX_NUM_LOGS) {
+          terminate()
+        }
+      }
+    }
+    emitted_ts = null
+    // moving = false
+  })
+
+  setTimeout(() => {
+    console.log("Batch started.", socket.connected)
+    setInterval(() => {
+      if (emitted_ts) {
+        // console.log("Emitted already: " + uid)
+        if (performance.now() - emitted_ts >= EMIT_TIMEOUT) {
+          console.log(
+            "Seems inactive. Abort: " + uid + " " + latency_logs.length
+          )
+          terminate()
+        }
+        return
+      }
+      let nx = 0
+      let ny = 0
+      let dx = 0,
+        dy = 0
+      let count = 0
+      for (count = 0; count < 10000; count += 1) {
+        const dir = Math.floor(Math.random() * 4)
+        if (dir == 0) {
+          dx = 1
+          dy = 0
+        } else if (dir == 1) {
+          dx = 0
+          dy = 1
+        } else if (dir == 2) {
+          dx = 0
+          dy = -1
+        } else if (dir == 3) {
+          dx = -1
+          dy = 0
+        }
+        nx = positions[uid].x + dx
+        ny = positions[uid].y + dy
+        if (
+          0 <= nx &&
+          nx < hallMap.numCols &&
+          0 <= ny &&
+          ny < hallMap.numRows &&
+          ["wall", "water", "poster"].indexOf(hallMap.cells[ny][nx].kind) ==
+            -1 &&
+          !isPersonInCell(nx, ny)
+        ) {
+          break
+        }
+      }
+      if (count == 10000) {
+        console.error("Open pos NOT FOUND")
+      }
+      const d = {
+        x: nx,
+        y: ny,
+        room,
+        user: uid,
+        token: debug_token,
+        debug_as: uid,
+      }
+      // console.log(
+      //   uid,
+      //   "moving from",
+      //   { x: positions[uid][uid].x, y: positions[uid][uid].y },
+      //   "to",
+      //   { x: nx, y: ny }
+      // )
+      emitted_ts = performance.now()
+      // console.log(socket)
+      socket.emit("Move", d)
+    }, INTERVAL)
+  }, initial_wait_time)
+}
+
+function runForWS(uid) {
+  const ws = new WebSocket(SOCKET_URL)
+  process.on("SIGINT", () => {
+    terminate(ws)
+  })
+  console.log("runFor")
+  ws.on("open", () => {
+    console.log("Connected", myUserId)
+    ws.send(
+      JSON.stringify({
+        Active: {
+          room,
+          user: uid,
+          token: debug_token,
+          debug_as: myUserId,
+        },
+      })
+    )
+    ws.send(
+      JSON.stringify({
+        Subscribe: {
+          channel: room,
+        },
+      })
+    )
+    console.log(`Waiting to start: ${initial_wait_time.toFixed(0)} ms.`)
+    // socket.send(JSON.stringify({ type: "Active" }))
+  })
+
+  console.log("Socket active sent")
+
+  ws.on("close", function() {
+    console.log("Disconnected", uid, ws.id)
+  })
+
+  const onMoved = str => {
+    console.log("onMoved", str)
+    const ss = str.split(";")
+
+    for (const s of ss) {
+      const [u, x_, y_, direction] = s.split(",")
+      const [x, y] = [x_, y_].map(s => parseInt(s))
+      positions[u] = { x, y, direction }
+      if (emitted_ts) {
+        const latency = +(performance.now() - emitted_ts).toFixed(2)
+        if (u == myUserId) {
+          // console.log(positions[u])
+          latency_logs.push(latency)
+          if (latency_logs.length % 10 == 0) {
+            console.log(
+              `${
+                latency_logs.length
+              } logs recorded: ${uid} Mean latency = ${_.mean(
+                latency_logs
+              ).toFixed(2)} ms.`
+            )
+          }
+          if (latency_logs.length >= MAX_NUM_LOGS) {
+            terminate(ws)
+          }
+        }
+        // console.log(uid, "" + latency + "ms", x, y)
+        emitted_ts = null
+        // console.log(d)
+        // moving = false
+      }
+    }
+  }
+
+  ws.on("message", msg => {
+    // console.log("Received:", msg)
+    let obj
+    try {
+      obj = JSON.parse(msg)
+    } catch (e) {
+      obj = null
+    }
+    if (obj && obj.type == "Moved") {
+      onMoved(obj.data)
+    }
+  })
+
+  /*
+  ws.on("MoveError", d => {
     positions[d.user_id] = d.pos
     console.log(
       "move.error",
@@ -143,82 +373,18 @@ function runFor(uid) {
     }
     emitted_ts = null
     // moving = false
-  })
-
-  socket.on("moved", dat => {
-    // console.log("moved", dat)
-    const [u, x_, y_, direction] = dat.split(",")
-    const [x, y] = [x_, y_].map(s => parseInt(s))
-    if (emitted_ts) {
-      const latency = Date.now() - emitted_ts
-      if (u == uid) {
-        // console.log("moved", u, x, y)
-        latency_logs.push(latency)
-        if (latency_logs.length % 10 == 0) {
-          console.log(
-            `${latency_logs.length} logs recorded: ${uid} Mean = ${_.mean(
-              latency_logs
-            )}`
-          )
-        }
-        if (latency_logs.length >= MAX_NUM_LOGS) {
-          terminate()
-        }
-      }
-    }
-    // console.log(uid, "" + latency + "ms", x, y)
-    emitted_ts = null
-    positions[u] = { x, y, direction }
-    // moving = false
-  })
-
-  socket.on("moved_multi", dat => {
-    // console.log("moved_multi", dat)
-    const ss = dat.split(";")
-
-    for (const s of ss) {
-      const [u, x_, y_, direction] = s.split(",")
-      const [x, y] = [x_, y_].map(s => parseInt(s))
-      positions[u] = { x, y, direction }
-      if (emitted_ts) {
-        const latency = Date.now() - emitted_ts
-        if (u == myUserId) {
-          // console.log(positions[u])
-          latency_logs.push(latency)
-          if (latency_logs.length % 10 == 0) {
-            console.log(
-              `${latency_logs.length} logs recorded: ${uid} Mean = ${_.mean(
-                latency_logs
-              )}`
-            )
-          }
-          if (latency_logs.length >= MAX_NUM_LOGS) {
-            terminate()
-          }
-        }
-        // console.log(uid, "" + latency + "ms", x, y)
-        emitted_ts = null
-        // console.log(d)
-        // moving = false
-      }
-
-      break
-    }
-  })
+  })*/
 
   setTimeout(() => {
+    console.log("Batch started.")
     setInterval(() => {
-      // if (!socket) {
-      //   clearInterval(timers[uid])
-      //   return
-      // }
       if (emitted_ts) {
         console.log("Emitted already: " + uid)
-        if (Date.now() - emitted_ts >= INTERVAL * 10) {
+        if (performance.now() - emitted_ts >= INTERVAL * 10) {
           console.log(
             "Seems inactive. Abort: " + uid + " " + latency_logs.length
           )
-          terminate()
+          terminate(ws)
         }
         return
       }
@@ -226,7 +392,8 @@ function runFor(uid) {
       let ny = 0
       let dx = 0,
         dy = 0
-      for (;;) {
+      let count = 0
+      for (count = 0; count < 10000; count += 1) {
         const dir = Math.floor(Math.random() * 4)
         if (dir == 0) {
           dx = 1
@@ -248,11 +415,15 @@ function runFor(uid) {
           nx < hallMap.numCols &&
           0 <= ny &&
           ny < hallMap.numRows &&
-          hallMap.cells[ny][nx].open &&
+          ["wall", "water", "poster"].indexOf(hallMap.cells[ny][nx].kind) ==
+            -1 &&
           !isPersonInCell(nx, ny)
         ) {
           break
         }
+      }
+      if (count == 10000) {
+        console.error("Open pos NOT FOUND")
       }
       const d = {
         x: nx,
@@ -269,10 +440,10 @@ function runFor(uid) {
       //   "to",
       //   { x: nx, y: ny }
       // )
-      emitted_ts = Date.now()
-      socket.emit("move", d)
+      emitted_ts = performance.now()
+      ws.send(JSON.stringify({ Move: d }))
     }, INTERVAL)
-  }, 3000 + Math.random() * INTERVAL)
+  }, initial_wait_time)
 }
 
 Promise.all([
@@ -284,6 +455,7 @@ Promise.all([
   }),
 ])
   .then(([{ data: data1 }, { data: data2 }]) => {
+    console.log("Map and people data received")
     hallMap = data2
     people = _.keyBy(data1, "id")
     uids = Object.keys(people)
@@ -291,10 +463,18 @@ Promise.all([
       const p = people[u]
       positions[u] = { x: p.x, y: p.y, direction: p.direction }
     }
-    // console.log(uids)
+    // console.log(uids, hallMap)
 
-    runFor(myUserId)
+    try {
+      if (RUST_WS) {
+        runForWS(myUserId)
+      } else {
+        runForSocketIO(myUserId)
+      }
+    } catch (err) {
+      console.error(err)
+    }
   })
-  .catch(() => {
-    //
+  .catch(err => {
+    console.error("REST API failed", err)
   })

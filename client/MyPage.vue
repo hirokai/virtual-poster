@@ -5,36 +5,7 @@
         <a style="margin-right: 10px;" :href="goback_path">マップに戻る</a>
         <button @click="signOut">ログアウト</button>
       </div>
-
-      <h1>{{ myself.name }}さん</h1>
-      <div class="info-entry">ユーザーID: {{ myUserId }}</div>
-      <div class="info-entry">Email: {{ user ? user.email : "(不明)" }}</div>
-      <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
-      <div class="info-entry">
-        表示名:
-        <span v-if="editing.name">
-          <input
-            class="name-field"
-            type="text"
-            v-model="editing.name"
-            @keydown.enter="saveName"
-          />
-          <span class="edit-btn" @click="saveName">OK</span>
-          <span class="edit-btn" @click="editing.name = null">キャンセル</span>
-        </span>
-        <span v-else>
-          <span class="name-field">{{ myself.name }} </span>
-          <span class="edit-btn" @click="editing.name = myself.name">Edit</span>
-        </span>
-      </div>
       <span style="display:none;">{{ bgPosition }}</span>
-      <!-- <div class="info-entry">
-        話しかけた人:
-        <span v-for="pid in myself.stats.people_encountered" :key="pid">
-          {{ people[pid].name }}
-        </span>
-      </div> -->
-      <div></div>
     </div>
     <div>
       <a
@@ -66,6 +37,40 @@
           <div style="clear: both"></div>
           <p>画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用</p>
         </div>
+      </div>
+      <div class="tab-content" id="tab-map" v-if="tab == 'map'">
+        <section>
+          <h2>アクセスコード</h2>
+          <label for="access_code">アクセスコード</label>
+          <input type="text" id="access_code" v-model="access_code" />
+          <button @click="submitAccessCode(access_code)">送信</button>
+        </section>
+        <section>
+          <h2>アクセス可能なマップ</h2>
+          <span v-if="Object.keys(rooms).length == 0"
+            >アクセス可能なマップはありません。</span
+          >
+          <div style="margin: 10px 0px">
+            <a href="/create_room">新規作成</a>
+          </div>
+          <div
+            class="room-entry"
+            v-for="room in Object.values(rooms)"
+            :key="room.id"
+          >
+            <a :href="'/room?room_id=' + room.id">{{ room.name }}</a> ({{
+              room.id
+            }})
+            <span v-if="room.owner == myUserId">[管理者]</span>
+            <button
+              v-if="room.owner == myUserId"
+              class="btn danger"
+              @click="deleteRoom(room.id)"
+            >
+              削除
+            </button>
+          </div>
+        </section>
       </div>
       <div v-if="tab == 'poster'">
         <div>ドラッグ＆ドロップでポスターを掲載（10 MB以内）</div>
@@ -198,9 +203,7 @@
 
         <div v-if="vote.message_sent">
           <div style="margin: 30px 10px;">
-            下記の内容を<a href="https://forms.gle/Cg4gbzSzYkhWXL2V6"
-              >Googleフォーム</a
-            >より送信してください（匿名で収集されます）。
+            下記の内容を（Googleフォームやオンライン掲示板を用いて）匿名で送信してください。
           </div>
           <h3>投票内容</h3>
           <div id="vote-message">
@@ -212,75 +215,113 @@
           </div>
         </div>
       </div>
-      <div v-if="tab == 'account'">
-        <h2>ログのエクスポート</h2>
-        <button @click="exportLog">エクスポート</button>
-        <h2>アクセスコード</h2>
-        <label for="access_code">アクセスコード</label>
-        <input type="text" id="access_code" v-model="access_code" />
-        <button @click="submitAccessCode(access_code)">送信</button>
-        <h2>アカウント</h2>
-        <div>
-          <button class="btn-danger" @click="deleteAccount">
-            アカウントの削除
-          </button>
-        </div>
-        <h2>暗号化</h2>
-        <div>
-          個別のチャットはエンドツーエンド暗号化が可能です。<a
-            href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
-            >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
-          >および128ビット<a
-            href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
-            >AES-GCM</a
-          >を使用。<br />
-        </div>
-        <div>
-          <h3>公開鍵</h3>
+      <div class="tab-content" id="tab-account" v-if="tab == 'account'">
+        <section>
+          <h2>基本情報</h2>
+          <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
+          <div class="info-entry">
+            表示名:
+            <span v-if="editing.name">
+              <input
+                class="name-field"
+                type="text"
+                v-model="editing.name"
+                @keydown.enter="saveName"
+              />
+              <span class="edit-btn" @click="saveName">OK</span>
+              <span class="edit-btn" @click="editing.name = null"
+                >キャンセル</span
+              >
+            </span>
+            <span v-else>
+              <span class="name-field">{{ myself.name }} </span>
+              <span class="edit-btn" @click="editing.name = myself.name"
+                >Edit</span
+              >
+            </span>
+          </div>
+          <div class="info-entry">ユーザーID: {{ myUserId }}</div>
+          <div class="info-entry">
+            Email: {{ user ? user.email : "(不明)" }}
+          </div>
+          <!-- <div class="info-entry">
+        話しかけた人:
+        <span v-for="pid in myself.stats.people_encountered" :key="pid">
+          {{ people[pid].name }}
+        </span>
+      </div> -->
+        </section>
+        <section>
+          <h2>ログのエクスポート</h2>
+          <button @click="exportLog">エクスポート</button>
+        </section>
 
-          <div class="keys">{{ publicKeyString }}</div>
-          <h3>秘密鍵</h3>
-
+        <section>
+          <h2>暗号化</h2>
           <div>
-            <input
-              type="checkbox"
-              name=""
-              v-model="enableEncryption"
-              id="check-enable-encrypt"
-              :disabled="!privateKeyString"
-            /><label for="check-enable-encrypt"
-              >エンドツーエンド暗号化を使用</label
-            >
+            個別のチャットはエンドツーエンド暗号化が可能です。<a
+              href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
+              >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
+            >および128ビット<a
+              href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
+              >AES-GCM</a
+            >を使用。<br />
           </div>
+          <div>
+            <h3>公開鍵</h3>
 
-          <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
-            秘密鍵が設定されています
-          </div>
-          <div
-            class="danger"
-            v-if="!privateKeyString"
-            style="height: 40px; margin: 10px;"
-          >
-            <span style="margin-right: 10px;">秘密鍵がありません</span>
-          </div>
-          <button @click="setPrivateKey">
-            秘密鍵を読み込み
-          </button>
-          <button
-            :disabled="!privateKeyString"
-            @click="showPrivKey = !showPrivKey"
-          >
-            秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
-          </button>
-          <pre id="mnemonic" v-if="showPrivKey">{{ privateKeyMnemonic }}</pre>
-          <pre id="mnemonic" class="hidden" v-else
-            >{{ privateKeyMnemonic }}
+            <div class="keys">{{ publicKeyString }}</div>
+            <h3>秘密鍵</h3>
+
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                v-model="enableEncryption"
+                id="check-enable-encrypt"
+                :disabled="!privateKeyString"
+              /><label for="check-enable-encrypt"
+                >エンドツーエンド暗号化を使用</label
+              >
+            </div>
+
+            <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
+              秘密鍵が設定されています
+            </div>
+            <div
+              class="danger"
+              v-if="!privateKeyString"
+              style="height: 40px; margin: 10px;"
+            >
+              <span style="margin-right: 10px;">秘密鍵がありません</span>
+            </div>
+            <button @click="setPrivateKey">
+              秘密鍵を読み込み
+            </button>
+            <button
+              :disabled="!privateKeyString"
+              @click="showPrivKey = !showPrivKey"
+            >
+              秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
+            </button>
+            <pre id="mnemonic" v-if="showPrivKey">{{ privateKeyMnemonic }}</pre>
+            <pre id="mnemonic" class="hidden" v-else
+              >{{ privateKeyMnemonic }}
 </pre
-          >
-          <span class="danger"
-            >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
-          >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
-        </div>
+            >
+            <span class="danger"
+              >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
+            >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
+          </div>
+        </section>
+        <section>
+          <h2>アカウントの削除</h2>
+          <div>
+            <button class="btn-danger" @click="deleteAccount">
+              アカウントの削除
+            </button>
+          </div>
+        </section>
       </div>
       <div v-if="tab == 'help'">
         <h2>簡単な使い方</h2>
@@ -368,7 +409,7 @@ axios.interceptors.response.use(
 )
 
 const url = new URL(location.href)
-const tab = url.hash.slice(1) || "avatar"
+const tab = url.hash.slice(1) || "account"
 
 const page_from: string | undefined = url.searchParams.get("room") || undefined
 
@@ -451,10 +492,11 @@ export default defineComponent({
 
       lastUpdated: null as number | null,
       tabs: [
+        { id: "account", name: "アカウント" },
         { id: "avatar", name: "アバター" },
+        { id: "map", name: "マップ" },
         { id: "poster", name: "ポスター" },
         { id: "vote", name: "投票" },
-        { id: "account", name: "アカウント" },
         { id: "help", name: "使い方" },
       ],
 
@@ -498,6 +540,8 @@ export default defineComponent({
         message_sent: string | null
       },
       avatarImages: {} as { [index: string]: string },
+      allowedMaps: [] as Room[],
+      ownedMaps: [] as Room[],
     })
 
     const myself = computed((): Person | null => {
@@ -622,6 +666,7 @@ export default defineComponent({
         state.people = keyBy(data_p, "id")
         state.posters = keyBy(data_poster.posters || [], "id")
         state.rooms = keyBy(data_r, "id")
+        state.ownedMaps = data_r.filter(r => r.owner == state.myUserId)
         state.privateKey =
           localStorage[
             "virtual-poster:" + state.myUserId + ":private_key_jwk"
@@ -1098,7 +1143,7 @@ export default defineComponent({
 
     const deleteAccount = async () => {
       const r = confirm(
-        "アカウントを削除します。一旦削除すると取り消せません。本当にいいですか？"
+        "アカウントを削除します。すべての書き込み，ポスター，作成した部屋などが削除されます。一旦削除すると取り消せません。本当にいいですか？"
       )
       if (!r) {
         return
@@ -1141,8 +1186,25 @@ export default defineComponent({
         const idx = r.error?.indexOf("Access code is invalid")
         if (idx && idx >= 0) {
           alert("アクセスコードが正しくありません。")
+        }
+      }
+      if (!r.added || r.added.length == 0) {
+        alert("何も追加されませんでした")
+      } else {
+        alert("追加されました")
+      }
+    }
+
+    const deleteRoom = async room_id => {
+      const room_id_entered = prompt(
+        "本当に削除しますか？　この部屋の中のすべての書き込み，ポスターが削除されます。一旦削除すると取り消せません。削除する場合は部屋のIDを下記に入力してください。"
+      )
+      if (room_id_entered == room_id) {
+        const r = await client.maps._roomId(room_id).$delete()
+        if (r.ok) {
+          alert("マップが削除されました。")
         } else {
-          alert("エラー（すでにアクセスできるマップの可能性）")
+          alert("マップが削除できませんでした。")
         }
       }
     }
@@ -1239,6 +1301,7 @@ export default defineComponent({
       page_from,
       myself,
       submitAccessCode,
+      deleteRoom,
       exportLog,
     }
   },
@@ -1443,5 +1506,26 @@ button.release-poster-slot {
   color: transparent;
   /* background: #ccc; */
   text-shadow: 0 0 16px rgba(0, 0, 0, 0.9);
+}
+
+.tab-content > section {
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  margin: 10px;
+  padding: 10px;
+}
+
+.tab-content > section h2 {
+  font-size: 24px;
+}
+
+.room-entry {
+  margin: 10px;
+  padding: 5px;
+  border: 1px solid #ccc;
+}
+
+.room-entry button {
+  float: right;
 }
 </style>

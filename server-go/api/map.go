@@ -69,7 +69,6 @@ func Map(c *gin.Context) {
 
 	var user models.MapCell
 	for rows.Next() {
-		//rows.Scanの代わりにrows.StructScanを使う
 		err := rows.StructScan(&user)
 		if err != nil {
 			log.Panic(err)
@@ -118,29 +117,6 @@ func Map(c *gin.Context) {
 func MapGroups(c *gin.Context) {
 
 	c.JSON(http.StatusOK, make([]int, 0))
-}
-
-func MapComments(c *gin.Context) {
-	roomId := c.Param("roomId")
-	person := "UrOXPyH_iL"
-	rows, err := model.Db.Queryx("SELECT * FROM comment WHERE room=$1 AND person=$2", roomId, person)
-	if err != nil {
-		log.Panic(err)
-	}
-	var comments []models.Comment = make([]models.Comment, 0)
-
-	var comment models.Comment
-	for rows.Next() {
-		//rows.Scanの代わりにrows.StructScanを使う
-		err := rows.StructScan(&comment)
-		if err != nil {
-			log.Panic(err)
-			continue
-		}
-		comments = append(comments, comment)
-	}
-
-	c.JSON(http.StatusOK, comments)
 }
 
 func GetRequester(c *gin.Context) string {

@@ -378,40 +378,44 @@ impl Handler<DataFromUser> for PubSubServer {
                                     .unwrap();
                                 let start = Instant::now();
                                 let conn = pg.get().await.unwrap();
-                                conn.query(
-                                    "UPDATE
-                                            person_position
-                                        SET
-                                            x=$3,
-                                            y=$4
-                                        WHERE
-                                            person=$1
-                                            AND room=$2",
-                                    &[
-                                        &user_id,
-                                        &room,
-                                        &(new_pos.0.x as i32),
-                                        &(new_pos.0.y as i32),
-                                    ],
-                                )
-                                .await
-                                .unwrap();
-                                let end = start.elapsed();
-                                debug!("Updated position: {} µs", end.subsec_nanos() / 1000);
-
-                                let obj = AppNotification::Moved {
-                                    room: room1.clone(),
-                                    positions: vec![Move {
-                                        user: user_id.clone(),
-                                        x: x,
-                                        y: y,
-                                        direction: new_pos.1,
-                                    }],
-                                };
-                                let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
-                                for (n, _) in &topics {
-                                    if n == &room1 {
-                                        send_message(&sessions, &topics, &n, &s, None);
+                                // let result = conn
+                                //     .query(
+                                //         "UPDATE
+                                //             person_position
+                                //         SET
+                                //             x=$3,
+                                //             y=$4
+                                //         WHERE
+                                //             person=$1
+                                //             AND room=$2;",
+                                //         &[
+                                //             &user_id,
+                                //             &room,
+                                //             &(new_pos.0.x as i32),
+                                //             &(new_pos.0.y as i32),
+                                //         ],
+                                //     )
+                                //     .await;
+                                let result: Result<String, String> = Ok("".to_string());
+                                if result.is_err() {
+                                    warn!("Move error: {},{}", x, y)
+                                // AppNotification::MoveError
+                                } else {
+                                    let end = start.elapsed();
+                                    debug!("Updated position: {} µs", end.subsec_nanos() / 1000);
+                                    let obj = AppNotification::Moved {
+                                        room: room1.clone(),
+                                        positions: vec![Move {
+                                            user: user_id.clone(),
+                                            x: x,
+                                            y: y,
+                                            direction: new_pos.1,
+                                        }],
+                                    };
+                                    let s =
+                                        serde_json::to_string(&encode_for_client(&obj)).unwrap();
+                                    if topics.contains_key(&room1) {
+                                        send_message(&sessions, &topics, &room1, &s, None);
                                     }
                                 }
                             }
@@ -490,10 +494,8 @@ impl Handler<DataFromUser> for PubSubServer {
                                 }],
                             };
                             let s = serde_json::to_string(&encode_for_client(&obj)).unwrap();
-                            for (n, _) in &topics {
-                                if n == &room1 {
-                                    send_message(&sessions, &topics, &n, &s, None);
-                                }
+                            if topics.contains_key(&room1) {
+                                send_message(&sessions, &topics, &room1, &s, None);
                             }
                             ()
                         }

@@ -72,18 +72,16 @@ async function routes(
     if (!data || !data["name"] || !data["cells"]) {
       return { ok: false, error: "Invalid data format" }
     }
-    const { map: mm } = await MapModel.mkNewRoom(data["name"], data["cells"])
+    const { map: mm } = await MapModel.mkNewRoom(
+      data["name"],
+      data["cells"],
+      req["requester"]
+    )
     if (!mm) {
       return { ok: false, error: "Import failed" }
     }
     await model.maps[mm.room_id].addUser(req["requester"], true)
     return { ok: true, room: { id: mm.room_id, name: data["name"] } }
-  })
-
-  fastify.delete<any>("/maps/:room", async req => {
-    const room = req.params.room as string
-    const ok = await model.maps[room].deleteRoomFromDB()
-    return { ok }
   })
 
   fastify.post(

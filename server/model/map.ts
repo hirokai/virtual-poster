@@ -14,7 +14,7 @@ import {
   ChatGroupId,
 } from "../../@types/types"
 import shortid from "shortid"
-import { redis, log, db, POSTGRES_CONNECTION_STRING } from "./index"
+import { redis, log, db, pgp, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
 import _ from "lodash"
 import { mkKey, calcDirection, isOpenCell } from "../../common/util"
@@ -22,6 +22,10 @@ import cluster from "cluster"
 import * as Posters from "./posters"
 import { config } from "../config"
 import { emit } from "../socket"
+import { promisify } from "util"
+import fs from "fs"
+import path from "path"
+const readFile = promisify(fs.readFile)
 
 const USE_S3_CDN = config.aws.s3.via_cdn
 const S3_BUCKET = config.aws.s3.bucket
@@ -63,13 +67,26 @@ export class MapModel {
   }
   static async mkNewRoom(
     name: string,
-    map_data: string
+    map_data: string,
+    owner?: UserId
   ): Promise<{ map?: MapModel; error?: string }> {
     const room_id = MapModel.genRoomId()
-    await db.query(`INSERT INTO room (id,name) values ($1,$2)`, [room_id, name])
+    if (name.length == 0 || name.trim() == "") {
+      return { error: "Invalid name" }
+    }
+    const rows = await db.query(`SELECT 1 FROM room WHERE name=$1`, [name])
+    if (rows.length > 0) {
+      return { error: "Room name already exists" }
+    }
+    await db.query(`INSERT INTO room (id,name,room_owner) values ($1,$2,$3)`, [
+      room_id,
+      name,
+      owner,
+    ])
     const m = new MapModel(room_id, name)
     const res = await m.importMapString(map_data)
     if (!res) {
+      await db.query(`DELETE FROM room WHERE id=$1`, [room_id])
       return { error: "Import failed" }
     }
     model.maps[room_id] = m
@@ -84,7 +101,7 @@ export class MapModel {
   ): Promise<{ ok: boolean; error?: string }> {
     try {
       await db.query(
-        `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING`,
+        `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING `,
         [this.room_id, user_id, role]
       )
       if (assignPosition) {
@@ -97,7 +114,7 @@ export class MapModel {
       return { ok: true }
     } catch (err) {
       console.log(err)
-      return { ok: false, error: "DB error" }
+      return { ok: false, error: "DB error in addUser()" }
     }
   }
   async writeRedisCache(): Promise<void> {
@@ -189,22 +206,28 @@ export class MapModel {
     if (!map) {
       return null
     }
-    let poster_number = 1
-    for (const c of _.flatten(map.cells)) {
-      await db.query(
-        `INSERT INTO map_cell (id,room,x,y,kind,poster_number) values ($1,$2,$3,$4,$5,$6);`,
-        [
-          c.id,
-          this.room_id,
-          c.x,
-          c.y,
-          c.kind,
-          c.kind == "poster" ? poster_number : null,
-        ]
+    let poster_number = 0
+    for (const cs of _.chunk(_.flatten(map.cells), 1000)) {
+      const dataMulti = cs.map(c => {
+        if (c.kind == "poster") {
+          poster_number += 1
+        }
+        return {
+          id: c.id,
+          room: this.room_id,
+          x: c.x,
+          y: c.y,
+          kind: c.kind,
+          poster_number: c.kind == "poster" ? poster_number : null,
+        }
+      })
+      await db.none(
+        pgp.helpers.insert(
+          dataMulti,
+          ["id", "room", "x", "y", "kind", "poster_number"],
+          "map_cell"
+        )
       )
-      if (c.kind == "poster") {
-        poster_number += 1
-      }
     }
     //Reload Redis cache
     await this.writeRedisCache()
@@ -356,7 +379,7 @@ export class MapModel {
     } else if (r.ok && r.removedGroup) {
       emit.channel(this.room_id).groupRemove(r.removedGroup)
     }
-    return { ok: r.ok }
+    return { ok: true }
   }
 
   async setTyping(user: UserId, typing: boolean): Promise<void> {
@@ -474,7 +497,7 @@ export class MapModel {
     return s ? JSON.parse(s) : null
   }
   async getAllStaticMapCellsFromRDB(): Promise<Cell[]> {
-    const rows = await db.many<MapCellRDB>(
+    const rows = await db.query<MapCellRDB[]>(
       `SELECT * from map_cell where room=$1`,
       [this.room_id]
     )
@@ -654,6 +677,19 @@ export class MapModel {
   }
   announce(d: Announcement): void {
     this.announcement = d
+  }
+
+  static async loadTemplate(template: string): Promise<{ map_data?: string }> {
+    const template_sanitized = template.replace(/\W/g, "")
+    try {
+      const s = await readFile(
+        path.join(__dirname, "map_templates", template_sanitized + ".txt"),
+        "utf-8"
+      )
+      return { map_data: s }
+    } catch (err) {
+      return {}
+    }
   }
   async deleteRoomFromDB(): Promise<boolean> {
     try {

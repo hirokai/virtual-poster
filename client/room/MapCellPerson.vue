@@ -21,6 +21,12 @@
     }"
     @dblclick="$emit('dbl-click', { x: person.x, y: person.y })"
     @click="$emit('select', { x: person.x, y: person.y, event: $event })"
+    @mouseenter="
+      $emit('hover-cell', true, { x: person.x, y: person.y, person })
+    "
+    @mouseleave="
+      $emit('hover-cell', false, { x: person.x, y: person.y, person })
+    "
   >
     <image
       :style="{ opacity: person.connected ? 1 : 0.3 }"

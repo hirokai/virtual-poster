@@ -7,6 +7,7 @@ import {
   PersonInMap,
   PersonUpdate,
   ChatComment,
+  ChatEvent,
 } from "../../@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
@@ -262,7 +263,7 @@ async function routes(
     if (req["requester_type"] == "admin" || req["requester"] == userId) {
       const rooms = Object.keys(model.maps)
       req.log.debug(rooms)
-      let comments: ChatComment[] = []
+      let comments: (ChatComment | ChatEvent)[] = []
       for (const room_id of rooms) {
         const cs = await model.chat.getAllComments(room_id, userId)
         comments = comments.concat(cs || [])

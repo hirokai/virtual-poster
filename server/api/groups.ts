@@ -14,41 +14,81 @@ async function routes(
   fastify.addHook("preHandler", protectedRoute)
 
   fastify.post<any>("/maps/:roomId/groups/:groupId/join", async req => {
+    const from_user = req["requester"]
     const { ok, error, joinedGroup } = await model.chat.joinChat(
       req.params.roomId,
-      req["requester"],
+      from_user,
       req.params.groupId
     )
     if (joinedGroup) {
       emit.channel(req.params.roomId).group(joinedGroup)
+      emit.channels(joinedGroup.users).chatEvent({
+        group: joinedGroup.id,
+        person: from_user,
+        kind: "event",
+        event_type: "join",
+        event_data: { from_user },
+        timestamp: joinedGroup.last_updated,
+      })
     }
     return { ok, error, joinedGroup }
   })
 
   fastify.post<any>("/maps/:roomId/groups/:groupId/leave", async req => {
     const room = req.params.roomId
-    const { ok, error, leftGroup, removedGroup } = await model.chat.leaveChat(
-      room,
-      req["requester"]
-    )
-    if (ok && leftGroup) {
+    const user_id = req["requester"]
+    const {
+      ok,
+      error,
+      leftGroup,
+      removedGroup,
+      removedGroupOldMembers,
+      timestamp,
+    } = await model.chat.leaveChat(room, user_id)
+    if (ok && leftGroup && timestamp) {
       emit.channel(room).group(leftGroup)
-    } else if (ok && removedGroup) {
+      emit.channels(leftGroup.users.concat([user_id])).chatEvent({
+        kind: "event",
+        person: user_id,
+        timestamp,
+        group: leftGroup.id,
+        event_type: "leave",
+        event_data: { left_user: user_id, users: leftGroup.users },
+      })
+    } else if (ok && removedGroup && timestamp) {
       emit.channel(room).groupRemove(removedGroup)
+      if (removedGroupOldMembers) {
+        emit.channels(removedGroupOldMembers.concat([user_id])).chatEvent({
+          kind: "event",
+          person: user_id,
+          timestamp,
+          group: removedGroup,
+          event_type: "dissolve",
+        })
+      }
     }
     return { ok, error, leftGroup }
   })
 
   fastify.post<any>("/maps/:roomId/groups/:groupId/people", async req => {
     const personToAdd: string = req.body.userId
+    const requester = req["requester"]
     const { ok, error, joinedGroup } = await model.chat.addMember(
       req.params.roomId,
-      req["requester"],
+      requester,
       personToAdd,
       req.params.groupId
     )
     if (joinedGroup) {
       emit.channel(req.params.roomId).group(joinedGroup)
+      emit.channels(joinedGroup.users).chatEvent({
+        kind: "event",
+        group: req.params.groupId,
+        person: requester,
+        event_type: "add",
+        event_data: { to_user: personToAdd, from_user: requester },
+        timestamp: joinedGroup.last_updated,
+      })
     }
     return { ok, error, joinedGroup }
   })
@@ -74,20 +114,13 @@ async function routes(
         operation: "groups.join",
         data: { to_users, from_user },
       })
-      console.log("log 1")
-
-      fastify.log.debug(from_user)
-      fastify.log.debug(to_users)
-      console.log("log 2")
       if (to_users.indexOf(from_user) != -1) {
         console.log("to_users cannot include from_user")
 
         return { ok: false, error: "to_users cannot include from_user" }
       }
-      console.log("log 3")
       const permitted =
         !!requester && (requester_type == "admin" || requester == from_user)
-      console.log("permitted", permitted)
       if (!permitted) {
         throw { statusCode: 403 }
       }
@@ -95,13 +128,21 @@ async function routes(
       if (!p) {
         return { ok: false, error: "User not found" }
       }
-      const { group, error } = await model.chat.startChat(
+      const { group, error, timestamp } = await model.chat.startChat(
         roomId,
         from_user,
         to_users
       )
-      if (group) {
+      if (group && timestamp) {
         emit.channel(roomId).group(group)
+        emit.channels(group.users).chatEvent({
+          kind: "event",
+          person: requester,
+          timestamp,
+          group: group.id,
+          event_type: "new",
+          event_data: { from_user, to_users },
+        })
         return {
           ok: true,
           group,
@@ -117,12 +158,10 @@ async function routes(
 
   fastify.get<any>(
     "/groups",
-    async (): Promise<{
-      [group_id: string]: { users: string[][]; color: string }
-    }> => {
-      const groups = _.keyBy(await model.chat.getGroupList(null), "id")
+    async (): Promise<{ users: [UserId, string][]; color: string }[]> => {
+      const groups = await model.chat.getGroupList(null)
       const people = await model.people.getAll(null)
-      return _.mapValues(groups, group => {
+      return groups.map(group => {
         return {
           users: group.users.map(u => [u, people[u].name]),
           color: group.color,

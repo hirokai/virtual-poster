@@ -3,7 +3,6 @@ import SocketIO from "socket.io"
 import * as bunyan from "bunyan"
 import cluster from "cluster"
 import _ from "lodash"
-import { SocketIOEmitter } from "socket.io-emitter"
 
 import {
   Announcement,
@@ -17,12 +16,12 @@ import {
   PersonUpdate,
   PosterId,
   GroupSocketData,
+  ChatEvent,
   MoveErrorSocketData,
   MoveSocketData,
   TypingSocketData,
   TypingSocketSendData,
   DirectionSendSocket,
-  AuthSocket,
   RoomId,
   UserId,
   Emitter,
@@ -148,6 +147,9 @@ export class Emit {
     for (const t of d.texts) {
       this.emitter.to(t.to).emit("Comment", d)
     }
+  }
+  chatEvent(d: ChatEvent, socket: Emitter = this.emitter): void {
+    socket.emit("ChatEvent", d)
   }
   announce(d: Announcement, socket: Emitter = this.emitter): void {
     socket.emit("Announce", d)

@@ -12,10 +12,12 @@ import {
   Poster,
   ChatGroup,
   ChatGroupId,
+  ChatEvent,
   Person,
   MySocketObject,
   CommentEncryptedEntry,
   Tree,
+  ChatEventSocketData,
 } from "@/@types/types"
 import { keyBy, compact, sortTree } from "@/common/util"
 import * as encryption from "../encryption"
@@ -530,6 +532,11 @@ export const initChatService = async (
     }
   })
 
+  socket.on("ChatEvent", (d: ChatEvent) => {
+    console.log("ChatEvent", d)
+    state.chat_events.push(d)
+  })
+
   const client = api(axiosClient(axios))
 
   const [comments, groups] = await Promise.all([
@@ -538,33 +545,49 @@ export const initChatService = async (
   ])
   state.chatGroups = keyBy(groups, "id")
 
+  console.log("comments", comments)
+
   const decrypted: ChatCommentDecrypted[] = []
+  const events: ChatEvent[] = []
   for (const c of comments) {
-    const r = await decryptIfNeeded(
-      props.myUserId,
-      state.people,
-      c,
-      state.privateKey
-    )
-    // console.log("decryptIfNeeded() result", r)
-    const comment_decr: ChatCommentDecrypted = {
-      id: c.id,
-      timestamp: c.timestamp,
-      last_updated: c.last_updated,
-      text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
-      texts: c.texts.map(t => {
-        return { to: t.to, encrypted: t.encrypted }
-      }),
-      room: c.room,
-      x: c.x,
-      y: c.y,
-      person: c.person,
-      kind: c.kind,
-      reply_to: c.reply_to,
+    if (c.kind == "event") {
+      const ev: ChatEvent = {
+        kind: "event",
+        group: c.group,
+        person: c.person,
+        event_type: c.event_type,
+        event_data: c.event_data,
+        timestamp: c.timestamp,
+      }
+      events.push(ev)
+    } else {
+      const r = await decryptIfNeeded(
+        props.myUserId,
+        state.people,
+        c,
+        state.privateKey
+      )
+      // console.log("decryptIfNeeded() result", r)
+      const comment_decr: ChatCommentDecrypted = {
+        id: c.id,
+        timestamp: c.timestamp,
+        last_updated: c.last_updated,
+        text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
+        texts: c.texts.map(t => {
+          return { to: t.to, encrypted: t.encrypted }
+        }),
+        room: c.room,
+        x: c.x,
+        y: c.y,
+        person: c.person,
+        kind: c.kind,
+        reply_to: c.reply_to,
+      }
+      // comment.encrypted = r.encrypted || false
+      decrypted.push(comment_decr)
     }
-    // comment.encrypted = r.encrypted || false
-    decrypted.push(comment_decr)
   }
+  state.chat_events = events
   state.comments = keyBy(decrypted, "id")
   return true
 }

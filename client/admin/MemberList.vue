@@ -60,16 +60,20 @@
       </div>
     </div>
 
-    <table>
+    <table id="user-list">
       <thead>
         <tr>
-          <th></th>
-          <th>ユーザーID</th>
-          <th>名前</th>
-          <th>Email</th>
-          <th>部屋</th>
-          <th>接続中</th>
-          <th>公開鍵</th>
+          <th rowspan="2"></th>
+          <th rowspan="2" class="r1">ユーザーID</th>
+          <th rowspan="2">名前</th>
+          <th rowspan="2">Email</th>
+          <th :colspan="Object.keys(rooms).length">部屋</th>
+          <th rowspan="2" class="r5">公開鍵</th>
+        </tr>
+        <tr>
+          <th v-for="room in rooms" :key="room.id" class="room-name">
+            {{ room.name }}
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -115,19 +119,19 @@
               {{ person.email }}
             </div>
           </td>
-          <td>
-            <span v-for="room in person.rooms" :key="room">
+          <td v-for="room in rooms" :key="room.id" class="room-entry">
+            <span v-if="person.rooms.indexOf(room.id) != -1">
               <a
                 :href="
                   '/room?room_id=' +
-                    room +
+                    room.id +
                     '&debug_as=' +
                     person.id +
                     '&debug_token=' +
                     debug_token +
                     '&bot_mode=1'
                 "
-                >{{ room }}</a
+                >○</a
               >
             </span>
           </td>
@@ -135,7 +139,11 @@
             {{ person.connected ? "Yes" : "" }}
           </td>
           <td class="r5">
-            {{ person.public_key }}
+            {{
+              person.public_key
+                ? "..." + person.public_key.slice(person.public_key.length - 16)
+                : ""
+            }}
           </td>
         </tr>
       </tbody>
@@ -299,7 +307,11 @@ export default defineComponent({
 })
 </script>
 
-<style lang="css">
+<style lang="css" scoped>
+#user-list td:nth-child(1) {
+  width: 100px;
+}
+
 .connected {
   background: #eef;
 }
@@ -317,5 +329,23 @@ export default defineComponent({
   background: #f88;
   padding: 5px;
   border-radius: 4px;
+}
+
+.r1 {
+  width: 100px;
+}
+
+th.r5 {
+  min-width: 100px;
+}
+
+td.r5 {
+  min-width: 100px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+th.room-name {
+  width: 100px;
 }
 </style>

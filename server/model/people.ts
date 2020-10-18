@@ -693,7 +693,9 @@ export async function isConnected(
   user_ids: UserId[]
 ): Promise<boolean[]> {
   const connected = new Set(
-    await redis.sockets.smembers("room:" + room_id + ":__all__")
+    await redis.accounts.smembers(
+      "connected_users:room:" + room_id + ":__all__"
+    )
   )
   return user_ids.map(u => connected.has(u))
 }
@@ -799,6 +801,9 @@ export async function removePerson(
     }
     const email = row.email
     await db.query(`BEGIN`)
+    await db.query(`DELETE FROM chat_event_recipient WHERE person=$1`, [
+      user_id,
+    ])
     await db.query(`DELETE FROM poster_viewer WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_stats WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_room_access WHERE person=$1`, [user_id])

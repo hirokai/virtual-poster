@@ -128,7 +128,6 @@ paths:
                 name:
                   type: string
                   minLength: 1
-                  maxLength: 8
                 x:
                   type: integer
                   minimum: 0
@@ -702,7 +701,42 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ChatComment"
+                  oneOf:
+                    - $ref: "#/components/schemas/ChatComment"
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - event
+                        event_type:
+                          type: string
+                          enum:
+                            - new
+                            - join
+                            - add
+                            - leave
+                            - dissolve
+                            - start_overhear
+                            - end_overhear
+                            - set_private
+                        event_data:
+                          type: object
+                          properties:
+                            additionalProperties:
+                              type: string
+                        person:
+                          type: string
+                        group:
+                          type: string
+                        timestamp:
+                          type: number
+                      required:
+                        - kind
+                        - event_type
+                        - person
+                        - group
+                        - timestamp
       operationId: get-maps-roomId-comments
       description: Get all comments (that are visible to a user) in the room.
   "/posters/{posterId}/comments/{commentId}":
@@ -1591,6 +1625,8 @@ paths:
         - debugToken: []
   "/maps/{roomId}/posters/{posterId}/approach":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1622,6 +1658,8 @@ paths:
       description: Approach a poster by walking.
   "/people/{userId}/access_code":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: userId
@@ -1666,6 +1704,8 @@ paths:
                 - access_code
   "/posters/{posterId}":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: posterId
@@ -2070,12 +2110,15 @@ components:
           enum:
             - poster
             - people
+        last_updated:
+          type: number
       required:
         - id
         - room
         - users
         - color
         - kind
+        - last_updated
     UserId:
       type: string
       title: UserId

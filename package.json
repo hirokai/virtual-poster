@@ -6,7 +6,7 @@
   "author": "Hiro Kai <fullerenec84@gmail.com>",
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build && tsc",
+    "build": "vue-cli-service build && tsc && cp -r server/model/map_templates dist_server/server/model",
     "lint": "vue-cli-service lint --no-fix",
     "db": "psql postgres -d virtual_poster",
     "dev": "set NODE_ENV=development && nodemon -L >&2 | npm run serve",
@@ -17,9 +17,9 @@
     "prod": "NODE_ENV=production ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "prod:log": "NODE_ENV=production DEBUG_LOG=1 ts-node -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
     "server": "nodemon --exec ts-node -r tsconfig-paths/register -O '{\"module\": \"commonjs\"}' server/index.ts | pino-pretty",
-    "socket": "nodemon --exec ts-node -r tsconfig-paths/register -O '{\"module\": \"commonjs\"}' server/socket_standalone.ts | bunyan -o short",
+    "socket": "nodemon --exec ts-node -r tsconfig-paths/register -O '{\"module\": \"commonjs\"}' server/socket_index.ts | bunyan -o short",
     "socket:rs": "cd server-rust && cargo run --release --bin ws",
-    "socket:nohup": "sudo NODE_ENV=production NO_TLS=1 PORT=80 nohup node dist_server/server/socket_standalone.js > socket.nohup.out &",
+    "socket:nohup": "sudo NODE_ENV=production NO_TLS=1 PORT=80 nohup node dist_server/server/socket_index.js > socket.nohup.out &",
     "test": "NODE_TEST=1 jest --runInBand --forceExit"
   },
   "dependencies": {
@@ -35,6 +35,7 @@
     "axios": "^0.19.2",
     "bip39": "^3.0.2",
     "blind-signatures": "^1.0.7",
+    "bulma": "^0.9.1",
     "bunyan": "^1.8.12",
     "core-js": "^3.6.5",
     "cors": "^2.8.5",

@@ -63,7 +63,7 @@ module.exports = {
       chunks: ["chunk-vendors", "chunk-common", "loadtesting"],
     },
     mypage: {
-      entry: "client/mypage.ts",
+      entry: "client/mypage/mypage.ts",
       template: "public/mypage.html",
       filename: "mypage.html",
       title: "マイページ",

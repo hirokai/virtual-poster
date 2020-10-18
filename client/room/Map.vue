@@ -21,6 +21,7 @@
         @select="select"
         @dbl-click="dblClick"
         @upload-poster="uploadPoster"
+        @hover-cell="hoverCell"
       />
     </g>
     <g id="person-cells">
@@ -47,6 +48,7 @@
         :avatarImages="avatarImages"
         @select="select"
         @dbl-click="dblClick"
+        @hover-cell="hoverCell"
       />
     </g>
     <g id="controller" @mousedown="clickController" opacity="0.8">
@@ -201,7 +203,6 @@ export default defineComponent({
       return keyBy(Object.values(props.posters), "location")
     })
     const dblClick = (p: Point) => {
-      console.log("dblClick", p)
       context.emit("dbl-click", p)
     }
     const poster = (cell: Cell): Poster | null => {
@@ -257,8 +258,16 @@ export default defineComponent({
         personAt({ x: cell.x, y: cell.y })?.id || "null"
       )
     }
+    const hoverCell = (active: boolean, p: Point) => {
+      if (active) {
+        context.emit("hover", p)
+      } else {
+        // context.emit("hover", undefined)
+      }
+    }
     return {
       ...toRefs(state),
+      hoverCell,
       dblClick,
       poster,
       clickController,

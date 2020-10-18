@@ -89,7 +89,11 @@
         v-html="announcement ? announcement.text : ''"
       ></div>
     </div>
-    <CellInfo :cell="selected" :person="selectedPerson" />
+    <CellInfo
+      :cell="cellOnHover.cell"
+      :person="cellOnHover.person"
+      :poster="selectedPoster"
+    />
     <Map
       v-if="!botActive"
       v-show="!!myself"
@@ -109,6 +113,7 @@
       :people_typing="people_typing"
       :avatarImages="avatarImages"
       @select="updateSelectedPos"
+      @hover="hoverOnCell"
       @dbl-click="dblClick"
       @upload-poster="uploadPoster"
       @inputArrowKey="inputArrowKey"
@@ -136,6 +141,7 @@
       :contentHidden="hidden"
       :comments="comments"
       :commentTree="commentTree"
+      :events="chat_events"
       :people="people"
       :editingOld="editingOld"
       :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
@@ -236,12 +242,10 @@ import {
   UserId,
   Poster as PosterTyp,
   TypingSocketSendData,
-  SocketMessageFromUser,
   HttpMethod,
   CommentId,
   CommentEvent,
   PosterCommentDecrypted,
-  AppNotification,
 } from "@/@types/types"
 
 import Map from "./Map.vue"
@@ -249,7 +253,7 @@ import MiniMap from "./MiniMap.vue"
 import Poster from "./Poster.vue"
 import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
-import { inRange, decodeNotificationData } from "@/common/util"
+import { inRange, keyBy } from "@/common/util"
 import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
@@ -466,6 +470,7 @@ export default defineComponent({
       center: { x: 5, y: 5 },
 
       comments: {} as { [index: string]: ChatCommentDecrypted },
+      chat_events: [],
       chatGroups: {} as {
         [groupId: string]: ChatGroup
       },
@@ -489,6 +494,7 @@ export default defineComponent({
 
       selectedUsers: new Set<UserId>(),
       selectedPos: null as { x: number; y: number } | null,
+      cellOnHover: { cell: undefined, person: undefined },
 
       editingOld: null as string | null,
 
@@ -980,6 +986,7 @@ export default defineComponent({
     }
 
     const dblClick = async (p: Point) => {
+      state.selectedPos = null
       await dblClickHandler(props, state, props.axios)(p)
     }
 
@@ -990,6 +997,31 @@ export default defineComponent({
         ? state.hallMap[state.selectedPos.y][state.selectedPos.x]
         : undefined
     })
+
+    const selectedPerson = computed((): PersonInMap | undefined => {
+      const pos = state.selectedPos
+      if (!pos) {
+        return undefined
+      } else {
+        for (const uid of state.selectedUsers) {
+          if (
+            state.people[uid] &&
+            state.people[uid].x == pos.x &&
+            state.people[uid].y == pos.y
+          ) {
+            return state.people[uid]
+          }
+        }
+        return undefined
+      }
+    })
+
+    const selectedPoster = computed((): PosterTyp | undefined => {
+      return selected.value
+        ? keyBy(Object.values(state.posters), "location")[selected.value.id]
+        : undefined
+    })
+
     const updateSelectedPos = (pos: {
       x: number
       y: number
@@ -1011,6 +1043,10 @@ export default defineComponent({
       } else {
         state.selectedUsers = new Set()
       }
+    }
+
+    const hoverOnCell = (p: { x: number; y: number; person?: PersonInMap }) => {
+      state.cellOnHover = { cell: state.hallMap[p.y][p.x], person: p.person }
     }
 
     const uploadPoster = async (file: File, poster_id: string) => {
@@ -1087,34 +1123,18 @@ export default defineComponent({
       }
     }
 
-    const selectedPerson = computed((): PersonInMap | undefined => {
-      const pos = state.selectedPos
-      if (!pos) {
-        return undefined
-      } else {
-        for (const uid of state.selectedUsers) {
-          if (
-            state.people[uid] &&
-            state.people[uid].x == pos.x &&
-            state.people[uid].y == pos.y
-          ) {
-            return state.people[uid]
-          }
-        }
-        return undefined
-      }
-    })
-
     return {
       ...toRefs(state),
       formatTime,
       truncateComment,
       commentTree: _commentTree(state, "chat"),
       posterCommentTree: _commentTree(state, "poster"),
+      hoverOnCell,
       leaveRoom,
       setEncryption,
       addEmojiReaction,
       adjacentPosters,
+      selectedPoster,
       leaveChat,
       uploadPoster,
       deleteComment: deleteComment(props.axios),

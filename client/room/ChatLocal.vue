@@ -165,6 +165,66 @@
           <hr />
           <span> {{ c.date_str }} </span>
         </div>
+        <div v-if="c.event == 'event'" class="chat_event">
+          <span>
+            <span v-if="c.event_type == 'new'">
+              {{ formatTime(c.timestamp) }}: チャットが開始されました：
+              {{
+                [c.event_data.from_user]
+                  .concat(c.event_data.to_users)
+                  .map(u => people[u].name)
+                  .join(",")
+              }}
+            </span>
+            <span v-else-if="c.event_type == 'dissolve'">
+              {{ formatTime(c.timestamp) }}: チャットは解散しました
+            </span>
+            <span
+              v-else-if="
+                c.event_type == 'join' && c.event_data?.from_user == myself.id
+              "
+            >
+              {{ formatTime(c.timestamp) }}: チャットに参加しました
+            </span>
+            <span v-else-if="c.event_type == 'join'" class="gray">
+              {{ formatTime(c.timestamp) }}: チャットに{{
+                people[c.event_data.from_user]?.name
+              }}が加わりました
+            </span>
+            <span
+              v-else-if="
+                c.event_type == 'add' && c.event_data.from_user == myself.id
+              "
+              class="gray"
+            >
+              {{ formatTime(c.timestamp) }}:
+              {{ people[c.event_data.to_user].name }}をチャットに加えました
+            </span>
+            <span v-else-if="c.event_type == 'add'" class="gray">
+              {{ formatTime(c.timestamp) }}:
+              {{ people[c.event_data.to_user].name }}が{{
+                people[c.event_data.from_user].name
+              }}によりチャットに加えられました
+            </span>
+            <span
+              v-else-if="
+                c.event_type == 'leave' && c.event_data.left_user == myself.id
+              "
+            >
+              {{ formatTime(c.timestamp) }}: チャットから離脱しました
+            </span>
+            <span v-else-if="c.event_type == 'leave'" class="gray">
+              {{ formatTime(c.timestamp) }}:
+              {{
+                people[c.event_data.left_user].name
+              }}がチャットから離脱しました
+            </span>
+            <span v-else>
+              {{ formatTime(c.timestamp) }}: （不明なイベント
+              {{ c.event_type }}）</span
+            >
+          </span>
+        </div>
         <div
           v-if="c.event == 'comment'"
           :style="{
@@ -258,9 +318,10 @@ import {
   CommentHistoryEntry,
   CommentEvent,
   DateEvent,
+  ChatEvent,
 } from "@/@types/types"
 import { countLines, formatTime } from "../util"
-import { flattenTree, inRange } from "@/common/util"
+import { flattenTree, inRange, sortBy } from "@/common/util"
 
 import { sameDate, formatDate } from "./room_chat_service"
 
@@ -325,6 +386,10 @@ export default defineComponent({
     },
     commentTree: {
       type: Object as PropType<Tree<ChatCommentDecrypted>>,
+      required: true,
+    },
+    events: {
+      type: Array as PropType<ChatEvent[]>,
       required: true,
     },
     isMobile: {
@@ -402,33 +467,56 @@ export default defineComponent({
           } as CommentEvent
         })
 
+      const comments_and_events = sortBy(
+        (comments as CommentHistoryEntry[]).concat(
+          props.events.map(e => {
+            return { ...e, event: "event" }
+          }) as CommentHistoryEntry[]
+        ),
+        c => c.timestamp
+      )
+
       const comments_with_date: CommentHistoryEntry[] = []
-      if (comments.length > 0) {
+      if (comments_and_events.length > 0) {
         comments_with_date.push({
           event: "new_date",
-          date_str: formatDate(comments[0].timestamp),
+          date_str: formatDate(comments_and_events[0].timestamp),
         } as DateEvent)
       }
       let prev_toplevel = 0
-      for (let i = 0; i < comments.length; i++) {
-        const toplevel = comments[i].__depth == 1
+      for (let i = 0; i < comments_and_events.length; i++) {
+        const toplevel =
+          comments_and_events[i].event == "comment"
+            ? (comments_and_events[i] as CommentEvent).__depth == 1
+            : true
         if (
           toplevel &&
-          !sameDate(comments[prev_toplevel].timestamp, comments[i].timestamp)
+          !sameDate(
+            comments_and_events[prev_toplevel].timestamp,
+            comments_and_events[i].timestamp
+          )
         ) {
+          const d = new Date(comments_and_events[i].timestamp)
+          d.setHours(0)
+          d.setMinutes(0)
+          d.setSeconds(0)
+          d.setMilliseconds(0)
           comments_with_date.push({
             event: "new_date",
-            date_str: formatDate(comments[i].timestamp),
-            timestamp: comments[i].timestamp - 1,
+            date_str: formatDate(comments_and_events[i].timestamp),
+            timestamp: d.valueOf(),
           } as DateEvent)
         }
-        comments_with_date.push(comments[i])
+        comments_with_date.push(comments_and_events[i])
         if (toplevel) {
           prev_toplevel = i
         }
       }
+      // for (const e of props.events) {
+      //   comments_with_date.push({ ...e, event: "event" })
+      // }
 
-      return comments_with_date
+      return comments_with_date // sortBy(comments_with_date, c => c.timestamp)
     })
 
     const clearInput = () => {
@@ -755,5 +843,13 @@ button#leave-chat {
 
 .recipient {
   margin: 0px 3px;
+}
+
+.chat_event {
+  font-size: 12px;
+  font-style: italic;
+}
+.chat_event .gray {
+  color: #999;
 }
 </style>

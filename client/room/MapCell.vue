@@ -18,6 +18,8 @@
     }"
     @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y, event: $event })"
+    @mouseenter="$emit('hover-cell', true, { x: cell.x, y: cell.y })"
+    @mouseleave="$emit('hover-cell', false, { x: cell.x, y: cell.y })"
   >
     <image xlink:href="/img/map/kusa.png" width="48px" height="48px" />
     <image
@@ -196,6 +198,10 @@ export default defineComponent({
 </script>
 
 <style lang="css">
+g.cell {
+  cursor: pointer;
+}
+
 .presenter .person-name {
   fill: red;
 }

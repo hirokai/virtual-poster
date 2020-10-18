@@ -31,7 +31,7 @@
         </tr>
       </table>
 
-      <div>
+      <div id="room-list">
         <h1>部屋一覧</h1>
         <table>
           <thead>
@@ -193,11 +193,11 @@ export default defineComponent({
 </script>
 
 <style lang="css" scoped>
-td:nth-child(1) {
+#room-list td:nth-child(1) {
   font-weight: bold;
   width: 150px;
 }
-td:nth-child(2) {
+#room-list td:nth-child(2) {
   width: 200px;
 }
 </style>

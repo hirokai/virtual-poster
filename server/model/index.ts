@@ -6,12 +6,12 @@ dotenv.config()
 import { UserOperationLog, RoomId } from "../../@types/types"
 import * as ChatModule from "./chat"
 export const chat = ChatModule
-import { MapModel } from "./map"
+import { MapModel } from "./maps"
 import * as PeopleModule from "./people"
 export const people = PeopleModule
 import * as PosterModule from "./posters"
 export const posters = PosterModule
-export { MapModel } from "./map"
+export { MapModel } from "./maps"
 import _ from "lodash"
 import { config } from "../config"
 import fs from "fs"

@@ -319,14 +319,15 @@ export default defineComponent({
       state.lastUpdated = Date.now()
       ;(async () => {
         const client = api(axiosClient(axios))
-        const [data_p, data_r, data_g, data_posters] = await Promise.all([
+        const data_r = await client.maps.$get()
+        state.rooms = keyBy(data_r, "id")
+        const [data_p, data_g, data_posters] = await Promise.all([
           client.people.$get({ query: { email: true } }),
-          client.maps.$get(),
           client.groups.$get(),
           client.posters.$get(),
         ])
-        state.people = keyBy(data_p as PersonWithEmail[], "id")
-        state.rooms = keyBy(data_r, "id")
+        state.people = keyBy(data_p, "id")
+        console.log(state.people)
         for (const room of Object.keys(state.rooms)) {
           socket?.emit("active", { user: state.myUserId, room })
         }

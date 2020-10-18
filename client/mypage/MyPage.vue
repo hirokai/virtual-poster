@@ -1,355 +1,267 @@
 <template>
-  <div id="app" v-if="myself">
-    <div>
+  <div id="app" v-if="myself" class="columns">
+    <!-- <div>
       <div id="top-tools">
         <a style="margin-right: 10px;" :href="goback_path">マップに戻る</a>
         <button @click="signOut">ログアウト</button>
       </div>
+    </div> -->
+    <div class="column">
       <span style="display:none;">{{ bgPosition }}</span>
-    </div>
-    <div>
-      <a
-        v-for="this_tab in tabs"
-        :key="this_tab.id"
-        class="tab"
-        :class="{ selected: tab == this_tab.id }"
-        @click="tab = this_tab.id"
-        >{{ this_tab.name }}</a
-      >
-    </div>
-    <div id="tabs">
-      <div v-if="tab == 'avatar'">
-        <div>
-          <div
-            v-for="n in avatars"
-            :key="n"
-            alt=""
-            class="avatar"
-            width="38"
-            :class="{ current: n == myself.avatar }"
-            @click="clickAvatar(n)"
-            @mouseenter="onMouseOverAvatar(n, true)"
-            @mouseleave="onMouseOverAvatar(n, false)"
-            :style="{
-              'background-image': bgImage(n),
-            }"
-          />
-          <div style="clear: both"></div>
-          <p>画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用</p>
-        </div>
+      <div class="tabs">
+        <ul>
+          <li
+            class="tab"
+            :class="{ 'is-active': tab == this_tab.id }"
+            v-for="this_tab in tabs"
+            :key="this_tab.id"
+            @click="tab = this_tab.id"
+          >
+            <a>{{ this_tab.name }}</a>
+          </li>
+        </ul>
       </div>
-      <div class="tab-content" id="tab-map" v-if="tab == 'map'">
-        <section>
-          <h2>アクセスコード</h2>
-          <label for="access_code">アクセスコード</label>
-          <input type="text" id="access_code" v-model="access_code" />
-          <button @click="submitAccessCode(access_code)">送信</button>
-        </section>
-        <section>
-          <h2>アクセス可能なマップ</h2>
-          <span v-if="Object.keys(rooms).length == 0"
-            >アクセス可能なマップはありません。</span
-          >
-          <div style="margin: 10px 0px">
-            <a href="/create_room">新規作成</a>
+      <div id="tabs">
+        <div v-if="tab == 'avatar'">
+          <div>
+            <div
+              v-for="n in avatars"
+              :key="n"
+              alt=""
+              class="avatar"
+              width="38"
+              :class="{ current: n == myself.avatar }"
+              @click="clickAvatar(n)"
+              @mouseenter="onMouseOverAvatar(n, true)"
+              @mouseleave="onMouseOverAvatar(n, false)"
+              :style="{
+                'background-image': bgImage(n),
+              }"
+            />
+            <div style="clear: both"></div>
+            <p>
+              画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用
+            </p>
           </div>
-          <div
-            class="room-entry"
-            v-for="room in Object.values(rooms)"
-            :key="room.id"
-          >
-            <a :href="'/room?room_id=' + room.id">{{ room.name }}</a> ({{
-              room.id
-            }})
-            <span v-if="room.owner == myUserId">[管理者]</span>
-            <button
-              v-if="room.owner == myUserId"
-              class="btn danger"
-              @click="deleteRoom(room.id)"
+        </div>
+        <div class="tab-content" id="tab-map" v-if="tab == 'map'">
+          <section>
+            <h5 class="title is-5">アクセスコード</h5>
+            <label for="access_code">アクセスコード</label>
+            <input type="text" id="access_code" v-model="access_code" />
+            <button @click="submitAccessCode(access_code)">送信</button>
+          </section>
+          <section>
+            <h5 class="title is-5">アクセス可能なマップ</h5>
+            <span v-if="Object.keys(rooms).length == 0"
+              >アクセス可能なマップはありません。</span
             >
-              削除
-            </button>
-          </div>
-        </section>
-      </div>
-      <div v-if="tab == 'poster'">
-        <div>ドラッグ＆ドロップでポスターを掲載（10 MB以内）</div>
-        <div v-if="!posters">
-          ポスターがありません。
-        </div>
-        <div
-          v-for="poster in postersSorted"
-          :key="poster.id"
-          class="poster-entry"
-        >
-          <div
-            v-if="!!poster"
-            class="poster-img"
-            :class="{ 'drag-hover': dragover[poster.id] }"
-            @dragover.prevent
-            @drop.prevent="onDrop($event, poster.id)"
-            @dragover="dragover[poster.id] = true"
-            @dragleave="dragover[poster.id] = false"
-          >
-            <img :src="dataURI[poster.id]" />
-          </div>
-          <div class="poster_info">
-            <div class="poster_title">
-              <span class="room">{{ rooms[poster.room].name }}</span
-              ><span class="poster-number">#{{ poster.poster_number }}: </span
-              ><br />
-              <div>
-                <button
-                  v-if="editingTitle != poster.id"
-                  @click="onClickEditTitle(poster)"
-                >
-                  タイトルを変更
-                </button>
-                <button
-                  v-if="editingTitle == poster.id"
-                  @click="setTitle(poster.id)"
-                >
-                  完了
-                </button>
-              </div>
-              <input
-                id="input-title"
-                v-if="editingTitle == poster.id"
-                v-model="editingTitleText"
-                type="text"
-              />
-              <div class="title" v-else>
-                {{
-                  !poster.title || poster.title == "" ? "(無題)" : poster.title
-                }}
-              </div>
+            <div style="margin: 10px 0px">
+              <a href="/create_room" class="button is-primary">新規作成</a>
             </div>
-            <div>
-              <label :for="'only-online-' + poster.id"
-                >自分がオフラインの時にポスター画像を隠す</label
-              >
-              <input
-                type="checkbox"
-                name=""
-                :id="'only-online-' + poster.id"
-                v-model="poster.author_online_only"
-                @change="
-                  onChangeToggle(
-                    'author_online_only',
-                    poster.id,
-                    $event.target.checked
-                  )
-                "
-              />
-            </div>
-            <div>
-              <label :for="'access-log-' + poster.id"
-                >ポスターへの足あと（閲覧記録）を記録・公開する</label
-              >
-              <input
-                type="checkbox"
-                name=""
-                :id="'access-log-' + poster.id"
-                v-model="poster.access_log"
-                @change="
-                  onChangeToggle('access_log', poster.id, $event.target.checked)
-                "
-              />
-            </div>
-
-            <div class="poster-logs">
-              <h4>ポスターの閲覧履歴</h4>
-              <div class="poster-logs-entries">
-                <ul>
-                  <li
-                    v-for="history in view_history[poster.id]"
-                    :key="'' + history.user_id + '-' + history.joined_time"
-                  >
-                    {{ people[history.user_id].name }}
-                    {{ formatTime(new Date(history.last_active)) }}
-                  </li>
-                </ul>
-              </div>
-            </div>
-            <button class="remove-poster" @click="removePosterFile(poster.id)">
-              画像を削除
-            </button>
-            <button
-              class="release-poster-slot"
-              @click="releasePosterSlot(poster)"
+            <div
+              class="room-entry"
+              v-for="room in Object.values(rooms)"
+              :key="room.id"
             >
-              ポスター枠を開放
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="tab == 'vote'">
-        <h2>投票</h2>
-
-        <div>
-          事前にアナウンスした形式で，以下のボックスに投票内容を記入してください。
-        </div>
-        <div>
-          <input type="text" v-model="vote.message" />
-        </div>
-
-        下記のボタンを押すと，投票のためのコードを取得します（ブラインド署名による匿名投票）。
-        <br />
-        投票コードの取得は一人１回のみです。<br />
-        <button @click="blindSign" :disabled="vote.message_sent">
-          投票コードの取得
-        </button>
-
-        <div v-if="vote.message_sent">
-          <div style="margin: 30px 10px;">
-            下記の内容を（Googleフォームやオンライン掲示板を用いて）匿名で送信してください。
-          </div>
-          <h3>投票内容</h3>
-          <div id="vote-message">
-            {{ vote.message_sent || "" }}
-          </div>
-          <h3>署名（投票コード）</h3>
-          <div id="vote-unblinded">
-            {{ vote.unblinded }}
-          </div>
-        </div>
-      </div>
-      <div class="tab-content" id="tab-account" v-if="tab == 'account'">
-        <section>
-          <h2>基本情報</h2>
-          <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
-          <div class="info-entry">
-            表示名:
-            <span v-if="editing.name">
-              <input
-                class="name-field"
-                type="text"
-                v-model="editing.name"
-                @keydown.enter="saveName"
-              />
-              <span class="edit-btn" @click="saveName">OK</span>
-              <span class="edit-btn" @click="editing.name = null"
-                >キャンセル</span
+              <a :href="'/room?room_id=' + room.id">{{ room.name }}</a> ({{
+                room.id
+              }})
+              <span v-if="room.owner == myUserId">[管理者]</span>
+              <button
+                v-if="room.owner == myUserId"
+                class="button is-small is-danger"
+                @click="deleteRoom(room.id)"
               >
-            </span>
-            <span v-else>
-              <span class="name-field">{{ myself.name }} </span>
-              <span class="edit-btn" @click="editing.name = myself.name"
-                >Edit</span
-              >
-            </span>
+                削除
+              </button>
+            </div>
+          </section>
+        </div>
+        <MypagePoster
+          v-if="tab == 'poster'"
+          :posters="postersSorted"
+          :people="people"
+          :rooms="rooms"
+          :lastLoaded="lastLoaded"
+          :view_history="view_history"
+          @set-poster="setPoster"
+          @delete-poster="deletePoster"
+          @update-last-loaded="updateLastLoaded"
+        />
+        <div v-if="tab == 'vote'">
+          <h5 class="title is-5">投票</h5>
+
+          <div>
+            事前にアナウンスした形式で，以下のボックスに投票内容を記入してください。
           </div>
-          <div class="info-entry">ユーザーID: {{ myUserId }}</div>
-          <div class="info-entry">
-            Email: {{ user ? user.email : "(不明)" }}
+          <div>
+            <input type="text" v-model="vote.message" />
           </div>
-          <!-- <div class="info-entry">
+
+          下記のボタンを押すと，投票のためのコードを取得します（ブラインド署名による匿名投票）。
+          <br />
+          投票コードの取得は一人１回のみです。<br />
+          <button @click="blindSign" :disabled="vote.message_sent">
+            投票コードの取得
+          </button>
+
+          <div v-if="vote.message_sent">
+            <div style="margin: 30px 10px;">
+              下記の内容を（Googleフォームやオンライン掲示板を用いて）匿名で送信してください。
+            </div>
+            <h3>投票内容</h3>
+            <div id="vote-message">
+              {{ vote.message_sent || "" }}
+            </div>
+            <h3>署名（投票コード）</h3>
+            <div id="vote-unblinded">
+              {{ vote.unblinded }}
+            </div>
+          </div>
+        </div>
+        <div class="tab-content" id="tab-account" v-if="tab == 'account'">
+          <section>
+            <h5 class="title is-5">基本情報</h5>
+            <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
+            <div class="info-entry">
+              表示名:
+              <span v-if="editing.name">
+                <input
+                  class="name-field"
+                  type="text"
+                  ref="inputName"
+                  @keydown.enter="saveName"
+                />
+                <span class="edit-btn" @click="saveName">OK</span>
+                <span class="edit-btn" @click="editing.name = null"
+                  >キャンセル</span
+                >
+              </span>
+              <span v-else>
+                <span class="name-field">{{ myself.name }} </span>
+                <span class="edit-btn" @click="startEditingName">Edit</span>
+              </span>
+            </div>
+            <div class="info-entry">ユーザーID: {{ myUserId }}</div>
+            <div class="info-entry">
+              Email: {{ user ? user.email : "(不明)" }}
+            </div>
+            <!-- <div class="info-entry">
         話しかけた人:
         <span v-for="pid in myself.stats.people_encountered" :key="pid">
           {{ people[pid].name }}
         </span>
       </div> -->
-        </section>
-        <section>
-          <h2>ログのエクスポート</h2>
-          <button @click="exportLog">エクスポート</button>
-        </section>
+          </section>
+          <section>
+            <h5 class="title is-5">ログのエクスポート</h5>
+            <button class="button is-primary" @click="exportLog">
+              エクスポート
+            </button>
+          </section>
 
-        <section>
-          <h2>暗号化</h2>
-          <div>
-            個別のチャットはエンドツーエンド暗号化が可能です。<a
-              href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
-              >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
-            >および128ビット<a
-              href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
-              >AES-GCM</a
-            >を使用。<br />
-          </div>
-          <div>
-            <h3>公開鍵</h3>
-
-            <div class="keys">{{ publicKeyString }}</div>
-            <h3>秘密鍵</h3>
-
+          <section>
+            <h5 class="title is-5">暗号化</h5>
             <div>
-              <input
-                type="checkbox"
-                name=""
-                v-model="enableEncryption"
-                id="check-enable-encrypt"
-                :disabled="!privateKeyString"
-              /><label for="check-enable-encrypt"
-                >エンドツーエンド暗号化を使用</label
-              >
+              個別のチャットはエンドツーエンド暗号化が可能です。<a
+                href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
+                >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
+              >および128ビット<a
+                href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
+                >AES-GCM</a
+              >を使用。<br />
             </div>
+            <div>
+              <h3>公開鍵</h3>
 
-            <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
-              秘密鍵が設定されています
-            </div>
-            <div
-              class="danger"
-              v-if="!privateKeyString"
-              style="height: 40px; margin: 10px;"
-            >
-              <span style="margin-right: 10px;">秘密鍵がありません</span>
-            </div>
-            <button @click="setPrivateKey">
-              秘密鍵を読み込み
-            </button>
-            <button
-              :disabled="!privateKeyString"
-              @click="showPrivKey = !showPrivKey"
-            >
-              秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
-            </button>
-            <pre id="mnemonic" v-if="showPrivKey">{{ privateKeyMnemonic }}</pre>
-            <pre id="mnemonic" class="hidden" v-else
-              >{{ privateKeyMnemonic }}
+              <div class="keys">{{ publicKeyString }}</div>
+              <h3>秘密鍵</h3>
+
+              <div>
+                <input
+                  type="checkbox"
+                  name=""
+                  v-model="enableEncryption"
+                  id="check-enable-encrypt"
+                  :disabled="!privateKeyString"
+                /><label for="check-enable-encrypt"
+                  >エンドツーエンド暗号化を使用</label
+                >
+              </div>
+
+              <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
+                秘密鍵が設定されています
+              </div>
+              <div
+                class="danger"
+                v-if="!privateKeyString"
+                style="height: 40px; margin: 10px;"
+              >
+                <span style="margin-right: 10px;">秘密鍵がありません</span>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <button class="button is-primary" @click="setPrivateKey">
+                  秘密鍵を読み込み
+                </button>
+                <button
+                  style="margin-left: 10px;"
+                  :disabled="!privateKeyString"
+                  class="button is-primary"
+                  @click="showPrivKey = !showPrivKey"
+                >
+                  秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
+                </button>
+              </div>
+              <pre id="mnemonic" v-if="showPrivKey">{{
+                privateKeyMnemonic
+              }}</pre>
+              <pre id="mnemonic" class="hidden" v-else
+                >{{ privateKeyMnemonic }}
 </pre
-            >
-            <span class="danger"
-              >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
-            >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
-          </div>
-        </section>
-        <section>
-          <h2>アカウントの削除</h2>
-          <div>
-            <button class="btn-danger" @click="deleteAccount">
-              アカウントの削除
-            </button>
-          </div>
-        </section>
-      </div>
-      <div v-if="tab == 'help'">
-        <h2>簡単な使い方</h2>
-        <p style="font-size: 14px; line-height: 1; margin: 0px;">
-          ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
-        </p>
-        <ul>
-          <li>移動： カーソルキーあるいは画面上の矢印ボタンで移動。</li>
-          <li>
-            会話：
-            人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
-          </li>
-          <li>
-            ポスター：
-            隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
-          </li>
-          <li>
-            ポスター板の確保：
-            空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
-          </li>
-          <li>
-            ポスターの掲示：
-            自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
-          </li>
-          <li>
-            ポスターの撤去： マイページで「ポスター画像を削除」をクリック
-          </li>
-        </ul>
+              >
+              <span class="danger"
+                >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
+              >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
+            </div>
+          </section>
+          <section>
+            <h5 class="title is-5">アカウントの削除</h5>
+            <div>
+              <button class="button is-danger" @click="deleteAccount">
+                アカウントの削除
+              </button>
+            </div>
+          </section>
+        </div>
+        <div v-if="tab == 'help'">
+          <h5 class="title is-5">簡単な使い方</h5>
+          <p style="font-size: 14px; line-height: 1; margin: 0px;">
+            ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
+          </p>
+          <ul>
+            <li>移動： カーソルキーあるいは画面上の矢印ボタンで移動。</li>
+            <li>
+              会話：
+              人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
+            </li>
+            <li>
+              ポスター：
+              隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
+            </li>
+            <li>
+              ポスター板の確保：
+              空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
+            </li>
+            <li>
+              ポスターの掲示：
+              自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
+            </li>
+            <li>
+              ポスターの撤去： マイページで「ポスター画像を削除」をクリック
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -363,11 +275,12 @@ import {
   computed,
   toRefs,
   nextTick,
+  ref,
 } from "vue"
 
 import axiosDefault from "axios"
 import axiosClient from "@aspida/axios"
-import api from "../api/$api"
+import api from "@/api/$api"
 
 import {
   Person,
@@ -378,17 +291,19 @@ import {
   Room,
   RoomId,
   PersonWithEmail,
-} from "../@types/types"
-import { keyBy, difference, range, chunk } from "../common/util"
+} from "@/@types/types"
+import { keyBy, difference, range, chunk } from "@/common/util"
 import io from "socket.io-client"
 import * as firebase from "firebase/app"
 import "firebase/auth"
-import * as encryption from "./encryption"
+import * as encryption from "../encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
-import firebaseConfig from "../firebaseConfig"
-import { deleteUserInfoOnLogout, formatTime } from "./util"
-import { decryptIfNeeded } from "./room/room_chat_service"
+import firebaseConfig from "@/firebaseConfig"
+import { deleteUserInfoOnLogout, formatTime } from "../util"
+import { decryptIfNeeded } from "../room/room_chat_service"
+import MypagePoster from "./MypagePoster.vue"
+
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"
@@ -441,6 +356,9 @@ function download(filename, text) {
 }
 
 export default defineComponent({
+  components: {
+    MypagePoster,
+  },
   setup: () => {
     firebase.initializeApp(firebaseConfig)
     const myUserId = ""
@@ -477,9 +395,6 @@ export default defineComponent({
       files: {} as { [index: string]: File },
       lastLoaded: -1,
 
-      editingTitle: null as PosterId | null,
-      editingTitleText: "",
-
       access_log: {} as { [index: string]: boolean },
       online_only: {} as { [index: string]: boolean },
       view_history: {} as {
@@ -487,8 +402,6 @@ export default defineComponent({
       },
 
       editing: { name: null } as { name: string | null },
-
-      dataURI: {} as { [poster_id: string]: string },
 
       lastUpdated: null as number | null,
       tabs: [
@@ -502,7 +415,6 @@ export default defineComponent({
 
       bgPosition: bgPositions[0],
       mouseOnAvatar: {} as { [index: string]: boolean },
-      dragover: {} as { [poster_id: string]: boolean },
       count: 0,
 
       access_code: "",
@@ -695,6 +607,10 @@ export default defineComponent({
         )
       })
     })
+
+    const updateLastLoaded = (t: number) => {
+      state.lastLoaded = t
+    }
     const clickAvatar = async (n: string) => {
       const data = await client.people
         ._userId(state.myUserId)
@@ -717,17 +633,26 @@ export default defineComponent({
       //Vue.set
       state.people[d.id] = person
     }
+    const inputName = ref<HTMLInputElement>()
+
+    const startEditingName = async () => {
+      state.editing.name = myself.value?.name || null
+      await nextTick(() => {
+        inputName.value!.value = myself.value?.name || ""
+      })
+    }
+
     const saveName = async (ev: KeyboardEvent & MouseEvent) => {
       if (ev.keyCode && ev.keyCode !== 13) return
-      const new_name = state.editing.name
+      const new_name = inputName.value?.value
       if (!new_name) {
         alert("表示名を入力してください。")
         state.editing.name = null
         return
       }
       console.log(state.myUserId, new_name)
-      if (new_name.length > 8) {
-        alert("表示名は8文字以内にしてください。")
+      if (new_name.length > 10) {
+        alert("表示名は10文字以内にしてください。")
         state.editing.name = null
         return
       }
@@ -746,71 +671,6 @@ export default defineComponent({
       console.log("App signed out")
       deleteUserInfoOnLogout()
       location.href = "/login"
-    }
-    const setTitle = async (pid: PosterId) => {
-      const title = state.editingTitleText
-      const data = await client.posters
-        ._posterId(pid)
-        .$patch({ body: { title } })
-      if (data.ok) {
-        await nextTick(() => {
-          //Vue.set
-          state.posters[pid].title = title
-        })
-        await nextTick(() => {
-          state.editingTitle = null
-        })
-      }
-    }
-
-    const onClickEditTitle = (poster: Poster) => {
-      state.editingTitleText = poster.title || ""
-      state.editingTitle = poster.id
-    }
-
-    const onDrop = async (event: any, poster_id: PosterId) => {
-      state.dragover[poster_id] = false
-      const fileList: File[] = event.target.files
-        ? event.target.files
-        : event.dataTransfer.files
-      if (fileList.length == 0) {
-        return false
-      }
-      const files: File[] = []
-      for (let i = 0; i < fileList.length; i++) {
-        files.push(fileList[i])
-      }
-      console.log(files)
-
-      const file = files[0]
-      if (!file) {
-        console.error("File not found")
-      } else if (file.type != "image/png" && file.type != "application/pdf") {
-        console.error("File type invalid")
-        alert("ファイル形式はPDFあるいはPNGのみ対応しています。")
-      } else if (file.size >= 10e6) {
-        console.error("File size loo large")
-        alert("ファイルサイズを10MB以下にしてください。")
-      } else {
-        const fd = new FormData() //★②
-        fd.append("file", file)
-        console.log(fd)
-
-        const { data } = await axios.post("/posters/" + poster_id + "/file", fd)
-        console.log(data)
-        //Vue.set
-        state.posters[poster_id] = data.poster
-      }
-    }
-    const removePosterFile = async (poster_id: PosterId) => {
-      const data = await client.posters._posterId(poster_id).file.$delete()
-      console.log(data)
-      if (data.ok && data.poster) {
-        //Vue.set
-        state.posters[data.poster.id] = data.poster
-        //Vue.set
-        state.dataURI[data.poster.id] = ""
-      }
     }
 
     onMounted(() => {
@@ -930,44 +790,19 @@ export default defineComponent({
         ] = state.enableEncryption ? "1" : "0"
       }
     )
-    watch(
-      () => state.posters,
-      () => {
-        for (const poster of Object.values(state.posters)) {
-          console.log("get poster ", poster.id)
-          if (state.lastLoaded > poster.last_updated) {
-            continue
-          }
-          const url = poster.file_url
-          console.log
-          axiosDefault({
-            method: "GET",
-            responseType: "arraybuffer",
-            url,
-          })
-            .then(({ data }) => {
-              const image = btoa(
-                new Uint8Array(data).reduce(
-                  (d, byte) => d + String.fromCharCode(byte),
-                  ""
-                )
-              )
-              //Vue.set
-              state.dataURI[poster.id] = "data:image/png;base64," + image
-            })
-            .catch(() => {
-              //
-            })
-        }
-        state.lastLoaded = Date.now()
-      }
-    )
+
     watch(
       () => state.tab,
       (newTab: string) => {
         location.replace("#" + newTab)
       }
     )
+    const setPoster = (pid: PosterId, poster: Poster) => {
+      state.posters[pid] = poster
+    }
+    const deletePoster = (pid: PosterId, poster: Poster) => {
+      delete state.posters[pid]
+    }
     const onMouseOverAvatar = (n: string, b: boolean) => {
       state.mouseOnAvatar[n] = b
       // console.log("mouse", n, b, state.mouseOnAvatar)
@@ -1209,34 +1044,6 @@ export default defineComponent({
       }
     }
 
-    const releasePosterSlot = async (poster: Poster) => {
-      const num = poster.poster_number
-      if (!num) {
-        return
-      }
-      const r = await client.maps
-        ._roomId(poster.room)
-        .poster_slots._posterNumber(num)
-        .$delete()
-      if (r.ok) {
-        delete state.posters[poster.id]
-      }
-    }
-
-    const onChangeToggle = async (
-      key: "access_log" | "author_online_only",
-      pid,
-      flag
-    ) => {
-      const body =
-        key == "access_log"
-          ? { access_log: flag }
-          : { author_online_only: flag }
-      await client.posters._posterId(pid).patch({
-        body,
-      })
-    }
-
     const exportLog = async () => {
       const myUserId = state.myUserId
       if (myUserId) {
@@ -1286,14 +1093,13 @@ export default defineComponent({
       bgImage,
       signOut,
       reload,
-      setTitle,
-      onChangeToggle,
-      onClickEditTitle,
       clickAvatar,
+      inputName,
+      startEditingName,
       saveName,
-      onDrop,
-      removePosterFile,
-      releasePosterSlot,
+      setPoster,
+      deletePoster,
+      updateLastLoaded,
       goback_path,
       avatars: difference(range(1, 31), [20]).map(n => {
         return n.toString().padStart(3, "0")
@@ -1307,10 +1113,8 @@ export default defineComponent({
   },
 })
 </script>
-<style lang="css">
-body {
-  font-size: 16px;
-}
+<style lang="css" scoped>
+/* @import "../../node_modules/bulma/css/bulma.css"; */
 
 #top-tools {
   float: right;
@@ -1327,27 +1131,6 @@ h1 {
 
 h4 {
   margin: 0px;
-}
-
-.tab {
-  font-size: 16px;
-  font-weight: bold;
-  display: inline-block;
-  cursor: pointer;
-  width: 120px;
-  margin: 3px;
-  padding: 5px;
-  border-top: 1px solid black;
-  border-left: 1px solid black;
-  border-right: 1px solid black;
-  border-radius: 5px 5px 0px 0px;
-}
-
-.tab.selected {
-  border-top: 2px solid black;
-  border-left: 2px solid black;
-  border-right: 2px solid black;
-  background: #99f;
 }
 
 div.avatar {
@@ -1379,7 +1162,7 @@ div.avatar.current {
 }
 .name-field {
   font-size: 16px;
-  width: 300px;
+  /* width: 300px; */
   margin: 5px;
   box-sizing: border-box;
   display: inline-block;
@@ -1389,15 +1172,6 @@ input {
   height: 24px;
 }
 
-#input-title {
-  width: 100%;
-  min-width: 100px;
-  font-size: 16px;
-}
-
-h2 {
-  margin: 0px;
-}
 .keys {
   margin-top: 10px;
   max-width: 800px;
@@ -1424,74 +1198,6 @@ div.poster-entry {
   font-family: "Courier New", Courier, monospace;
 }
 
-div.poster-img {
-  border: 1px solid black;
-  width: 280px;
-  height: calc(280px * 1.414);
-  top: 80px;
-  margin: 10px;
-  float: left;
-}
-
-div.poster-img.drag-hover {
-  border: #99f 3px solid;
-  box-sizing: border-box;
-}
-
-div.poster-img img {
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.poster_info {
-  /* position: absolute; */
-  width: calc(100% - 400px);
-  margin: 10px;
-  float: left;
-}
-
-.poster_author {
-  margin: 0px;
-}
-
-.poster_title {
-  margin: 0px;
-  height: 80px;
-}
-
-.poster_title .title {
-  margin: 3px 0px 0px 4px;
-}
-
-.poster-entry .room,
-.poster-entry .poster-number {
-  font-size: 12px;
-}
-
-button.remove-poster {
-  color: red;
-  margin: 10px 20px;
-}
-
-button.release-poster-slot {
-  color: red;
-  margin: 10px 20px;
-}
-.poster-logs-entries {
-  border: 1px solid #ccc;
-  height: 190px;
-  overflow-y: scroll;
-  font-size: 14px;
-}
-
-.poster-logs-entries ul {
-  margin: 0px;
-}
-
-.btn-danger {
-  background: red;
-}
-
 #mnemonic {
   font-family: "Courier New", Courier, monospace;
   font-size: 21px;
@@ -1499,7 +1205,8 @@ button.release-poster-slot {
   border: 1px solid black;
   padding: 10px;
   height: 120px;
-  width: 700px;
+  max-width: 700px;
+  line-height: 1.2em;
 }
 
 #mnemonic.hidden {
@@ -1515,13 +1222,9 @@ button.release-poster-slot {
   padding: 10px;
 }
 
-.tab-content > section h2 {
-  font-size: 24px;
-}
-
 .room-entry {
   margin: 10px;
-  padding: 5px;
+  padding: 10px;
   border: 1px solid #ccc;
 }
 

@@ -118,6 +118,7 @@ type RoomAppState = {
   center: { x: number; y: number }
 
   comments: { [index: string]: ChatCommentDecrypted }
+  chat_events: ChatEvent[]
   chatGroups: {
     [groupId: string]: ChatGroup
   }
@@ -141,6 +142,7 @@ type RoomAppState = {
 
   selectedUsers: Set<UserId>
   selectedPos: { x: number; y: number } | null
+  cellOnHover: { cell?: Cell; person?: PersonInMap }
 
   editingOld: string | null
 
@@ -204,6 +206,12 @@ type MapCellRDB = {
 export interface CommentHistoryEntry {
   event: string
   timestamp: number
+}
+
+export interface ChatEventInComment extends CommentHistoryEntry {
+  event: "event"
+  person: UserId
+  event_data: Record<string, any>
 }
 
 export interface CommentEvent extends CommentHistoryEntry {
@@ -290,6 +298,7 @@ export type ChatGroup = {
   users: UserId[]
   color: string
   kind: "poster" | "people"
+  last_updated: number
 }
 
 export type ChatGroupRDB = {
@@ -301,6 +310,15 @@ export type ChatGroupRDB = {
   color?: string
   users?: string
   kind: "poster" | "people"
+}
+
+type ChatEvent = {
+  kind: "event"
+  group: ChatGroupId
+  person: UserId
+  event_type: string
+  event_data?: Record<string, any>
+  timestamp: number
 }
 
 export type Poster = {
@@ -471,6 +489,20 @@ type ActiveUsersSocketData = {
   active: boolean
 }[]
 
+export type ChatEventSocketData = {
+  group_id: ChatGroupId
+  event_type:
+    | "new"
+    | "join"
+    | "add"
+    | "leave"
+    | "dissolve"
+    | "start_overhear"
+    | "end_overhear"
+    | "set_private"
+  event_data?: any
+}
+
 export type AppNotification =
   | "Announce"
   | "Person"
@@ -484,6 +516,7 @@ export type AppNotification =
   | "GroupRemove"
   | "Comment"
   | "CommentRemove"
+  | "ChatEvent"
   | "PosterComment"
   | "PosterCommentRemove"
   | "PosterReset"

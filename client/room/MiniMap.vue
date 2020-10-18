@@ -239,7 +239,7 @@ export default defineComponent({
       ].map(u => loadImage(u, s))
       const imgs = await Promise.all(ps)
 
-      console.log("Map size", props.cells[0].length, props.cells.length)
+      console.log("Map size", props.cells[0]?.length, props.cells.length)
       const ctx = canvas.getContext("2d")!
       for (const y in props.cells) {
         for (const x in props.cells[y]) {

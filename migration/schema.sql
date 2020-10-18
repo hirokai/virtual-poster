@@ -1,3 +1,9 @@
+DROP TABLE IF EXISTS chat_event_recipient;
+
+DROP TABLE IF EXISTS chat_event;
+
+DROP TYPE IF EXISTS chat_event_type;
+
 DROP TABLE IF EXISTS poster_viewer;
 
 DROP TABLE IF EXISTS vote;
@@ -40,146 +46,188 @@ DROP TYPE IF EXISTS direction;
 
 DROP TYPE IF EXISTS chat_type;
 
-CREATE TYPE chat_type AS ENUM ('poster', 'people');
-
-CREATE TYPE user_role AS ENUM ('user', 'admin');
-
-CREATE TYPE direction AS ENUM ('left', 'up', 'down', 'right', 'none');
-
-CREATE TABLE person (
-	id text primary key,
-	last_updated bigint not null,
-	name text not null,
-	avatar text,
-	email text not null unique,
-	"role" user_role not null
+CREATE TYPE chat_type AS ENUM (
+    'poster',
+    'people'
 );
 
-CREATE TABLE room (id text primary key, "name" text not null, room_owner text references person(id));
+CREATE TYPE user_role AS ENUM (
+    'user',
+    'admin'
+);
+
+CREATE TYPE direction AS ENUM (
+    'left',
+    'up',
+    'down',
+    'right',
+    'none'
+);
+
+CREATE TABLE person (
+    id text PRIMARY KEY,
+    last_updated bigint NOT NULL,
+    name text NOT NULL,
+    avatar text,
+    email text NOT NULL UNIQUE,
+    "role" user_role NOT NULL
+);
+
+CREATE TABLE room (
+    id text PRIMARY KEY,
+    "name" text NOT NULL,
+    room_owner text REFERENCES person (id)
+);
 
 CREATE TABLE announce (
-	room text references room(id) primary key,
-	"text" text not null,
-	"marquee" boolean not null,
-	period integer
+    room text REFERENCES room (id) PRIMARY KEY,
+    "text" text NOT NULL,
+    "marquee" boolean NOT NULL,
+    period integer
 );
 
 CREATE TABLE map_cell (
-	id text primary key,
-	room text references room(id) not null,
-	x integer not null,
-	y integer not null,
-	kind text not null,
-	poster_number integer,
-	custom_image text,
-	unique (room, x, y)
+    id text PRIMARY KEY,
+    room text REFERENCES room (id) NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    kind text NOT NULL,
+    poster_number integer,
+    custom_image text,
+    UNIQUE (room, x, y)
 );
 
 CREATE TABLE person_position (
-	person text not null references person(id),
-	room text references room(id) not null,
-	last_updated bigint not null,
-	x integer not null,
-	y integer not null,
-	direction direction not null,
-	primary key(person, room),
-	unique (room, x, y)
+    person text NOT NULL REFERENCES person (id),
+    room text REFERENCES room (id) NOT NULL,
+    last_updated bigint NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    direction direction NOT NULL,
+    PRIMARY KEY (person, room),
+    UNIQUE (room, x, y)
 );
 
 CREATE TABLE person_stats (
-	person text primary key references person(id),
-	walking_steps bigint not null,
-	chat_count bigint not null,
-	chat_char_count bigint not null
+    person text PRIMARY KEY REFERENCES person (id),
+    walking_steps bigint NOT NULL,
+    chat_count bigint NOT NULL,
+    chat_char_count bigint NOT NULL
 );
 
 CREATE TABLE stat_encountered (
-	person text references person(id),
-	encountered text references person(id),
-	primary key(person, encountered)
+    person text REFERENCES person (id),
+    encountered text REFERENCES person (id),
+    PRIMARY KEY (person, encountered)
 );
 
 CREATE TABLE person_room_access (
-	room text references room(id) not null,
-	person text references person(id) not null,
-	"role" user_role not null,
-	primary key(room, person)
+    room text REFERENCES room (id) NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    "role" user_role NOT NULL,
+    PRIMARY KEY (room, person)
 );
 
 CREATE TABLE comment (
-	id text primary key,
-	"timestamp" bigint not null,
-	last_updated bigint not null,
-	person text references person(id) not null,
-	"text" text not null,
-	room text references room(id),
-	x integer,
-	y integer,
-	kind text,
-	reply_to text references comment(id)
+    id text PRIMARY KEY,
+    "timestamp" bigint NOT NULL,
+    last_updated bigint NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    "text" text NOT NULL,
+    room text REFERENCES room (id),
+    x integer,
+    y integer,
+    kind text,
+    reply_to text REFERENCES comment (id)
 );
 
 CREATE TABLE comment_to_person (
-	comment text references comment(id) not null,
-	person text references person(id) not null,
-	comment_encrypted text not null,
-	"encrypted" boolean not null,
-	primary key(comment, person)
+    comment text REFERENCES comment (id) NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    comment_encrypted text NOT NULL,
+    "encrypted" boolean NOT NULL,
+    PRIMARY KEY (comment, person)
 );
 
 CREATE TABLE poster (
-	id text primary key,
-	last_updated bigint not null,
-	location text unique references map_cell(id),
-	title text,
-	author text references person(id),
-	access_log boolean,
-	author_online_only boolean
+    id text PRIMARY KEY,
+    last_updated bigint NOT NULL,
+    location text UNIQUE REFERENCES map_cell (id),
+    title text,
+    author text REFERENCES person (id),
+    access_log boolean,
+    author_online_only boolean
 );
 
 CREATE TABLE comment_to_poster (
-	comment text references comment(id),
-	poster text references poster(id),
-	primary key(comment, poster)
+    comment text REFERENCES comment (id),
+    poster text REFERENCES poster (id),
+    PRIMARY KEY (comment, poster)
 );
 
 CREATE TABLE token (
-	person text references person(id) primary key,
-	token text not null,
-	expire_at bigint not null
+    person text REFERENCES person (id) PRIMARY KEY,
+    token text NOT NULL,
+    expire_at bigint NOT NULL
 );
 
 CREATE TABLE chat_group (
-	id text primary key,
-	name text,
-	last_updated bigint not null,
-	room text not null references room(id),
-	location text references map_cell(id),
-	color varchar(100),
-	kind chat_type not null
+    id text PRIMARY KEY,
+    name text,
+    last_updated bigint NOT NULL,
+    room text NOT NULL REFERENCES room (id),
+    location text REFERENCES map_cell (id),
+    color varchar(100),
+    kind chat_type NOT NULL
 );
 
 CREATE TABLE person_in_chat_group (
-	person text references person(id),
-	chat text references chat_group(id),
-	primary key (person, chat)
+    person text REFERENCES person (id),
+    chat text REFERENCES chat_group (id),
+    PRIMARY KEY (person, chat)
 );
 
 CREATE TABLE public_key (
-	person text references person(id) primary key,
-	public_key text not null
+    person text REFERENCES person (id) PRIMARY KEY,
+    public_key text NOT NULL
 );
 
 CREATE TABLE vote (
-	person text references person(id) primary key,
-	blinded_signature text not null
+    person text REFERENCES person (id) PRIMARY KEY,
+    blinded_signature text NOT NULL
 );
 
 CREATE TABLE poster_viewer (
-	poster text references poster(id) not null,
-	person text references person(id) not null,
-	joined_time bigint not null,
-	left_time bigint,
-	last_active bigint,
-	access_log boolean not null
+    poster text REFERENCES poster (id) NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    joined_time bigint NOT NULL,
+    left_time bigint,
+    last_active bigint,
+    access_log boolean NOT NULL
 );
+
+CREATE TYPE chat_event_type AS ENUM (
+    'new',
+    'join',
+    'add',
+    'leave',
+    'start_overhear',
+    'end_overhear',
+    'set_private'
+);
+
+CREATE TABLE chat_event (
+    id text PRIMARY KEY,
+    "chat_group" text NOT NULL,
+    person text NOT NULL,
+    event_type chat_event_type NOT NULL,
+    event_data json,
+    "timestamp" bigint NOT NULL
+);
+
+CREATE TABLE chat_event_recipient (
+    event text REFERENCES chat_event (id) NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    PRIMARY KEY (event, person)
+);
+

@@ -42,6 +42,7 @@ import {
   Poster as PosterTyp,
   Room,
   PosterId,
+  Poster,
 } from "../@types/types"
 
 import axios from "axios"
@@ -65,27 +66,11 @@ if (!room_id) {
 }
 
 export default defineComponent({
-  props: {
-    myUserId: {
-      type: String,
-      required: true,
-    },
-    idToken: {
-      type: String,
-      required: true,
-    },
-    socketURL: {
-      type: String,
-      required: true,
-    },
-  },
-
-  setup(props) {
+  setup() {
     const client = api(axiosClient(axios))
     const state = reactive({
       rooms: {} as { [index: string]: Room },
       room_id: room_id as RoomId,
-      socket: io(props.socketURL) as SocketIO.Socket,
       people: {} as { [index: string]: PersonInMap },
       posters: {} as { [index: string]: PosterTyp },
       inputText: "",
@@ -109,42 +94,7 @@ export default defineComponent({
       //Vue.set
       state.people[d.id] = person
     }
-    const shaObj = new jsSHA("SHA-256", "TEXT", {
-      encoding: "UTF8",
-    })
-    shaObj.update(props.idToken)
-    const jwt_hash = shaObj.getHash("HEX")
-    state.socket.emit("Active", {
-      room_id,
-      user: props.myUserId,
-      token: jwt_hash,
-    })
-    console.log("Socket URL: ", props.socketURL)
-    state.socket.on("connection", () => {
-      console.log("SOCKET CONNECTED")
-    })
-    state.socket.on("person", d => {
-      console.log("socket person", d.name)
-      setPerson(d)
-    })
-    state.socket.on("person_multi", ds => {
-      console.log("socket people", ds.length)
-      for (const d of ds) {
-        setPerson(d)
-      }
-    })
-    state.socket.on("poster", (d: PosterTyp) => {
-      console.log("socket poster", d)
-      //Vue.set
-      state.posters[d.id] = d
-    })
 
-    state.socket.on("greeting", () => {
-      state.socket.emit("active", props.myUserId)
-    })
-    axios.defaults.headers.common = {
-      Authorization: `Bearer ${props.idToken}`,
-    }
     const loadData = () => {
       if (!room_id) {
         alert("部屋IDが指定されていません")
@@ -175,9 +125,11 @@ export default defineComponent({
       return sortBy(Object.values(state.posters), p => p.poster_number)
     })
 
+    const user_id = localStorage["virtual-poster:user_id"]
+
     const myself = computed(
       (): Person => {
-        return state.people[props.myUserId]
+        return state.people[user_id]
       }
     )
     const uploadPoster = (file: File, poster_id: string) => {
@@ -198,13 +150,53 @@ export default defineComponent({
         })
     }
     onMounted(() => {
-      const socket = state.socket
-      if (!socket) {
-        alert("Socket connection failed")
-        return
-      }
-      window["socket"] = state.socket
+      const name = localStorage["virtual-poster:name"]
+      const user_id = localStorage["virtual-poster:user_id"]
+      const email = localStorage["virtual-poster:email"]
 
+      client.socket_url
+        .$get()
+        .then(data => {
+          const url = data.socket_url as string
+          const socket = io(url)
+          if (!socket) {
+            console.error("Socket connection failed.")
+            return
+          }
+          socket.on("connect", () => {
+            socket?.emit("Active", {
+              room: "::mypage",
+              user: user_id,
+              token: localStorage["virtual-poster:jwt_hash"] as
+                | string
+                | undefined,
+            })
+            socket?.emit("Subscribe", {
+              channel: room_id,
+            })
+            console.log("Connected")
+          })
+          socket.on("Poster", (p: Poster) => {
+            //Vue.set
+            state.posters[p.id] = p
+          })
+          socket.on("PosterRemove", (pid: PosterId) => {
+            //Vue.delete
+            delete state.posters[pid]
+          })
+          socket.on("connection", () => {
+            console.log("SOCKET CONNECTED")
+          })
+          socket.on("PersonUpdate", (ds: PersonUpdate[]) => {
+            console.log("socket PersonUpdate", ds)
+            for (const d of ds) {
+              setPerson(d)
+            }
+          })
+        })
+        .catch(err => {
+          console.error(err)
+        })
       loadData()
     })
     const clickMove = async (pid: PosterId) => {

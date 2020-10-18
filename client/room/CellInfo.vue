@@ -3,12 +3,10 @@
     <span v-if="cell">
       <span v-if="cell" id="cell-position">{{ cell.x }}-{{ cell.y }}</span>
       <span v-if="cell && person">
-        {{ person.name + (cell.kind == "poster" ? "（ポスター発表中）" : "") }}
-        {{ person.stats.walking_steps + "歩" }}, 計
-        {{ person.stats.people_encountered.length + "人と会話" }}
+        {{ person.name }}
       </span>
       <span v-else-if="cell && !person && cell.kind == 'poster'">{{
-        "ポスター（" + cell.name + "）"
+        "ポスター板"
       }}</span>
       <span v-else-if="cell && !person && cell.kind == 'wall'">壁</span>
       <span v-else-if="cell && !person && cell.kind == 'mud'">地面（土）</span>
@@ -26,7 +24,7 @@
 </template>
 
 <script lang="ts">
-import { Cell, Person } from "@/@types/types"
+import { Cell, Person, Poster } from "@/@types/types"
 
 import { defineComponent, PropType } from "vue"
 
@@ -37,6 +35,9 @@ export default defineComponent({
     },
     person: {
       type: Object as PropType<Person>,
+    },
+    poster: {
+      type: Object as PropType<Poster>,
     },
   },
   setup() {

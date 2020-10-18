@@ -8,7 +8,7 @@ import {
   RoomId,
   ChatGroupRDB,
   ChatComment,
-  ChatCommentDecrypted,
+  ChatEvent,
   CommentId,
   CommentEncryptedEntry,
   PosterCommentDecrypted,
@@ -45,6 +45,7 @@ export async function getGroup(
     ...row,
     users: row.users?.split("::::") || [],
     color: row.color || "blue",
+    last_updated: +row.last_updated,
   }
 }
 export async function getGroupList(
@@ -55,6 +56,7 @@ export async function getGroupList(
     room: string
     color: string
     users: string
+    last_updated: string
     kind: "people" | "poster"
   }[] = await (room_id
     ? db.query(
@@ -71,6 +73,7 @@ export async function getGroupList(
       color: r.color,
       users: r.users.split("::::"),
       kind: r.kind,
+      last_updated: +r.last_updated,
     }
     return d
   })
@@ -258,8 +261,7 @@ export async function deleteGroup(group_id: ChatGroupId): Promise<boolean> {
 export async function getAllComments(
   room_id: RoomId,
   user_id: UserId | null
-): Promise<ChatComment[]> {
-  console.log("getAllComments()", room_id, user_id)
+): Promise<(ChatComment | ChatEvent)[]> {
   const from_me = await db.query(
     `SELECT
           'from_me' AS mode,
@@ -337,6 +339,25 @@ export async function getAllComments(
 `,
     [user_id, room_id]
   )
+  const events: ChatEvent[] = (
+    await db.query(
+      `
+    SELECT e.* FROM chat_event as e JOIN chat_event_recipient as r ON e.id=r.event WHERE r.person=$1;
+  `,
+      [user_id]
+    )
+  ).map(
+    (row): ChatEvent => {
+      return {
+        kind: "event",
+        group: row.chat_group,
+        person: row.person,
+        event_type: row.event_type,
+        event_data: row.event_data,
+        timestamp: +row.timestamp,
+      }
+    }
+  )
   const ds: ChatComment[] = from_me.concat(to_me).map(r => {
     const for_users: string[] = r["to_p"]
     const comments_for_users: string[] = r["to_c"]
@@ -363,7 +384,7 @@ export async function getAllComments(
     return r2
   })
   const ds2 = _.uniqBy(ds, "id")
-  return ds2
+  return (ds2 as (ChatComment | ChatEvent)[]).concat(events)
 }
 
 export async function getPosterComments(
@@ -733,6 +754,15 @@ export function genGroupId(): ChatGroupId {
   }
 }
 
+export function genChatEventId(): CommentId {
+  for (;;) {
+    const s = "N" + shortid.generate()
+    if (s.indexOf("-") == -1) {
+      return s
+    }
+  }
+}
+
 export async function getGroupIdOfUser(
   room_id: RoomId,
   user_id: UserId
@@ -806,13 +836,14 @@ export async function newGroup(
     users,
     color,
     kind: "people",
+    last_updated: Date.now(),
   }
   await db.query("BEGIN")
   await db.query(
     pgp.helpers.insert(
       {
         id: group.id,
-        last_updated: Date.now(),
+        last_updated: group.last_updated,
         room: room_id,
         location: center_cell?.id,
         color,
@@ -839,7 +870,12 @@ export async function startChat(
   room_id: RoomId,
   from_user: UserId,
   to_users: UserId[]
-): Promise<{ ok: boolean; group?: ChatGroup; error?: string }> {
+): Promise<{
+  ok: boolean
+  group?: ChatGroup
+  error?: string
+  timestamp?: number
+}> {
   log.debug("startChat", room_id, from_user, to_users)
   const currentGroups = _.compact(
     await Promise.all(
@@ -849,7 +885,31 @@ export async function startChat(
   if (currentGroups.length > 0) {
     return { ok: false, error: "Currently in chat" }
   }
-  return await newGroup(room_id, [from_user].concat(to_users))
+  const r = await newGroup(room_id, [from_user].concat(to_users))
+  if (r.ok && r.group) {
+    const id = genChatEventId()
+    await db.query(
+      `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+      [
+        id,
+        r.group.id,
+        from_user,
+        "new",
+        { from_user, to_users },
+        r.group.last_updated,
+      ]
+    )
+    await db.query(
+      pgp.helpers.insert(
+        [from_user].concat(to_users).map(u => {
+          return { event: id, person: u }
+        }),
+        ["event", "person"],
+        "chat_event_recipient"
+      )
+    )
+  }
+  return { ...r, timestamp: r.ok ? r.group?.last_updated : undefined }
 }
 
 export async function joinChat(
@@ -865,9 +925,31 @@ export async function joinChat(
       "person_in_chat_group"
     )
   )
+  const timestamp = Date.now()
+  await db.query(`UPDATE chat_group SET last_updated=$1 WHERE id=$2;`, [
+    timestamp,
+    group_id,
+  ])
   const joinedGroup = (await getGroup(room_id, group_id)) || undefined
+  if (joinedGroup) {
+    const id = genChatEventId()
+    await db.query(
+      `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+      [id, group_id, from_user, "join", { from_user }, joinedGroup.last_updated]
+    )
+    await db.query(
+      pgp.helpers.insert(
+        joinedGroup.users.map(u => {
+          return { event: id, person: u }
+        }),
+        ["event", "person"],
+        "chat_event_recipient"
+      )
+    )
+  }
   return { ok: !!joinedGroup, joinedGroup }
 }
+
 export async function addMember(
   room_id: RoomId,
   from_user_id: UserId,
@@ -897,7 +979,35 @@ export async function addMember(
         "person_in_chat_group"
       )
     )
+    const timestamp = Date.now()
+    await db.query(`UPDATE chat_group SET last_updated=$1 WHERE id=$2;`, [
+      timestamp,
+      group_id,
+    ])
     const joinedGroup = (await getGroup(room_id, group_id)) || undefined
+    if (joinedGroup) {
+      const id = genChatEventId()
+      await db.query(
+        `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+        [
+          id,
+          group_id,
+          from_user_id,
+          "add",
+          { to_user: to_user_id, from_user: from_user_id },
+          joinedGroup.last_updated,
+        ]
+      )
+      await db.query(
+        pgp.helpers.insert(
+          joinedGroup.users.map(u => {
+            return { event: id, person: u }
+          }),
+          ["event", "person"],
+          "chat_event_recipient"
+        )
+      )
+    }
     return { ok: !!joinedGroup, joinedGroup }
   } catch (err) {
     log.error(err)
@@ -912,6 +1022,8 @@ export async function leaveChat(
   error?: string
   leftGroup?: ChatGroup
   removedGroup?: ChatGroupId
+  removedGroupOldMembers?: UserId[]
+  timestamp?: number
 }> {
   log.debug("leaveChat", room_id, user_id)
   const group_id = await getGroupIdOfUser(room_id, user_id)
@@ -924,23 +1036,65 @@ export async function leaveChat(
     log.error(`${group_id} does not exist`)
     return { ok: false, error: `${group_id} does not exist` }
   }
+  const timestamp = Date.now()
   await db.query(
     `DELETE FROM person_in_chat_group WHERE person=$1 and chat=$2`,
     [user_id, group_id]
   )
-  const online = await model.people.isConnected(
-    room_id,
-    _.difference(g1.users, [user_id])
-  )
+  const left_users = _.difference(g1.users, [user_id])
+  const online = await model.people.isConnected(room_id, left_users)
   //Only one person remains or all remained are offline.
-  if (g1.users.length == 2 || _.every(online, o => o == false)) {
-    const r = await deleteGroup(group_id)
-    return { ok: r, removedGroup: r ? group_id : undefined }
+  if (left_users.length == 1 || _.every(online, o => o == false)) {
+    const ok = await deleteGroup(group_id)
+    if (ok) {
+      const id = genChatEventId()
+      await db.query(
+        `INSERT INTO chat_event (id, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5);`,
+        [id, group_id, user_id, "dissolve", timestamp]
+      )
+      await db.query(
+        pgp.helpers.insert(
+          g1.users.map(u => {
+            return { event: id, person: u }
+          }),
+          ["event", "person"],
+          "chat_event_recipient"
+        )
+      )
+    }
+    return {
+      ok,
+      removedGroup: ok ? group_id : undefined,
+      removedGroupOldMembers: ok ? left_users : undefined,
+      timestamp,
+    }
   } else {
     const group = await getGroup(room_id, group_id)
     if (!group) {
       throw "Cannot find a group after member removal."
+    } else {
+      const id = genChatEventId()
+      await db.query(
+        `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+        [
+          id,
+          group_id,
+          user_id,
+          "leave",
+          { left_user: user_id, users: group.users },
+          timestamp,
+        ]
+      )
+      await db.query(
+        pgp.helpers.insert(
+          g1.users.map(u => {
+            return { event: id, person: u }
+          }),
+          ["event", "person"],
+          "chat_event_recipient"
+        )
+      )
+      return { ok: true, leftGroup: group, timestamp }
     }
-    return { ok: true, leftGroup: group }
   }
 }

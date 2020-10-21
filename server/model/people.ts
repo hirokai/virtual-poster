@@ -4,6 +4,8 @@ import jsSHA from "jssha"
 import * as admin from "firebase-admin"
 import pg from "pg-promise"
 import crypto from "crypto"
+import perf_hooks from "perf_hooks"
+const performance = perf_hooks.performance
 
 import {
   Person,
@@ -17,10 +19,15 @@ import {
   RoomId,
   PosterId,
   PosDir,
+  TryToMoveResult,
+  ChatGroup,
 } from "../../@types/types"
-import { redis, log, db, pgp, maps } from "./index"
+import { redis, log, db, pgp, maps, chat } from "./index"
 
 import { config } from "../config"
+import { calcDirection, isAdjacent } from "../../common/util"
+import { ChatGroupId } from "@/api/@types"
+import { genChatEventId } from "./chat"
 const DEBUG_TOKEN = config.debug_token
 
 let initialized = false
@@ -370,7 +377,7 @@ export async function getAllPeopleList(
       : db.query("select * from person;"))
     rows2 = []
   }
-  const connected = room_id
+  const connected_users = room_id
     ? new Set(
         await redis.accounts.smembers(
           "connected_users:room:" + room_id + ":__all__"
@@ -407,9 +414,9 @@ export async function getAllPeopleList(
       id: uid,
       last_updated: parseInt(row["last_updated"]),
       connected: room_id
-        ? connected.has(row.id)
-        : count_all_sockets_for_users[row.id] &&
-          parseInt(count_all_sockets_for_users[row.id]) > 0
+        ? connected_users.has(uid)
+        : count_all_sockets_for_users[uid] &&
+          parseInt(count_all_sockets_for_users[uid]) > 0
         ? true
         : false,
       room: room_id || "N/A",
@@ -446,7 +453,7 @@ export async function getPos(
       console.log("Position not found", k)
       return null
     }
-    log.debug("Get raw data", s)
+    // log.debug("Get raw data", s)
     const [x, y, direction] = s.split(".")
     return {
       x: parseInt(x),
@@ -517,6 +524,178 @@ export async function setPos(
       r
     )
     return false
+  }
+}
+
+// user_id_2 must be inactive person (because it is force removed from the group chat).
+export async function swapTwoPeople(
+  room_id: RoomId,
+  user_id_1: UserId,
+  user_id_2: UserId
+): Promise<{
+  ok: boolean
+  results?: TryToMoveResult[]
+  removed_user2_from?: { chat?: ChatGroupId; poster?: PosterId }
+}> {
+  const ti = performance.now()
+  const s1 = await redis.accounts.get("pos:" + room_id + ":" + user_id_1)
+  const s2 = await redis.accounts.get("pos:" + room_id + ":" + user_id_2)
+  if (!s1 || !s2) {
+    return { ok: false }
+  }
+  const [x1_s, y1_s, direction1] = s1.split(".")
+  const [x2_s, y2_s, direction2] = s2.split(".")
+  const p1_ = { x: parseInt(x1_s), y: parseInt(y1_s) }
+  const p2_ = { x: parseInt(x2_s), y: parseInt(y2_s) }
+  const p1 = { ...p1_, direction: calcDirection(p2_, p1_) }
+  const p2 = { ...p2_, direction: calcDirection(p1_, p2_) }
+  if (!isAdjacent(p1, p2)) {
+    log.warn("swapTwoPeople(): Not adjacent: ")
+    return { ok: false }
+  }
+  await redis.accounts.mset(
+    "pos:" + room_id + ":" + user_id_1,
+    "" + p2.x + "." + p2.y + "." + p2.direction,
+    "pos:" + room_id + ":" + user_id_2,
+    "" + p1.x + "." + p1.y + "." + p1.direction
+  )
+  const last_updated = Date.now()
+  try {
+    await db.query(`BEGIN`)
+    const rows1 = await db.query(
+      `SELECT x,y FROM person_position WHERE person=$1 AND room=$2`,
+      [user_id_1, room_id]
+    )
+    const rows2 = await db.query(
+      `SELECT x,y FROM person_position WHERE person=$1 AND room=$2`,
+      [user_id_2, room_id]
+    )
+    const p1_db = rows1[0]
+      ? { x: rows1[0].x as number, y: rows1[0].y as number }
+      : null
+    const p2_db = rows2[0]
+      ? { x: rows2[0].x as number, y: rows2[0].y as number }
+      : null
+    if (
+      !p1_db ||
+      p1_db.x != p1.x ||
+      p1_db.y != p1.y ||
+      !p2_db ||
+      p2_db.x != p2.x ||
+      p2_db.y != p2.y
+    ) {
+      throw {
+        message: "swapTwoPeople(): Redis and RDB are inconsistent",
+        p1,
+        p1_db,
+        p2,
+        p2_db,
+      }
+    }
+    await db.query(`DELETE FROM person_position WHERE person=$1 AND room=$2`, [
+      user_id_1,
+      room_id,
+    ])
+    await db.query(`DELETE FROM person_position WHERE person=$1 AND room=$2`, [
+      user_id_2,
+      room_id,
+    ])
+    await db.query(
+      `INSERT INTO person_position (person,room,x,y,direction,last_updated) VALUES ($1,$2,$3,$4,$5,$6);`,
+      [user_id_1, room_id, p2.x, p2.y, p2.direction, last_updated]
+    )
+    await db.query(
+      `INSERT INTO person_position (person,room,x,y,direction,last_updated) VALUES ($1,$2,$3,$4,$5,$6);`,
+      [user_id_2, room_id, p1.x, p1.y, p1.direction, last_updated]
+    )
+    const rows3 = await db.query(
+      `DELETE FROM person_in_chat_group WHERE person=$1 AND chat IN (SELECT id FROM chat_group WHERE room=$2) RETURNING chat;`,
+      [user_id_2, room_id]
+    )
+    const removed_from_chat = rows3[0] ? rows3[0].chat : undefined
+    let group_removed: ChatGroupId | undefined = undefined
+    let group_left: ChatGroup | undefined = undefined
+    if (removed_from_chat) {
+      const rs = await db.query(
+        `SELECT person FROM person_in_chat_group WHERE chat=$1;`,
+        [removed_from_chat]
+      )
+      const id = genChatEventId()
+      if (rs.length <= 1) {
+        group_removed = removed_from_chat
+        await db.query(`DELETE FROM person_in_chat_group WHERE chat=$1;`, [
+          removed_from_chat,
+        ])
+        await db.query(`DELETE FROM chat_group WHERE id=$1;`, [
+          removed_from_chat,
+        ])
+        await db.query(
+          `INSERT INTO chat_event (id, room, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+          [
+            id,
+            room_id,
+            removed_from_chat,
+            rs[0] ? rs[0].person : user_id_2,
+            "dissolve",
+            last_updated,
+          ]
+        )
+      } else {
+        group_left =
+          (await chat.getGroup(room_id, removed_from_chat)) || undefined
+        await db.query(
+          `INSERT INTO chat_event (id, room, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+          [id, room_id, removed_from_chat, user_id_2, "leave", last_updated]
+        )
+      }
+    }
+
+    const rows4 = await db.query(
+      `DELETE FROM poster_viewer WHERE person=$1 AND poster IN (SELECT id FROM poster WHERE location in (SELECT id FROM map_cell WHERE room=$2 AND kind='poster')) RETURNING poster;`,
+      [user_id_2, room_id]
+    )
+    const poster_left: PosterId | undefined = rows4[0]
+      ? rows4[0].poster
+      : undefined
+    if (poster_left) {
+      await db.query(
+        `UPDATE poster_viewer SET left_time=$3 WHERE person=$1 AND poster=$2;`,
+        [user_id_2, poster_left, last_updated]
+      )
+    }
+    await db.query(`COMMIT`)
+    const tf = performance.now()
+    log.debug(`swapTwoPeople() finished in ${(tf - ti).toFixed(3)} ms`)
+    return {
+      ok: true,
+      results: [
+        {
+          room: room_id,
+          user: user_id_1,
+          position: p2,
+          direction: p2.direction,
+        },
+        {
+          room: room_id,
+          user: user_id_2,
+          position: p1,
+          direction: p1.direction,
+          group_removed,
+          group_left,
+          poster_left,
+        },
+      ],
+    }
+  } catch (err) {
+    await db.query(`ROLLBACK`)
+    await redis.accounts.mset(
+      "pos:" + room_id + ":" + user_id_1,
+      "" + p1.x + "." + p1.y + "." + direction1,
+      "pos:" + room_id + ":" + user_id_2,
+      "" + p2.x + "." + p2.y + "." + direction2
+    )
+    log.error(err)
+    return { ok: false }
   }
 }
 export async function getPosMulti(

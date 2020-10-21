@@ -74,6 +74,7 @@ type RoomAppProps = {
   debug_as?: string
   debug_token?: string
   jwt_hash_initial?: string
+  isMobile: boolean
 }
 
 type SocketMessageFromUser =
@@ -165,6 +166,8 @@ type RoomAppState = {
   privateKey: CryptoKey | null
   publicKeyString: string | null
   publicKey: CryptoKey | null
+
+  mobilePane: string
 }
 
 type Room = {
@@ -345,7 +348,19 @@ export type Announcement = {
 
 export type Contact = { id: UserId | PosterId | ChatGroupId; kind: string }
 
-export type ArrowKey = "ArrowRight" | "ArrowUp" | "ArrowLeft" | "ArrowDown"
+export type ArrowKey =
+  | "ArrowRight"
+  | "ArrowUp"
+  | "ArrowLeft"
+  | "ArrowDown"
+  | "h"
+  | "j"
+  | "k"
+  | "l"
+  | "y"
+  | "u"
+  | "b"
+  | "n"
 
 type PostIdTokenResponse = {
   ok: boolean
@@ -464,11 +479,14 @@ type GroupSocketData = {
 }
 
 type TryToMoveResult = {
+  room: RoomId
+  user: UserId
   position?: Point
   direction?: Direction
   group_left?: ChatGroup
   group_joined?: ChatGroup
   group_removed?: ChatGroupId
+  poster_left?: PosterId
 }
 
 type TypingSocketSendData = {

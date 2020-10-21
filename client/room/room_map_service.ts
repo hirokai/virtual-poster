@@ -117,6 +117,10 @@ export const enterPoster = (
     console.warn("Cannot start viewing a poster", r.error)
     return
   }
+  if (props.isMobile) {
+    location.hash = "poster"
+    state.mobilePane = "poster"
+  }
   state.socket?.emit("Subscribe", {
     channel: pid,
   })
@@ -340,7 +344,11 @@ export const moveTo = (
   const toCell = state.hallMap[to.y][to.x]
   const person = personAt(state.people, to)
   const poster = posterAt(state.posters, to)
-  if (person || poster || ["wall", "water", "poster"].includes(toCell.kind)) {
+  if (
+    (person && person.connected) ||
+    poster ||
+    ["wall", "water", "poster"].includes(toCell.kind)
+  ) {
     console.info("Destination not open", { toCell, person, poster })
     return false
   }
@@ -401,8 +409,16 @@ moveOneStep = (
   // Vue.set
   if (p.id == props.myUserId) {
     state.center = {
-      x: inRange(x, 5, state.cols - 6),
-      y: inRange(y, 5, state.rows - 6),
+      x: inRange(
+        x,
+        props.isMobile ? 3 : 5,
+        state.cols - (props.isMobile ? 3 : 5) - 1
+      ),
+      y: inRange(
+        y,
+        props.isMobile ? 5 : 5,
+        state.rows - (props.isMobile ? 5 : 5) - 1
+      ),
     }
   }
   state.people[user_id] = { ...p, x, y, direction }
@@ -452,34 +468,50 @@ export const moveByArrow = (
   }
   const x = me.x
   const y = me.y
-  if (key == "ArrowRight") {
+  if (key == "ArrowRight" || key == "l") {
     dx = 1
     dy = 0
     me.direction = "right"
-  } else if (key == "ArrowUp") {
+  } else if (key == "ArrowUp" || key == "k") {
     dx = 0
     dy = -1
     me.direction = "up"
-  } else if (key == "ArrowLeft") {
+  } else if (key == "ArrowLeft" || key == "h") {
     dx = -1
     dy = 0
     me.direction = "left"
-  } else if (key == "ArrowDown") {
+  } else if (key == "ArrowDown" || key == "j") {
     dx = 0
     dy = 1
     me.direction = "down"
+  } else if (key == "y") {
+    dx = -1
+    dy = -1
+    me.direction = "left"
+  } else if (key == "u") {
+    dx = 1
+    dy = -1
+    me.direction = "right"
+  } else if (key == "b") {
+    dx = -1
+    dy = 1
+    me.direction = "left"
+  } else if (key == "n") {
+    dx = 1
+    dy = 1
+    me.direction = "right"
   }
   const nx = x + dx
   const ny = y + dy
   if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
-    const la = lookingAt(me)
+    const la = { x: nx, y: ny }
     const la_person: PersonInMap | undefined = la
       ? personAt(state.people, la)
       : undefined
     const la_poster: Poster | undefined = la
       ? posterAt(state.posters, la)
       : undefined
-    if (!la_person && !la_poster) {
+    if ((!la_person || !la_person.connected) && !la_poster) {
       if (state.people_typing[props.myUserId]) {
         const d: TypingSocketSendData = {
           user: me.id,
@@ -518,15 +550,22 @@ export const moveByArrow = (
   return { ok: true, moved }
 }
 
-export const cellsMag = (state: RoomAppState): ComputedRef<Cell[][]> =>
+export const cellsMag = (
+  state: RoomAppState,
+  radiusX: number,
+  radiusY: number
+): ComputedRef<Cell[][]> =>
   computed((): Cell[][] => {
     if (state.hallMap.length == 0) {
       return []
     }
-    const min_x = Math.max(0, state.center.x - 5)
-    const min_y = Math.max(0, state.center.y - 5)
-    const max_x = Math.min(state.hallMap[0].length - 1, state.center.x + 5)
-    const max_y = Math.min(state.hallMap.length - 1, state.center.y + 5)
+    const min_x = Math.max(0, state.center.x - radiusX)
+    const min_y = Math.max(0, state.center.y - radiusY)
+    const max_x = Math.min(
+      state.hallMap[0].length - 1,
+      state.center.x + radiusX
+    )
+    const max_y = Math.min(state.hallMap.length - 1, state.center.y + radiusY)
 
     return range(min_y, max_y + 1).map(y => {
       return state.hallMap[y].slice(min_x, max_x + 1)

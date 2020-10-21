@@ -2,6 +2,11 @@
   font-family: "Lato", sans-serif;
 }
 
+.mobile .chat-container {
+  font-size: 18px;
+}
+
+
 .chat-history {
   overflow: scroll;
   border: 1px solid black;
@@ -166,4 +171,35 @@ div.comment-entry.hidden {
   background-color: #ccc;
   height: 1px;
   border: 0;
+}
+
+.comment-entry {
+  line-height: 1em;
+  word-break: break-all;
+}
+
+.comment-name {
+  font-size: 11px;
+  color: #1d1c1d;
+  font-weight: 900;
+}
+
+.comment-time {
+  font-size: 10px;
+  color: #616061;
+}
+
+.comment-recipients {
+  font-size: 11px;
+  color: #1d1c1d;
+}
+
+.comment-content {
+  font-size: 14px;
+  color: #1d1c1d;
+  line-height: 1.3em;
+}
+
+.mobile .comment-content {
+  font-size: 27px;
 }

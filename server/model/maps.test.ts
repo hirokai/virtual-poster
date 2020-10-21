@@ -124,14 +124,14 @@ describe("Move a person", () => {
       let pos = { x: posd!.x, y: posd!.y }
 
       const p2 = rand_adjacent(pos!, cols, rows)
-      const { result, error } = await mm!.tryToMove(pos!, {
+      const { results, error } = await mm!.tryToMove(pos!, {
         x: p2.x,
         y: p2.y,
         user: person.id,
       })
       expect(error).toBeUndefined()
-      expect(result?.position).toEqual({ x: p2.x, y: p2.y })
-      pos = result!.position!
+      expect(results![0].position).toEqual({ x: p2.x, y: p2.y })
+      pos = results![0].position!
     }
   })
 
@@ -160,13 +160,13 @@ describe("Move a person", () => {
       const pos = { x: posd!.x, y: posd!.y }
 
       const p2 = rand_non_adjacent(pos!, rows, cols)
-      const { result, error } = await mm!.tryToMove(pos!, {
+      const { results, error } = await mm!.tryToMove(pos!, {
         x: p2.x,
         y: p2.y,
         user: person.id,
       })
       expect(error).toBeDefined()
-      expect(result).toBeUndefined()
+      expect(results).toBeUndefined()
     }
   })
 })

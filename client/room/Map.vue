@@ -4,6 +4,9 @@
     :style="cssVars"
     :class="{ small: !!activePoster, normal: goBackToNormal }"
     viewBox="0 0 528 528"
+    :transform="
+      isMobile ? `scale (1.75) translate (${48 * (mapRadiusX - 2)} 0)` : ''
+    "
   >
     <g v-for="(row, yi) in cells" :key="yi" :data-y="row[0].y">
       <MapCell
@@ -16,8 +19,8 @@
         :selected="
           !!selectedPos && cell.x == selectedPos.x && cell.y == selectedPos.y
         "
-        :left="(cell.x - center.x + 5) * 48"
-        :top="(cell.y - center.y + 5) * 48"
+        :left="(cell.x - center.x + mapRadiusX) * 48"
+        :top="(cell.y - center.y + mapRadiusY) * 48"
         @select="select"
         @dbl-click="dblClick"
         @upload-poster="uploadPoster"
@@ -30,8 +33,8 @@
         :key="person.id + ':' + person.name"
         :person="person"
         :myself="!!myself && myself.id == person.id"
-        :left="(person.x - center.x + 5) * 48"
-        :top="(person.y - center.y + 5) * 48"
+        :left="(person.x - center.x + mapRadiusX) * 48"
+        :top="(person.y - center.y + mapRadiusY) * 48"
         :chat="!!chatGroupOfUser[person.id]"
         :typing="!!people_typing[person.id]"
         :selected="
@@ -157,6 +160,14 @@ export default defineComponent({
       type: Object as PropType<{ x: number; y: number }>,
       required: true,
     },
+    mapRadiusX: {
+      type: Number,
+      required: true,
+    },
+    mapRadiusY: {
+      type: Number,
+      required: true,
+    },
     posters: {
       type: Object as PropType<{ [index: string]: Poster }>,
       required: true,
@@ -194,8 +205,8 @@ export default defineComponent({
     const peopleInMagMap = computed((): PersonInMap[] => {
       return Object.values(props.people).filter(p => {
         return (
-          Math.abs(p.x - props.center.x) <= 5 &&
-          Math.abs(p.y - props.center.y) <= 5
+          Math.abs(p.x - props.center.x) <= props.mapRadiusX &&
+          Math.abs(p.y - props.center.y) <= props.mapRadiusY
         )
       })
     })
@@ -209,7 +220,7 @@ export default defineComponent({
       return posterByCellId.value[cell.id]
     }
     const pressArrowButton = (key: ArrowKey) => {
-      context.emit("inputArrowKey", key)
+      context.emit("input-arrow-key", key)
     }
     const clickController = event => {
       const scale = props.activePoster ? 0.6 : 1
@@ -233,6 +244,15 @@ export default defineComponent({
       "--map_y_offset": computed(() => {
         return props.myself ? 3 + props.myself.y - props.center.y : 3
       }),
+      "--map_radius_x": computed(() => {
+        return props.mapRadiusX
+      }),
+      "--map_radius_y": computed(() => {
+        return props.mapRadiusY
+      }),
+      "--map_scale_normal": computed(() => {
+        return props.isMobile ? 1.5 : 1
+      }),
       "--controller_y": computed(() => {
         return (
           "" +
@@ -241,7 +261,7 @@ export default defineComponent({
         )
       }),
       top: props.isMobile ? "0px" : undefined,
-      left: props.isMobile ? "3px" : undefined,
+      left: props.isMobile ? "0px" : undefined,
     })
 
     watch(
@@ -285,7 +305,7 @@ export default defineComponent({
 
 <style lang="css">
 :root {
-  --map_scale_normal: 1;
+  /* --map_scale_normal: 1; */
   --map_scale_small: 0.5;
 }
 
@@ -293,8 +313,8 @@ svg#cells {
   position: absolute;
   left: 8px;
   top: 50px;
-  height: calc(48px * 11);
-  width: calc(48px * 11);
+  height: calc(48px * (var(--map_radius_y) * 2 + 1));
+  width: calc(48px * (var(--map_radius_x) * 2 + 1));
   user-select: none;
   /* transform: translate(0px, 0px) scale(0.8); */
   transition: opacity 0.3s linear;
@@ -363,8 +383,8 @@ svg#cells.small #controller {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -373,8 +393,8 @@ svg#cells.small #controller {
       scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -386,14 +406,14 @@ svg#cells.small #controller {
       scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
     -webkit-clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
   }
@@ -401,14 +421,14 @@ svg#cells.small #controller {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
     -webkit-clip-path: polygon(
       0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + 5)),
-      100% calc(48px * (var(--map_y_offset) + 5)),
+      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
       100% calc(48px * var(--map_y_offset))
     );
   }

@@ -16,8 +16,8 @@
     :data-y="person.y"
     :transform="'translate (' + left + ' ' + top + ')'"
     :style="{
-      width: 48 + 'px',
-      height: 48 + 'px',
+      width: '48px',
+      height: '48px',
     }"
     @dblclick="$emit('dbl-click', { x: person.x, y: person.y })"
     @click="$emit('select', { x: person.x, y: person.y, event: $event })"

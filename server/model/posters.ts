@@ -236,6 +236,22 @@ export async function isViewing(
   }
 }
 
+export async function getViewingPoster(
+  user_id: UserId,
+  room_id: RoomId
+): Promise<{ poster_id?: PosterId; error?: string }> {
+  try {
+    const rows = await db.query(
+      `SELECT poster FROM poster_viewer WHERE person=$1 AND poster IN (SELECT id FROM poster WHERE location IN (SELECT id FROM map_cell WHERE room=$2 AND kind='poster')) AND left_time IS NULL;`,
+      [user_id, room_id]
+    )
+    return { poster_id: rows[0] ? rows[0].poster : undefined }
+  } catch (e) {
+    console.log(e)
+    return { error: "DB error" }
+  }
+}
+
 export async function getViewHistory(
   room_id: RoomId,
   poster_id: PosterId

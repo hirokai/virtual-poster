@@ -6,7 +6,9 @@
     </div>
     <div v-else-if="nextAction == 'verify'">
       <h2>
-        {{ user.email }}に送られたメールの確認用リンクをクリックしてください。
+        {{
+          user.email
+        }}に送られたメールの確認用リンクをクリックしてください。（しばらく経ってもメールが届かない場合は，迷惑メールフォルダを確認してください。）
       </h2>
       <div>
         <a href="#" @click="checkVerification">クリック後，続行</a>

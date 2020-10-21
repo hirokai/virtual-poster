@@ -146,6 +146,109 @@ export class MapModel {
       )
     }
   }
+  private async tryPurge(
+    user_id: UserId,
+    p: PosDir,
+    radius: number
+  ): Promise<PosDir | null> {
+    const direction: Direction = "down"
+    const last_updated = Date.now()
+    try {
+      const rows = await db.query(
+        `
+  UPDATE
+      person_position
+  SET
+      (x,
+          y,
+          direction,
+          last_updated) = (
+          SELECT
+              x,
+              y,
+              $3::direction,
+              $4
+          FROM
+              map_cell
+          WHERE
+              room = $1
+              AND (x,
+                  y)
+              NOT IN (
+                  SELECT
+                      x,
+                      y
+                  FROM
+                      person_position
+                  WHERE
+                      room = $1)
+              AND kind NOT IN ('water', 'wall', 'poster', 'poster_seat')
+              AND x >= $5
+              AND x <= $6
+              AND y >= $7
+              AND y <= $8
+          ORDER BY
+              RANDOM()
+          LIMIT 1)
+  WHERE
+      person = $2
+  RETURNING
+      x,
+      y;        
+    `,
+        [
+          this.room_id,
+          user_id,
+          direction,
+          last_updated,
+          p.x - radius,
+          p.x + radius,
+          p.y - radius,
+          p.y + radius,
+        ]
+      )
+      if (rows[0]) {
+        const x = rows[0].x
+        const y = rows[0].y
+        const pos = { x, y, direction }
+        await redis.accounts.set(
+          "pos:" + this.room_id + ":" + user_id,
+          "" + pos.x + "." + pos.y + "." + pos.direction
+        )
+        await model.chat.leaveChat(this.room_id, user_id)
+        const r = await model.posters.getViewingPoster(user_id, this.room_id)
+        if (r.poster_id) {
+          await model.posters.endViewing(user_id, this.room_id, r.poster_id)
+        }
+        return pos
+      } else {
+        return null
+      }
+    } catch (err) {
+      // Probably this means no SELECT result.
+      return null
+    }
+  }
+  async purgePersonFromRestrictedArea(user_id: UserId): Promise<PosDir | null> {
+    //
+    const p = await model.people.getPos(user_id, this.room_id)
+    if (p) {
+      const cell = await this.getStaticMapAt(p.x, p.y)
+      if (cell) {
+        if (cell.kind == "poster_seat") {
+          console.log("Purging person:", user_id, p)
+          const radius_list = [1, 2, 3, 5, 10, 100]
+          for (const radius of radius_list) {
+            const pos = await this.tryPurge(user_id, p, radius)
+            if (pos) {
+              return pos
+            }
+          }
+        }
+      }
+    }
+    return null
+  }
   static loadMapString(
     str: string
   ): {
@@ -427,10 +530,10 @@ export class MapModel {
     }
   ): Promise<{
     error?: string
-    result?: TryToMoveResult
+    results?: TryToMoveResult[]
   }> {
     try {
-      const result: TryToMoveResult = {}
+      const result: TryToMoveResult = { room: this.room_id, user: d.user }
       const numCols = await this.numCols()
       const numRows = await this.numRows()
       log.debug(
@@ -468,15 +571,39 @@ export class MapModel {
       }
       const from = { x: current.x, y: current.y }
       const to = { x: d.x, y: d.y }
-
       const direction = calcDirection(from, to)
-      const r = await model.people.setPos(d.user, this.room_id, to, direction)
-      if (r) {
+
+      const person_at_dest = await this.anotherPersonAt(d.user, to)
+      console.log("person_at_dest", person_at_dest)
+      if (person_at_dest) {
+        const connected = await redis.accounts.sismember(
+          "connected_users:room:" + this.room_id + ":__all__",
+          person_at_dest
+        )
+        if (connected) {
+          return { error: "Person exists at the destination" }
+        }
+        const r = await model.people.swapTwoPeople(
+          this.room_id,
+          d.user,
+          person_at_dest
+        )
+        if (!r.ok) {
+          return {
+            error: "tryToMove(): Error in swapping with inactive person",
+          }
+        }
+        return {
+          results: r.results,
+        }
+      } else {
+        const r = await model.people.setPos(d.user, this.room_id, to, direction)
+        if (!r) {
+          return { error: "setPos failed", results: [result] }
+        }
         result.position = to
         result.direction = direction
-        return { result }
-      } else {
-        return { error: "setPos failed", result }
+        return { results: [result] }
       }
     } catch (err) {
       log.error(err)
@@ -484,12 +611,12 @@ export class MapModel {
     }
   }
 
-  async anotherPersonExistsAt(user: UserId, pos: Point): Promise<boolean> {
+  async anotherPersonAt(myself: UserId, pos: Point): Promise<UserId | null> {
     const rows = await db.query(
-      `SELECT 1 FROM person_position WHERE room=$1 AND person<>$2 AND x=$3 AND y=$4`,
-      [this.room_id, user, pos.x, pos.y]
+      `SELECT person FROM person_position WHERE room=$1 AND person<>$2 AND x=$3 AND y=$4`,
+      [this.room_id, myself, pos.x, pos.y]
     )
-    return rows.length > 0
+    return rows[0] ? rows[0].person : null
   }
 
   async getStaticMapAt(x: number, y: number): Promise<Cell | null> {

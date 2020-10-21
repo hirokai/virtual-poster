@@ -8,6 +8,7 @@ import * as Papa from "papaparse"
 import * as yaml from "js-yaml"
 import multer from "fastify-multer"
 import { MapModel, POSTGRES_CONNECTION_STRING } from "../model"
+import { config } from "../config"
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -29,6 +30,10 @@ async function routes(
       }
     }
   )
+
+  fastify.get("/debug_token", async (req, res) => {
+    return { debug_token: config.debug_token }
+  })
 
   fastify.get("/admin/export/people", async (req, res) => {
     const people = await model.people.getAllPeopleList(null, true)

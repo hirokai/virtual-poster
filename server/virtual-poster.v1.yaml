@@ -1994,6 +1994,25 @@ paths:
                   - ok
       operationId: post-maps-roomId-leave
       description: Leave a map. Poster viewing and group chat will also be finished.
+  /debug_token:
+    get:
+      summary: Get a debug token
+      tags:
+        - auth
+      operationId: get-debug_token
+      description: Get a debug token. Only for admin
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  debug_token:
+                    type: string
+                required:
+                  - debug_token
+          description: OK
 components:
   parameters:
     debug_token:

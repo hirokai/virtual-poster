@@ -30,24 +30,8 @@
           ') px, ' +
           (cells[0] ? cells[0].length : 0) * size +
           'px 0px)',
-        top: isMobile ? '560px' : undefined,
       }"
     >
-      <!-- <g v-for="(row, yi) in cells" :key="yi">
-        <MiniMapCell
-          v-for="(cell, xi) in row"
-          :cell="cell"
-          :size="size"
-          :key="xi"
-          :left="cell.x * size"
-          :top="cell.y * size"
-          :selected="false"
-          :chat="false"
-          :chat_color="'pink'"
-          @select="select"
-          @dbl-click="dblClick"
-        />
-      </g> -->
       <g>
         <g
           v-for="person in people"
@@ -101,10 +85,10 @@
       id="minimap-area"
       :style="{
         opacity: hidden ? 0 : 1,
-        left: 8 + (this.center.x - 5) * size + 'px',
-        top: 612 + (this.center.y - 5) * size + 'px',
-        width: size * 11 - 1 + 'px',
-        height: size * 11 - 1 + 'px',
+        left: (isMobile ? 0 : 8) + (this.center.x - mapRadiusX) * size + 'px',
+        top: (isMobile ? 0 : 612) + (this.center.y - mapRadiusY) * size + 'px',
+        width: size * (mapRadiusX * 2 + 1) + 'px',
+        height: size * (mapRadiusY * 2 + 1) + 'px',
       }"
     ></div>
   </div>
@@ -144,6 +128,14 @@ export default defineComponent({
     },
     center: {
       type: Object as PropType<{ x: number; y: number }>,
+      required: true,
+    },
+    mapRadiusX: {
+      type: Number,
+      required: true,
+    },
+    mapRadiusY: {
+      type: Number,
       required: true,
     },
     chatGroups: {
@@ -296,6 +288,11 @@ svg#minimap {
   transition: opacity 0.5s linear;
 }
 
+.mobile svg#minimap {
+  top: 0px;
+  left: 8px;
+}
+
 #minimap-area {
   transition: opacity 0.3s linear;
 }
@@ -305,5 +302,10 @@ canvas#minimap-canvas {
   left: 8px;
   transition: opacity 0.3s linear;
   /* border: 2px solid #ccc; */
+}
+
+.mobile canvas#minimap-canvas {
+  top: 0px;
+  left: 8px;
 }
 </style>

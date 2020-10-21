@@ -168,7 +168,7 @@ export default defineComponent({
       loggedIn: boolean
       myUserId: string | null
       idToken: string | null
-      user: firebase.User | null
+      user: { name?: string; user_id?: string; email?: string }
       announceMarquee: boolean
       announceMarqueePeriod: number
       debug_token: string
@@ -193,7 +193,7 @@ export default defineComponent({
       loggedIn: false,
       myUserId: null,
       idToken: null,
-      user: null,
+      user: {},
       axios,
       announceMarquee: false,
       announceMarqueePeriod: 20,
@@ -315,27 +315,23 @@ export default defineComponent({
         })
     }
 
-    const reload = () => {
+    const reload = async () => {
       state.lastUpdated = Date.now()
-      ;(async () => {
-        const client = api(axiosClient(axios))
-        const data_r = await client.maps.$get()
-        state.rooms = keyBy(data_r, "id")
-        const [data_p, data_g, data_posters] = await Promise.all([
-          client.people.$get({ query: { email: true } }),
-          client.groups.$get(),
-          client.posters.$get(),
-        ])
-        state.people = keyBy(data_p, "id")
-        console.log(state.people)
-        for (const room of Object.keys(state.rooms)) {
-          socket?.emit("active", { user: state.myUserId, room })
-        }
-        state.chatGroups = keyBy(data_g, "id")
-        state.posters = keyBy(data_posters, "id")
-      })().catch(err => {
-        console.error(err)
-      })
+      const client = api(axiosClient(axios))
+      const data_r = await client.maps.$get()
+      state.rooms = keyBy(data_r, "id")
+      const [data_p, data_g, data_posters] = await Promise.all([
+        client.people.$get({ query: { email: true } }),
+        client.groups.$get(),
+        client.posters.$get(),
+      ])
+      state.people = keyBy(data_p, "id")
+      console.log(state.people)
+      for (const room of Object.keys(state.rooms)) {
+        socket?.emit("active", { user: state.myUserId, room })
+      }
+      state.chatGroups = keyBy(data_g, "id")
+      state.posters = keyBy(data_posters, "id")
     }
 
     const updatePoster = (poster: Poster) => {
@@ -370,15 +366,13 @@ export default defineComponent({
             return
           }
           for (const k of [
-            "person",
-            "person_multi",
+            "Person",
             "group",
             "group.remove",
             "comment",
             "active_users",
             "poster",
-            "moved",
-            "moved_multi",
+            "Moved",
           ]) {
             socket.on(k, d => {
               on_socket(k, d)
@@ -392,83 +386,23 @@ export default defineComponent({
       firebase.initializeApp(firebaseConfig)
 
       // console.log("User", firebase.auth().currentUser)
-
-      firebase.auth().onAuthStateChanged(user => {
-        ;(async () => {
-          console.log("onAuthStateChanged", user)
-          state.user = user
-          if (!user) {
-            location.href = "/login"
-          } else {
-            const idToken = await user.getIdToken()
-            state.idToken = idToken
-            const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
-            shaObj.update(idToken)
-            state.jwt_hash = shaObj.getHash("HEX")
-            axios.defaults.headers.common = {
-              Authorization: `Bearer ${idToken}`,
-            }
-            const client = api(axiosClient(axios))
-            const data = await client.id_token.$post({
-              body: { token: idToken, debug_from: "Admin" },
-            })
-            if (!data.ok) {
-              alert("再ログインが必要です。リロードします。")
-              location.reload()
-            }
-            console.log(data)
-            if (!data.admin) {
-              alert("管理者専用ページです")
-              location.href = "/"
-            }
-            if (!data.debug_token) {
-              alert("デバッグトークンが見つかりません")
-              return
-            }
-            state.debug_token = data.debug_token
-            state.myUserId = data.user_id || null
-            reload()
-          }
-          state.loggedIn = !!user
-        })().catch(err => {
-          console.error(err)
-        })
-      })
-      window.setInterval(() => {
-        console.log("Refreshing token", new Date())
-        const user = firebase.auth().currentUser
-        if (user) {
-          console.log("user", user)
-          ;(async () => {
-            const idToken = await user.getIdToken()
-            console.log(
-              "New token (the last shown):",
-              idToken.slice(idToken.length - 20)
-            )
-            state.idToken = idToken
-            let success = false
-            while (!success) {
-              const client = api(axiosClient(axios))
-              const data = await client.id_token
-                .$post({ body: { token: idToken, debug_from: "Admin timer" } })
-                .catch(err => {
-                  console.log(err)
-                  return null
-                })
-              success = !!data
-              if (success) {
-                console.log("Refresh token OK")
-              } else {
-                const wait = 5
-                console.log(`Retrying in ${wait} s`)
-                await new Promise(resolve => setTimeout(resolve, wait * 1000))
-              }
-            }
-          })().catch(err => {
-            console.error(err)
-          })
+      ;(async () => {
+        const user = {
+          name: localStorage["virtual-poster:name"],
+          user_id: localStorage["virtual-poster:user_id"],
+          email: localStorage["virtual-poster:email"],
         }
-      }, 1000 * 60 * 59)
+        state.user = user
+        console.warn("User:", user)
+        const client = api(axiosClient(axios))
+        const data = await client.debug_token.$get()
+        state.debug_token = data.debug_token
+        state.myUserId = user.user_id || null
+        await reload()
+        state.loggedIn = !!user
+      })().catch(err => {
+        console.error(err)
+      })
     })
     return {
       API_ROOT,

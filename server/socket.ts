@@ -252,7 +252,7 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
         socket
       )
     }
-    const { error, result } = await map.tryToMove(pos, d)
+    const { error, results } = await map.tryToMove(pos, d)
 
     if (error) {
       log.warn("tryToMove failed", d.room, d.user, error)
@@ -267,20 +267,16 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
 
       return
     }
-    emit.pushSocketQueue("moved", {
-      user: d.user,
-      room: d.room,
-      x: d.x,
-      y: d.y,
-      direction: result?.direction || "none",
-    })
-    log.debug("Moved", d.room, d.user, d.x, d.y)
-    userLog({
-      userId: d.user,
-      operation: "move",
-      data: d,
-    })
-    if (result) {
+    for (const result of results || []) {
+      if (result.position) {
+        emit.pushSocketQueue("moved", {
+          user: result.user,
+          room: result.room,
+          x: result.position.x,
+          y: result.position.y,
+          direction: result.direction || "none",
+        })
+      }
       if (result.group_left) {
         emit.channel(d.room).group(result.group_left)
       }
@@ -291,6 +287,12 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
         emit.channel(d.room).groupRemove(result.group_removed)
       }
     }
+    log.debug("Moved", d.room, d.user, d.x, d.y)
+    userLog({
+      userId: d.user,
+      operation: "move",
+      data: d,
+    })
   })().catch(err => {
     log.error(err)
   })

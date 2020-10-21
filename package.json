@@ -6,7 +6,7 @@
   "author": "Hiro Kai <fullerenec84@gmail.com>",
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build && tsc && cp -r server/model/map_templates dist_server/server/model",
+    "build": "vue-cli-service build && tsc && cp -r server/model/map_templates dist_server/server/model && cp firebaseConfig.js dist_server/",
     "lint": "vue-cli-service lint --no-fix",
     "db": "psql postgres -d virtual_poster",
     "dev": "set NODE_ENV=development && nodemon -L >&2 | npm run serve",

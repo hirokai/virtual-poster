@@ -342,9 +342,16 @@ export async function getAllComments(
   const events: ChatEvent[] = (
     await db.query(
       `
-    SELECT e.* FROM chat_event as e JOIN chat_event_recipient as r ON e.id=r.event WHERE r.person=$1;
+      SELECT
+          e.*
+      FROM
+          chat_event AS e
+          JOIN chat_event_recipient AS r ON e.id = r.event
+      WHERE
+          e.room = $1
+          AND r.person = $2;
   `,
-      [user_id]
+      [room_id, user_id]
     )
   ).map(
     (row): ChatEvent => {
@@ -889,9 +896,11 @@ export async function startChat(
   if (r.ok && r.group) {
     const id = genChatEventId()
     await db.query(
-      `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+      `INSERT INTO chat_event (id, room, chat_group, person, event_type, event_data, "timestamp")
+          VALUES ($1, $2, $3, $4, $5, $6, $7);`,
       [
         id,
+        room_id,
         r.group.id,
         from_user,
         "new",
@@ -934,8 +943,16 @@ export async function joinChat(
   if (joinedGroup) {
     const id = genChatEventId()
     await db.query(
-      `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
-      [id, group_id, from_user, "join", { from_user }, joinedGroup.last_updated]
+      `INSERT INTO chat_event (id, room, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6,$7);`,
+      [
+        id,
+        room_id,
+        group_id,
+        from_user,
+        "join",
+        { from_user },
+        joinedGroup.last_updated,
+      ]
     )
     await db.query(
       pgp.helpers.insert(
@@ -988,9 +1005,10 @@ export async function addMember(
     if (joinedGroup) {
       const id = genChatEventId()
       await db.query(
-        `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+        `INSERT INTO chat_event (id, room, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6,$7);`,
         [
           id,
+          room_id,
           group_id,
           from_user_id,
           "add",
@@ -1049,8 +1067,8 @@ export async function leaveChat(
     if (ok) {
       const id = genChatEventId()
       await db.query(
-        `INSERT INTO chat_event (id, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5);`,
-        [id, group_id, user_id, "dissolve", timestamp]
+        `INSERT INTO chat_event (id, room, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+        [id, room_id, group_id, user_id, "dissolve", timestamp]
       )
       await db.query(
         pgp.helpers.insert(
@@ -1075,9 +1093,10 @@ export async function leaveChat(
     } else {
       const id = genChatEventId()
       await db.query(
-        `INSERT INTO chat_event (id, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
+        `INSERT INTO chat_event (id, room, chat_group, person, event_type, event_data, "timestamp") VALUES ($1,$2,$3,$4,$5,$6,$7);`,
         [
           id,
+          room_id,
           group_id,
           user_id,
           "leave",

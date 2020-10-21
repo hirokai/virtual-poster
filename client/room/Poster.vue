@@ -1,7 +1,11 @@
 <template>
   <div>
     <transition name="fade">
-      <div id="poster-container" v-if="poster">
+      <div
+        id="poster-container"
+        v-if="poster && (!isMobile || mobilePane == 'poster')"
+        :class="{ mobile: isMobile }"
+      >
         <h2>
           {{
             poster
@@ -99,7 +103,12 @@
       </div>
     </transition>
     <transition name="fade">
-      <h3 id="poster-comment-title" v-if="poster">ポスターへのコメント</h3>
+      <h3
+        id="poster-comment-title"
+        v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
+      >
+        ポスターへのコメント
+      </h3>
     </transition>
     <transition name="fade">
       <div
@@ -107,10 +116,11 @@
         class="chat-container"
         :class="{ poster_active: !!poster }"
         :style="{
-          width: isMobile ? '520px' : undefined,
-          bottom: '' + (102 + numInputRows * 20) + 'px',
+          width: isMobile ? '100vw' : undefined,
+          top: isMobile ? '0px' : undefined,
+          bottom: isMobile ? '20vw' : '' + (102 + numInputRows * 20) + 'px',
         }"
-        v-if="poster"
+        v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
       >
         <div id="poster-comments">
           <div
@@ -200,6 +210,7 @@
       id="poster-chat-input-container"
       class="chat-input-container"
       :class="{ replying: !!replying, editing: !!editingOld }"
+      v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
     >
       <textarea
         ref="input"
@@ -286,6 +297,9 @@ export default defineComponent({
     isMobile: {
       type: Boolean,
       required: true,
+    },
+    mobilePane: {
+      type: String,
     },
   },
   setup(props, context) {
@@ -680,6 +694,13 @@ div#poster-container {
   z-index: 200;
 }
 
+#app-main.mobile div#poster-container {
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: calc(100vh - 20vw - 20px);
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.5s 0.5s linear;
@@ -705,6 +726,16 @@ div#poster-comments-container {
   min-height: 100px;
   overflow: scroll;
   font-size: 12px;
+  background: white;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+.mobile div#poster-comments-container {
+  top: 0px;
+  left: 0px;
+  width: 100vw;
+  font-size: 27px;
   background: white;
   border: 1px solid #888;
   border-radius: 4px;
@@ -793,6 +824,10 @@ textarea#poster-chat-input {
   width: 528px;
   z-index: 100 !important;
   padding: 10px;
+}
+
+#app-main.mobile #poster-chat-input-container {
+  bottom: 20vw;
 }
 
 .comment-content {

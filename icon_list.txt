@@ -6,3 +6,8 @@ enter-arrow.png https://www.flaticon.com/free-icon/enter-arrow_60539
 right-arrow.png https://www.flaticon.com/free-icon/right-arrow_724954?term=send&page=1&position=4
 microphone.png    https://www.flaticon.com/free-icon/microphone_709682?term=microphone&page=1&position=1
 departures.png    https://www.flaticon.com/free-icon/departures_1212247?term=departure&page=1&position=30
+world.png    https://www.flaticon.com/free-icon/world_3083728?term=map&page=1&position=79
+map.png    https://www.flaticon.com/free-icon/map_879686?term=map&page=1&position=7
+new-poster.png    https://www.flaticon.com/free-icon/new-poster_3065260?term=poster&page=1&position=3
+chat.png    https://www.flaticon.com/free-icon/chat_561180?term=chat&page=1&position=4
+feedback.png    https://www.flaticon.com/free-icon/feedback_2139020?term=comment&page=1&position=66

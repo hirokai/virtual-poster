@@ -211,6 +211,7 @@ CREATE TYPE chat_event_type AS ENUM (
     'join',
     'add',
     'leave',
+    'dissolve',
     'start_overhear',
     'end_overhear',
     'set_private'
@@ -218,6 +219,7 @@ CREATE TYPE chat_event_type AS ENUM (
 
 CREATE TABLE chat_event (
     id text PRIMARY KEY,
+    room text REFERENCES room (id) NOT NULL,
     "chat_group" text NOT NULL,
     person text NOT NULL,
     event_type chat_event_type NOT NULL,

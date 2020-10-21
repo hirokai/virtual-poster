@@ -4,7 +4,7 @@
     class="chat-container"
     :style="{
       width: isMobile
-        ? '510px'
+        ? 'calc(100vw - 10px)'
         : poster
         ? 'calc(100% - max(68vh,570px) - 569px)'
         : 'calc(100% - 570px)',
@@ -13,8 +13,8 @@
         : poster
         ? 'calc(550px + max(400px, 95vh / 1.4))'
         : '550px',
-      top: isMobile ? '550px' : undefined,
-      height: isMobile ? 'calc(100% - 550px)' : undefined,
+      top: isMobile ? '0px' : undefined,
+      height: isMobile ? 'calc(100% - 20vw)' : undefined,
     }"
   >
     <div
@@ -172,7 +172,8 @@
               {{
                 [c.event_data.from_user]
                   .concat(c.event_data.to_users)
-                  .map(u => people[u].name)
+                  .map(u => people[u]?.name)
+                  .filter(Boolean)
                   .join(",")
               }}
             </span>
@@ -467,14 +468,30 @@ export default defineComponent({
           } as CommentEvent
         })
 
-      const comments_and_events = sortBy(
-        (comments as CommentHistoryEntry[]).concat(
-          props.events.map(e => {
-            return { ...e, event: "event" }
-          }) as CommentHistoryEntry[]
-        ),
+      const events = sortBy(
+        props.events.map(e => {
+          return { ...e, event: "event" }
+        }) as CommentHistoryEntry[],
         c => c.timestamp
       )
+      const comments_and_events: CommentHistoryEntry[] = []
+      let event_idx = 0
+      for (const c of comments) {
+        if (c.__depth == 1) {
+          for (
+            ;
+            event_idx < events.length &&
+            events[event_idx].timestamp < c.timestamp;
+            event_idx++
+          ) {
+            comments_and_events.push(events[event_idx])
+          }
+        }
+        comments_and_events.push(c)
+      }
+      for (; event_idx < events.length; event_idx++) {
+        comments_and_events.push(events[event_idx])
+      }
 
       const comments_with_date: CommentHistoryEntry[] = []
       if (comments_and_events.length > 0) {
@@ -486,14 +503,15 @@ export default defineComponent({
       let prev_toplevel = 0
       for (let i = 0; i < comments_and_events.length; i++) {
         const toplevel =
-          comments_and_events[i].event == "comment"
+          comments_and_events[i]?.event == "comment"
             ? (comments_and_events[i] as CommentEvent).__depth == 1
             : true
         if (
           toplevel &&
+          comments_and_events[i] &&
           !sameDate(
-            comments_and_events[prev_toplevel].timestamp,
-            comments_and_events[i].timestamp
+            comments_and_events[prev_toplevel]?.timestamp,
+            comments_and_events[i]?.timestamp
           )
         ) {
           const d = new Date(comments_and_events[i].timestamp)

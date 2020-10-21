@@ -69,7 +69,7 @@ async function routes(
     }
     const r = await model.chat.addCommentEncrypted(e)
     if (r) {
-      emit.channel(roomId).comment(e)
+      emit.comment(e)
     }
     return { ok: true }
   })
@@ -186,7 +186,7 @@ async function routes(
     req.log.debug("ChatComment emitting", e)
     const r = await model.chat.addCommentEncrypted(e)
     if (r) {
-      emit.channel(e.room).comment(e)
+      emit.comment(e)
     }
     return { ok: true }
   })
@@ -205,7 +205,7 @@ async function routes(
       comments
     )
     if (comment) {
-      emit.channel(comment.room).comment(comment)
+      emit.comment(comment)
     }
     return { ok, comment, error }
   })

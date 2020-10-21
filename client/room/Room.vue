@@ -1,6 +1,179 @@
 <template>
+  <div id="app-main" class="mobile" v-if="isMobile">
+    <div id="mobile-menu">
+      <div class="mobile-menu-item" @click="moveToPane('minimap')">
+        <img src="/img/icon/world.png" width="96" alt="" />
+        <div
+          class="mobile-menu-item-active"
+          v-if="mobilePane == 'minimap'"
+        ></div>
+      </div>
+      <div class="mobile-menu-item" @click="moveToPane('map')">
+        <img src="/img/icon/map.png" width="96" alt="" />
+        <div class="mobile-menu-item-active" v-if="mobilePane == 'map'">
+          &nbsp;
+        </div>
+      </div>
+      <div class="mobile-menu-item" @click="moveToPane('chat')">
+        <img src="/img/icon/chat.png" width="96" alt="" />
+        <div class="mobile-menu-item-active" v-if="mobilePane == 'chat'"></div>
+      </div>
+      <div
+        class="mobile-menu-item"
+        :class="{ disabled: !posterLooking }"
+        @click="moveToPane('poster')"
+      >
+        <img src="/img/icon/new-poster.png" width="96" alt="" />
+        <div
+          class="mobile-menu-item-active"
+          v-if="mobilePane == 'poster'"
+        ></div>
+      </div>
+      <div
+        class="mobile-menu-item"
+        :class="{ disabled: !posterLooking }"
+        @click="moveToPane('poster_chat')"
+      >
+        <img src="/img/icon/feedback.png" width="96" alt="" />
+        <div
+          class="mobile-menu-item-active"
+          v-if="mobilePane == 'poster_chat'"
+        ></div>
+      </div>
+    </div>
+    <Map
+      v-show="!!myself && mobilePane == 'map'"
+      :myself="myself"
+      :isMobile="isMobile"
+      :hidden="hidden"
+      :people="people"
+      :posters="posters"
+      :activePoster="posterLooking ? adjacentPoster : undefined"
+      :cells="cellsMag"
+      :center="center"
+      :mapRadiusX="4"
+      :mapRadiusY="7"
+      :myChatGroup="myChatGroup"
+      :chatGroups="chatGroups"
+      :chatGroupOfUser="chatGroupOfUser"
+      :selectedPos="selectedPos"
+      :selectedUsers="selectedUsers"
+      :people_typing="people_typing"
+      :avatarImages="avatarImages"
+      @select="updateSelectedPos"
+      @hover="hoverOnCell"
+      @dbl-click="dblClick"
+      @upload-poster="uploadPoster"
+      @input-arrow-key="inputArrowKey"
+    />
+    <MiniMap
+      v-show="mobilePane == 'minimap'"
+      :isMobile="isMobile"
+      :hidden="hidden"
+      :cells="hallMap"
+      :center="center"
+      :mapRadiusX="4"
+      :mapRadiusY="7"
+      :people="people"
+      :chatGroups="chatGroups"
+      :avatarImages="avatarImages"
+      :people_typing="people_typing"
+      :selectedPos="selectedPos"
+      @select="updateSelectedPos"
+      @dbl-click="dblClick"
+    />
+    <ChatLocal
+      ref="chatLocal"
+      v-show="mobilePane == 'chat'"
+      :isMobile="isMobile"
+      :myself="myself"
+      :contentHidden="hidden"
+      :comments="comments"
+      :commentTree="commentTree"
+      :events="chat_events"
+      :people="people"
+      :editingOld="editingOld"
+      :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
+      :inputFocused="inputFocused"
+      :poster="botActive || !posterLooking ? null : adjacentPoster"
+      :people_typing="people_typing"
+      :enableEncryption="enableEncryption"
+      :encryptionPossibleInChat="encryption_possible_in_chat"
+      @leave-chat="leaveChat"
+      @submit-comment="submitComment"
+      @update-comment="sendOrUpdateComment"
+      @delete-comment="deleteComment"
+      @set-editing-old="setEditingOld"
+      @onInputTextChange="onInputTextChange"
+      @on-focus-input="onFocusInput"
+      @set-encryption="setEncryption"
+      @add-emoji-reaction="addEmojiReaction"
+    />
+    <Poster
+      v-show="
+        (mobilePane == 'poster' || mobilePane == 'poster_chat') && posterLooking
+      "
+      ref="posterComponent"
+      :isMobile="isMobile"
+      :mobilePane="mobilePane"
+      :myself="myself"
+      :poster="posterLooking ? adjacentPoster : undefined"
+      :comments="posterComments"
+      :commentTree="posterCommentTree"
+      :people="people"
+      :editingOld="editingOld"
+      :posterChatGroup="posterChatGroup"
+      @submit-poster-comment="submitPosterComment"
+      @update-poster-comment="updatePosterComment"
+      @delete-comment="deletePosterComment"
+      @set-editing-old="setEditingOld"
+      @on-focus-input="onFocusInput"
+      @upload-poster="uploadPoster"
+      @add-emoji-reaction="addEmojiReaction"
+    />
+    <div id="tools-on-map" v-if="mobilePane == 'map'">
+      <button
+        id="enter-poster-on-map"
+        @click="enterPoster"
+        v-if="adjacentPoster && !posterLooking"
+      >
+        ポスターを閲覧
+      </button>
+      <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
+        <span style="font-weight: bold;"
+          >{{ adjacentPoster.poster_number }}:
+          {{
+            people[adjacentPoster.author]
+              ? people[adjacentPoster.author].name
+              : ""
+          }}</span
+        >
+
+        <br />
+        {{ adjacentPoster.title }}
+        <span id="access-log-notice" v-if="adjacentPoster.access_log">
+          このポスターを閲覧すると<br />足あとが記録されます
+        </span>
+      </div>
+      <button
+        id="leave-poster-on-map"
+        @click="leavePoster"
+        v-if="posterLooking"
+      >
+        ポスターから離脱
+      </button>
+      <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
+        会話から離脱
+      </button>
+    </div>
+    <div id="message" :class="{ hide: message.hide }">
+      <div id="message-close" @click="hideMessage">&times;</div>
+      {{ message.text }}
+    </div>
+  </div>
   <div
     id="app-main"
+    v-if="!isMobile"
     :class="{ poster_active: posterLooking, mobile: isMobile }"
     v-cloak
   >
@@ -105,6 +278,8 @@
       :activePoster="posterLooking ? adjacentPoster : undefined"
       :cells="cellsMag"
       :center="center"
+      :mapRadiusX="5"
+      :mapRadiusY="5"
       :myChatGroup="myChatGroup"
       :chatGroups="chatGroups"
       :chatGroupOfUser="chatGroupOfUser"
@@ -116,7 +291,7 @@
       @hover="hoverOnCell"
       @dbl-click="dblClick"
       @upload-poster="uploadPoster"
-      @inputArrowKey="inputArrowKey"
+      @input-arrow-key="inputArrowKey"
     />
     <MiniMap
       v-if="enableMiniMap && !botActive"
@@ -125,6 +300,8 @@
       :hidden="hidden"
       :cells="hallMap"
       :center="center"
+      :mapRadiusX="5"
+      :mapRadiusY="5"
       :people="people"
       :chatGroups="chatGroups"
       :avatarImages="avatarImages"
@@ -356,7 +533,7 @@ const setupSocketHandlers = (
   })
 }
 
-const ArrowKeyInterval = 200
+const ArrowKeyInterval = 100
 
 export default defineComponent({
   components: {
@@ -516,6 +693,8 @@ export default defineComponent({
       privateKey: null as CryptoKey | null,
       publicKeyString: null as string | null,
       publicKey: null as CryptoKey | null,
+
+      mobilePane: "map",
     })
     props.axios.interceptors.request.use(config => {
       if (props.debug_as) {
@@ -714,8 +893,20 @@ export default defineComponent({
 
     const handleGlobalKeyDown = (ev: KeyboardEvent) => {
       if (
-        ["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown"].indexOf(ev.key) !=
-          -1 &&
+        [
+          "ArrowRight",
+          "ArrowUp",
+          "ArrowLeft",
+          "ArrowDown",
+          "h",
+          "j",
+          "k",
+          "l",
+          "y",
+          "u",
+          "b",
+          "n",
+        ].indexOf(ev.key) != -1 &&
         !state.inputFocused
       ) {
         const key = ev.key as ArrowKey
@@ -858,8 +1049,16 @@ export default defineComponent({
             state.socket?.emit("Subscribe", { channel: poster_viewing })
           }
           state.center = {
-            x: inRange(me.x, 5, state.cols - 6),
-            y: inRange(me.y, 5, state.rows - 6),
+            x: inRange(
+              me.x,
+              props.isMobile ? 3 : 5,
+              state.cols - (props.isMobile ? 3 : 5) - 1
+            ),
+            y: inRange(
+              me.y,
+              props.isMobile ? 5 : 5,
+              state.rows - (props.isMobile ? 5 : 5) - 1
+            ),
           }
           state.hidden = false
         }
@@ -1123,6 +1322,20 @@ export default defineComponent({
       }
     }
 
+    const moveToPane = (pane: string) => {
+      if ((pane == "poster" || pane == "poster_chat") && !posterLooking.value) {
+        return
+      }
+      location.hash = pane
+      state.mobilePane = pane
+    }
+
+    if (props.isMobile) {
+      if (location.hash == "") {
+        location.hash = "map"
+      }
+    }
+
     return {
       ...toRefs(state),
       formatTime,
@@ -1140,7 +1353,7 @@ export default defineComponent({
       deleteComment: deleteComment(props.axios),
       deletePosterComment: deletePosterComment(props.axios),
       onInputTextChange,
-      cellsMag: cellsMag(state),
+      cellsMag: cellsMag(state, props.isMobile ? 4 : 5, props.isMobile ? 6 : 5),
       hideMessage,
       dblClick,
       toggleBot,
@@ -1162,6 +1375,7 @@ export default defineComponent({
       posterComponent,
       enterPoster: enterPoster(props.axios, props, state),
       leavePoster,
+      moveToPane,
     }
   },
 })
@@ -1190,6 +1404,7 @@ html {
 body {
   font-family: "YuGothic", Loto, sans-serif;
   min-width: 800px;
+  margin: 0px !important;
 }
 
 #header {
@@ -1255,6 +1470,11 @@ button#enter-poster-on-map {
   top: 90px;
 }
 
+#app-main.mobile #enter-poster-on-map {
+  right: 10px;
+  top: 10px;
+}
+
 div#poster-preview {
   position: absolute;
   padding: 8px;
@@ -1285,33 +1505,6 @@ button#leave-poster-on-map {
 
 .user-select {
   margin: 0px 10px;
-}
-
-.comment-entry {
-  line-height: 1em;
-  word-break: break-all;
-}
-
-.comment-name {
-  font-size: 11px;
-  color: #1d1c1d;
-  font-weight: 900;
-}
-
-.comment-time {
-  font-size: 10px;
-  color: #616061;
-}
-
-.comment-recipients {
-  font-size: 11px;
-  color: #1d1c1d;
-}
-
-.comment-content {
-  font-size: 14px;
-  color: #1d1c1d;
-  line-height: 1.3em;
 }
 
 #minimap-area {
@@ -1445,5 +1638,56 @@ button#leave-poster-on-map {
 
 .toolbar-icon.disabled {
   opacity: 0.3;
+}
+
+#mobile-menu {
+  position: fixed;
+  width: 100%;
+  height: 20vw;
+  margin: 0px;
+  bottom: 0px;
+}
+
+.mobile-menu-item {
+  background: #bbb;
+  width: 20vw;
+  height: 100%;
+  margin: 0px;
+  float: left;
+}
+
+.mobile-menu-item img {
+  width: 12vw;
+  margin: calc((20vw - 12vw) / 2);
+  display: block;
+  text-align: center;
+}
+
+.mobile-menu-item.disabled img {
+  opacity: 0.3;
+}
+
+.mobile-menu-item-active {
+  position: absolute;
+  background: #33f;
+  width: 20vw;
+  height: 2vw;
+  bottom: 0px;
+}
+
+.mobile #tools-on-map button#leave-poster-on-map {
+  font-size: 27px;
+  left: 100px;
+  width: 400px;
+  right: 10px;
+  height: 40px;
+}
+
+.mobile #tools-on-map button#enter-poster-on-map {
+  font-size: 27px;
+  left: 100px;
+  width: 400px;
+  right: 10px;
+  height: 40px;
 }
 </style>

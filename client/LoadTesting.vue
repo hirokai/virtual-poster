@@ -219,7 +219,10 @@ export default defineComponent({
             state.socketURL =
               (await client.socket_url.$get()).socket_url || null
 
-            state.socket = io(state.socketURL, { path: "/socket.io" })
+            state.socket = io(state.socketURL, {
+              path: "/socket.io",
+              transports: ["websocket"],
+            })
             if (!state.socket) {
               console.error("Socket IO init error")
               return

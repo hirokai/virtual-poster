@@ -76,7 +76,10 @@
       :style="{
         'font-size':
           person.name.length >= 5 ? 10 : person.name.length >= 4 ? 12 : 14,
+        'font-weight':
+          person.avatar?.split(':')[2] == 'bold' ? 'bold' : 'normal',
       }"
+      :fill="person.avatar?.split(':')[1] || 'black'"
       x="24px"
       y="44px"
       dominant-baseline="bottom"
@@ -145,10 +148,15 @@ export default defineComponent({
     })
 
     const avatarImage = computed(() => {
+      const avatar = props.person.avatar
       const dir =
         props.person.direction == "none" ? "down" : props.person.direction
-      const data_url = props.avatarImages[props.person.avatar + "-" + dir]
-      return data_url ? "data:image/png;base64," + data_url : "N/A"
+      const data_url = avatar
+        ? props.avatarImages[avatar.split(":")[0] + "-" + dir]
+        : undefined
+      return data_url && avatar
+        ? "data:image/png;base64," + data_url
+        : "/img/avatar/" + avatar?.split(":")[0] + "-" + dir + ".png"
     })
 
     const onDragOverMyPoster = () => {

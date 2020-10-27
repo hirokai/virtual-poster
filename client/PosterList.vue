@@ -158,7 +158,7 @@ export default defineComponent({
         .$get()
         .then(data => {
           const url = data.socket_url as string
-          const socket = io(url)
+          const socket = io(url, { transports: ["websocket"] })
           if (!socket) {
             console.error("Socket connection failed.")
             return

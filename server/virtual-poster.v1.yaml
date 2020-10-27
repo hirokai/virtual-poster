@@ -558,6 +558,38 @@ paths:
               required:
                 - userId
       description: Get people of a group in a room
+    delete:
+      summary: ""
+      operationId: delete-maps-roomId-groups-groupId-people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  group_removed:
+                    type: boolean
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserId"
+                required:
+                  - ok
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+      tags:
+        - chat
+      description: "Kick out a member from chat  "
   "/maps/{roomId}/groups":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -1860,10 +1892,12 @@ paths:
                     type: string
                   image_allowed:
                     type: boolean
+                  image_url:
+                    type: string
                 required:
                   - ok
       operationId: post-maps-roomId-posters-posterId-enter
-      description: "Start viewing a poster. After this, the user can get comments.  "
+      description: "Start viewing a poster. After this, the user can get poster image and comments.  "
   "/maps/{roomId}/posters/{posterId}/leave":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -2013,6 +2047,38 @@ paths:
                 required:
                   - debug_token
           description: OK
+  "/posters/{posterId}/file_url":
+    parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    get:
+      summary: Get a poster image URL.
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+      operationId: get-maps-roomId-posters-posterId-image_url
+      security:
+        - debugAs: []
+        - debugToken: []
+      description: "Get a signed URL of   a poster image. This is only allowed when the user is viewing poster.  "
 components:
   parameters:
     debug_token:

@@ -30,14 +30,12 @@ import { ChatGroupId } from "@/api/@types"
 import { genChatEventId } from "./chat"
 const DEBUG_TOKEN = config.debug_token
 
-let initialized = false
-
 const get_pos_pg = new pg.PreparedStatement({
   name: "get_pos",
   text: `SELECT * from person_position WHERE room=$1 AND person=$2`,
 })
 
-export async function init(): Promise<void> {
+export async function writePeopleCache(): Promise<void> {
   try {
     const people: (PersonRDB & {
       token: string
@@ -66,7 +64,7 @@ export async function init(): Promise<void> {
         }
       }
     }
-    initialized = true
+    log.info(`Redis cache of people was prepared.`)
   } catch (err) {
     log.error(err)
   }
@@ -112,9 +110,6 @@ export async function get(
   email?: string
   rooms?: { room_id: RoomId; pos?: PosDir }[]
 } | null> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
   const rows = with_room_access
     ? await db.query(
         `
@@ -735,9 +730,6 @@ export async function set(
     avatar?: string
   }
 ): Promise<void> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
   const updateObj = {
     ..._.pickBy(_.pick(data, ["name", "email", "avatar"])),
     last_updated: Date.now(),
@@ -770,9 +762,6 @@ export async function update(
   keys: string[]
   update: { id: UserId; last_updated: number; name?: string; email?: string }
 } | null> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
   const person = await get(user_id)
   if (!person) {
     return null
@@ -831,39 +820,40 @@ export async function authSocket(
     token,
     debug_as,
   }: {
-    user: UserId
+    user?: UserId
     token?: string
     debug_as?: UserId
   },
   socket_id?: string
-): Promise<boolean> {
+): Promise<UserId | null> {
   log.debug({ user, token, debug_as })
   if (socket_id) {
-    const r = redis.sockets.get("auth:" + socket_id)
+    const r = await redis.sockets.get("auth:" + socket_id)
     if (r) {
-      return true
+      return r
     }
   }
   if (debug_as) {
     if (debug_as == user && token == DEBUG_TOKEN) {
-      return true
+      return user
     } else {
       const is_admin = (await getUserType(debug_as)) == "admin"
-      return is_admin
+      return is_admin ? debug_as : null
     }
   } else if (token) {
     const sender_id = await getUserIdFromJWTHash(token)
+    console.log({ sender_id, user, token })
     if (!sender_id) {
       log.debug("Sender not found")
-      return false
+      return null
     } else if (sender_id && sender_id == user) {
-      return true
+      return user
     } else {
       const is_admin = (await getUserType(sender_id)) == "admin"
-      return is_admin
+      return is_admin ? sender_id : null
     }
   } else {
-    return false
+    return null
   }
 }
 
@@ -884,9 +874,6 @@ export async function setDirection(
   user_id: UserId,
   direction: Direction
 ): Promise<void> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
   const pos = await getPos(user_id, room_id)
   if (pos) {
     await redis.accounts.set(
@@ -903,9 +890,6 @@ export async function setDirection(
 export async function getAll(
   room_id: RoomId | null
 ): Promise<{ [index: string]: Person }> {
-  if (!initialized) {
-    throw new Error("Not initialized")
-  }
   const people_list = await getAllPeopleList(room_id)
   return _.keyBy(people_list, "id")
 }

@@ -1,27 +1,30 @@
 import { createApp } from "vue"
 import Room from "./Room.vue"
-import * as firebase from "firebase/app"
-import "firebase/auth"
 import axiosDefault from "axios"
 import { UserId, RoomId } from "@/@types/types"
-import firebaseConfig from "@/firebaseConfig"
 
 const url = new URL(location.href)
 
-const isMobile = !!JSON.parse(url.searchParams.get("mobile") || "false")
+const forceMobileOn = url.searchParams.get("mobile") == "true"
+const forceMobileOff = url.searchParams.get("mobile") == "false"
+const mobilePane = location.hash != "" ? location.hash : undefined
+
 const mobile_agent = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
-if (!isMobile && mobile_agent) {
-  url.searchParams.set("mobile", "true")
-  location.href = url.toString()
+let isMobile: boolean
+if (forceMobileOn) {
+  isMobile = true
+} else if (forceMobileOff) {
+  isMobile = false
+} else if (mobile_agent) {
+  isMobile = true
+} else {
+  isMobile = false
 }
 
 const API_ROOT = "/api"
 const axios = axiosDefault.create({
   baseURL: API_ROOT,
 })
-
-firebase.initializeApp(firebaseConfig)
-window.firebase = firebase
 
 const room_id: RoomId | null = url.searchParams.get("room_id")
 if (!room_id) {
@@ -35,8 +38,6 @@ const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
 const bot_mode = url.searchParams.get("bot_mode") == "1"
-
-  // firebase.auth().onAuthStateChanged(user => {
 ;(async () => {
   const user = { emailVerified: true, email: "hoge" }
   // console.log("User:", user, debug_as)
@@ -52,6 +53,7 @@ const bot_mode = url.searchParams.get("bot_mode") == "1"
       idToken: "",
       axios,
       isMobile,
+      mobilePaneFromHash: mobilePane,
     }
     createApp(Room, propsData).mount("#app")
 
@@ -61,8 +63,6 @@ const bot_mode = url.searchParams.get("bot_mode") == "1"
     location.href = "/login"
   } else {
     if (!user.emailVerified) {
-      firebase.auth().languageCode = "ja"
-
       console.log("Verification email sent")
       alert(
         "確認のメールを送信しました。メールボックスをチェックしてください。"
@@ -79,11 +79,10 @@ const bot_mode = url.searchParams.get("bot_mode") == "1"
         const propsData = {
           room_id,
           myUserId: data.user_id,
-          user: user,
           bot_mode: bot_mode,
           jwt_hash_initial,
           axios,
-          isMobile,
+          isMobile: false, //Temporarily disable, as it is broken
         }
         console.log("Initializing...", data, user?.email, propsData)
         // app.$props.socket = app.$mount("#app")

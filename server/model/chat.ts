@@ -774,7 +774,7 @@ export async function getGroupIdOfUser(
   room_id: RoomId,
   user_id: UserId
 ): Promise<ChatGroupId | null> {
-  log.info("getGroupIdOfUser", room_id, user_id)
+  // log.info("getGroupIdOfUser", room_id, user_id)
   const rows = await db.query(
     `SELECT id FROM chat_group AS g
      JOIN person_in_chat_group AS pcg ON pcg.chat=g.id
@@ -1034,7 +1034,8 @@ export async function addMember(
 }
 export async function leaveChat(
   room_id: RoomId,
-  user_id: UserId
+  user_id: UserId,
+  by_user?: UserId //Kicked by another use
 ): Promise<{
   ok: boolean
   error?: string
@@ -1068,7 +1069,7 @@ export async function leaveChat(
       const id = genChatEventId()
       await db.query(
         `INSERT INTO chat_event (id, room, chat_group, person, event_type, "timestamp") VALUES ($1,$2,$3,$4,$5,$6);`,
-        [id, room_id, group_id, user_id, "dissolve", timestamp]
+        [id, room_id, group_id, by_user || user_id, "dissolve", timestamp]
       )
       await db.query(
         pgp.helpers.insert(
@@ -1083,7 +1084,7 @@ export async function leaveChat(
     return {
       ok,
       removedGroup: ok ? group_id : undefined,
-      removedGroupOldMembers: ok ? left_users : undefined,
+      removedGroupOldMembers: ok ? g1.users : undefined,
       timestamp,
     }
   } else {
@@ -1098,8 +1099,8 @@ export async function leaveChat(
           id,
           room_id,
           group_id,
-          user_id,
-          "leave",
+          by_user || user_id,
+          by_user ? "kick" : "leave",
           { left_user: user_id, users: group.users },
           timestamp,
         ]

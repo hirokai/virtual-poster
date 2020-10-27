@@ -2,11 +2,8 @@
   <svg
     id="cells"
     :style="cssVars"
-    :class="{ small: !!activePoster, normal: goBackToNormal }"
+    :class="{ small: !isMobile && !!activePoster, normal: goBackToNormal }"
     viewBox="0 0 528 528"
-    :transform="
-      isMobile ? `scale (1.75) translate (${48 * (mapRadiusX - 2)} 0)` : ''
-    "
   >
     <g v-for="(row, yi) in cells" :key="yi" :data-y="row[0].y">
       <MapCell
@@ -223,17 +220,19 @@ export default defineComponent({
       context.emit("input-arrow-key", key)
     }
     const clickController = event => {
-      const scale = props.activePoster ? 0.6 : 1
-      const x = event.layerX - 384 * scale
-      const y = event.layerY - 432 * scale
-      if (y <= 48 * scale) {
+      const x = event.layerX - 48 * (props.mapRadiusX * 2 - 2)
+      const y = event.layerY - 48 * (props.mapRadiusY * 2 - 1)
+      // console.log({ layerX: event.layerX, layerY: event.layerY, x, y })
+      if (y <= 48 && x >= 48 && x < 96) {
         pressArrowButton("ArrowUp")
-      } else if (x < 48 * scale) {
+      } else if (x < 48 && y >= 48) {
         pressArrowButton("ArrowLeft")
-      } else if (x < 96 * scale) {
+      } else if (x >= 48 && x < 96 && y >= 48) {
         pressArrowButton("ArrowDown")
-      } else {
+      } else if (x >= 96 && y >= 48) {
         pressArrowButton("ArrowRight")
+      } else {
+        console.log("No match on controller position. This must be a bug.")
       }
     }
 
@@ -251,23 +250,27 @@ export default defineComponent({
         return props.mapRadiusY
       }),
       "--map_scale_normal": computed(() => {
-        return props.isMobile ? 1.5 : 1
+        return props.isMobile ? 1 : 1
+      }),
+      "--controller_x": computed(() => {
+        return "" + 48 * (props.mapRadiusX * 2 - 2) + "px"
       }),
       "--controller_y": computed(() => {
         return (
           "" +
-          48 * ((props.myself?.y || props.center.y) - props.center.y + 6) +
+          48 *
+            ((props.myself?.y || props.center.y) -
+              props.center.y +
+              (props.mapRadiusY + 1)) +
           "px"
         )
       }),
-      top: props.isMobile ? "0px" : undefined,
-      left: props.isMobile ? "0px" : undefined,
     })
 
     watch(
       () => !!props.activePoster,
       () => {
-        if (!props.activePoster) {
+        if (!props.activePoster && !props.isMobile) {
           state.goBackToNormal = true
         }
       }
@@ -321,6 +324,11 @@ svg#cells {
   z-index: -1;
 }
 
+.mobile svg#cells {
+  left: 0px;
+  top: 0px;
+}
+
 svg#cells.normal {
   animation-name: svg_scale_back;
   animation-duration: 1s;
@@ -343,6 +351,11 @@ svg#cells #controller {
   animation-fill-mode: forwards;
 }
 
+.mobile svg#cells #controller {
+  display: none;
+  /* transform: translate(100px, 100px); */
+}
+
 svg#cells.small #controller {
   animation-name: controller_translate;
   animation-duration: 1s;
@@ -352,25 +365,25 @@ svg#cells.small #controller {
 
 @keyframes controller_translate {
   0% {
-    transform: translate(384px, 432px);
+    transform: translate(var(--controller_x), 432px);
   }
   50% {
-    transform: translate(384px, var(--controller_y));
+    transform: translate(var(--controller_x), var(--controller_y));
   }
   100% {
-    transform: translate(384px, var(--controller_y));
+    transform: translate(var(--controller_x), var(--controller_y));
   }
 }
 
 @keyframes controller_translate_rev {
   0% {
-    transform: translate(384px, var(--controller_y));
+    transform: translate(var(--controller_x), var(--controller_y));
   }
   50% {
-    transform: translate(384px, var(--controller_y));
+    transform: translate(var(--controller_x), var(--controller_y));
   }
   100% {
-    transform: translate(384px, 432px);
+    transform: translate(var(--controller_x), 432px);
   }
 }
 
@@ -454,5 +467,9 @@ svg#cells.small #controller {
 }
 .cls-2 {
   fill: white;
+}
+
+.mobile svg#cells {
+  transform: scale(1) translate(10px, -100px);
 }
 </style>

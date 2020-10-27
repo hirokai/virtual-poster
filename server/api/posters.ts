@@ -8,13 +8,10 @@ import { emit } from "../socket"
 import multer from "fastify-multer"
 import { promisify } from "util"
 import fs from "fs"
-import { spawn } from "child_process"
-import shortid from "shortid"
 import path from "path"
 import AWS from "aws-sdk"
 import { config } from "../config"
 
-const writeFile = promisify(fs.writeFile)
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
 const existsAsync = promisify(fs.exists)
@@ -30,54 +27,18 @@ AWS.config.update({
   secretAccessKey: AWS_SECRET_ACCESS_KEY,
   region: AWS_REGION,
 })
-const s3 = new AWS.S3({ apiVersion: "2006-03-01", signatureVersion: "v4" })
+
+const s3 = new AWS.S3({
+  apiVersion: "2006-03-01",
+  signatureVersion: "v4",
+  accessKeyId: AWS_ACCESS_KEY_ID,
+  secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  region: AWS_REGION,
+})
 
 const cloudfront = new AWS.CloudFront({
   apiVersion: "2017-03-25",
 })
-
-async function uploadFileToS3(file_path: string): Promise<string> {
-  if (!S3_BUCKET) {
-    throw "S3 bucket not set"
-  }
-  const key = "files/" + path.basename(file_path)
-  const invalidate_items = ["/" + key]
-
-  if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
-    const params = {
-      DistributionId: CLOUDFRONT_ID,
-      InvalidationBatch: {
-        CallerReference: String(new Date().getTime()),
-        Paths: {
-          Quantity: invalidate_items.length,
-          Items: invalidate_items,
-        },
-      },
-    }
-    const data1 = await cloudfront.createInvalidation(params).promise()
-    console.log(data1)
-  }
-
-  // call S3 to retrieve upload file to specified bucket
-
-  // Configure the file stream and obtain the upload parameters
-  const fileStream = fs.createReadStream(file_path)
-  fileStream.on("error", function(err) {
-    console.log("File Error", err)
-  })
-
-  const uploadParams = {
-    Bucket: S3_BUCKET,
-    Key: key,
-    Body: fileStream,
-    ACL: "public-read",
-  }
-
-  // call S3 to retrieve upload file to specified bucket
-  const data = await s3.upload(uploadParams).promise()
-  console.log("Uploaded:", data)
-  return data.Location
-}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -177,75 +138,6 @@ async function routes(
     }
   })
 
-  async function updatePosterFile(
-    poster: Poster,
-    file: any
-  ): Promise<{ ok: boolean; error?: string }> {
-    const data = file.buffer
-    if (file.mimetype == "image/png") {
-      const out_path = "db/posters/" + poster.id + ".png"
-      await writeFile(out_path, data)
-      await model.posters.set(poster)
-      if (S3_BUCKET) {
-        const _s3_url = await uploadFileToS3(out_path)
-        await deleteFile(out_path)
-      }
-      return { ok: true }
-    } else {
-      const filename = "db/posters/tmp-" + shortid.generate() + ".pdf"
-      await writeFile(filename, data)
-      fastify.log.debug("writeFile: ", filename, data.length)
-
-      const out_path = "db/posters/" + poster.id + ".png"
-      // gs -sDEVICE=png16m -r300 -dGraphicsAlphaBits=4 -o test-out.png tmp-4RBgnRNyN.pdf
-      const child = spawn("gs", [
-        "-sDEVICE=png16m",
-        "-dLastPage=1",
-        "-r300",
-        "-dGraphicsAlphaBits=4",
-        "-o",
-        out_path,
-        filename,
-      ])
-      await model.posters.set(poster)
-      const r = await new Promise<{ ok: boolean; error?: string }>(resolve => {
-        // use child.stdout.setEncoding('utf8'); if you want text chunks
-        child.stdout.on("data", (chunk: Buffer) => {
-          fastify.log.debug("Ghostscript stdout:", chunk.toString("utf8"))
-        })
-        child.on("close", code => {
-          fs.unlink(filename, () => {
-            //
-          })
-          if (code == 0) {
-            if (S3_BUCKET) {
-              uploadFileToS3(out_path)
-                .then(() => {
-                  deleteFile(out_path)
-                    .then(() => {
-                      console.log(
-                        "Uploaded PDF to S3 and deleted a local file."
-                      )
-                    })
-                    .catch(err => {
-                      console.error(err)
-                    })
-                })
-                .catch(err => {
-                  console.error(err)
-                })
-            }
-            resolve({ ok: true })
-          } else {
-            resolve({ ok: false, error: "PDF conversion error" })
-          }
-        })
-      })
-      const _s3_url = await uploadFileToS3(out_path)
-      return r
-    }
-  }
-
   fastify.post<any>(
     "/maps/:roomId/people/:userId/poster/file",
     { preHandler: upload },
@@ -261,7 +153,7 @@ async function routes(
           return { ok: false, error: "Poster not found" }
         } else {
           poster.last_updated = Date.now()
-          const r = await updatePosterFile(poster, req["file"])
+          const r = await model.posters.updatePosterFile(poster, req["file"])
           if (r.ok) {
             emit.channels([userId, poster.room]).poster(poster)
           }
@@ -277,7 +169,6 @@ async function routes(
       __dirname,
       "..",
       "..",
-      "..",
       "db",
       "posters",
       posterId + ".png"
@@ -288,7 +179,6 @@ async function routes(
       const ti = Date.now()
       const content = await readFile(file)
       await res.send(content)
-      res.sent = true
       const tf = Date.now()
       fastify.log.debug(`Sent file in ${tf - ti} ms.`)
     } else {
@@ -313,7 +203,7 @@ async function routes(
         throw { statusCode: 403 }
       }
       poster.last_updated = Date.now()
-      const r = await updatePosterFile(poster, req["file"])
+      const r = await model.posters.updatePosterFile(poster, req["file"])
       if (r.ok) {
         const new_poster = await model.posters.get(poster_id)
         if (new_poster) {
@@ -335,8 +225,9 @@ async function routes(
         return { ok: false, error: "Poster not found" }
       } else {
         poster.last_updated = Date.now()
-        if (S3_BUCKET) {
+        if (config.aws.s3.upload) {
           const key = "files/" + posterId + ".png"
+          req.log.info("Deleting S3 file", key)
           await s3
             .deleteObject({
               Bucket: S3_BUCKET as string,
@@ -345,6 +236,7 @@ async function routes(
             .promise()
           if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
             const invalidate_items = ["/" + key]
+            req.log.info("Invalidating CloudFront cache", invalidate_items)
             const params = {
               DistributionId: CLOUDFRONT_ID,
               InvalidationBatch: {
@@ -356,7 +248,7 @@ async function routes(
               },
             }
             const data1 = await cloudfront.createInvalidation(params).promise()
-            console.log(data1)
+            req.log.debug(data1)
           }
         } else {
           await deleteFile("db/posters/" + poster.id + ".png")
@@ -366,6 +258,29 @@ async function routes(
       }
     }
   )
+
+  fastify.get<any>("/posters/:posterId/file_url", async (req, res) => {
+    const posterId: string = req.params.posterId
+    const poster = await model.posters.get(posterId)
+    if (!poster) {
+      throw { satusCode: 404, message: "Poster not found" }
+    }
+    if (config.aws.s3.upload) {
+      if (
+        poster.author == req["requester"] ||
+        req["requester_type"] == "admin" ||
+        (await model.posters.isViewing(req["requester"], poster.id))
+      ) {
+        const url = (await model.posters.get_signed_url(posterId)) || undefined
+        return { ok: !!url, url }
+      } else {
+        throw { statusCode: 403 }
+      }
+    } else {
+      const file_url = "/api/posters/" + poster.id + "/file"
+      return { ok: true, url: file_url }
+    }
+  })
 
   fastify.delete<any>(
     "/maps/:room_id/people/:user_id/poster/file",

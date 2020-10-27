@@ -22,15 +22,17 @@
         </ul>
       </div>
       <div id="tabs">
-        <div v-if="tab == 'avatar'">
-          <div>
+        <div v-if="tab == 'avatar'" class="tab-content">
+          <section>
+            <h5 class="title is-5">アバター</h5>
+
             <div
               v-for="n in avatars"
               :key="n"
               alt=""
               class="avatar"
               width="38"
-              :class="{ current: n == myself.avatar }"
+              :class="{ current: n == myself.avatar.split(':')[0] }"
               @click="clickAvatar(n)"
               @mouseenter="onMouseOverAvatar(n, true)"
               @mouseleave="onMouseOverAvatar(n, false)"
@@ -42,14 +44,34 @@
             <p>
               画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用
             </p>
-          </div>
+          </section>
+          <section>
+            <h5 class="title is-5">名前の表示色</h5>
+            <div
+              v-for="color in name_colors"
+              :key="color"
+              class="name-color"
+              :class="{ current: color == myself.avatar.split(':')[1] }"
+              :style="{ background: color }"
+              @click="clickNameColor(color)"
+            ></div>
+            <div style="clear:both"></div>
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                v-model="displayNameBold"
+                id="check-name-bold"
+              /><label for="check-name-bold">太字にする</label>
+            </div>
+          </section>
         </div>
         <div class="tab-content" id="tab-map" v-if="tab == 'map'">
           <section>
             <h5 class="title is-5">アクセスコード</h5>
             <label for="access_code">アクセスコード</label>
-            <input type="text" id="access_code" v-model="access_code" />
-            <button @click="submitAccessCode(access_code)">送信</button>
+            <input type="text" id="access_code" ref="AccessCodeInput" />
+            <button @click="submitAccessCode">送信</button>
           </section>
           <section>
             <h5 class="title is-5">アクセス可能なマップ</h5>
@@ -89,7 +111,7 @@
           @delete-poster="deletePoster"
           @update-last-loaded="updateLastLoaded"
         />
-        <div v-if="tab == 'vote'">
+        <div v-if="tab == 'vote'" class="tab-content">
           <h5 class="title is-5">投票</h5>
 
           <div>
@@ -234,7 +256,7 @@
             </div>
           </section>
         </div>
-        <div v-if="tab == 'help'">
+        <div v-if="tab == 'help'" class="tab-content">
           <h5 class="title is-5">簡単な使い方</h5>
           <p style="font-size: 14px; line-height: 1; margin: 0px;">
             ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
@@ -297,12 +319,9 @@ import {
 } from "@/@types/types"
 import { keyBy, difference, range, chunk } from "@/common/util"
 import io from "socket.io-client"
-import * as firebase from "firebase/app"
-import "firebase/auth"
 import * as encryption from "../encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
-import firebaseConfig from "@/firebaseConfig"
 import { deleteUserInfoOnLogout, formatTime } from "../util"
 import { decryptIfNeeded } from "../room/room_chat_service"
 import MypagePoster from "./MypagePoster.vue"
@@ -363,7 +382,6 @@ export default defineComponent({
     MypagePoster,
   },
   setup: () => {
-    firebase.initializeApp(firebaseConfig)
     const myUserId = ""
     const name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
@@ -420,8 +438,6 @@ export default defineComponent({
       mouseOnAvatar: {} as { [index: string]: boolean },
       count: 0,
 
-      access_code: "",
-
       enableEncryption: false,
       showPrivKey: false,
 
@@ -457,7 +473,24 @@ export default defineComponent({
       avatarImages: {} as { [index: string]: string },
       allowedMaps: [] as Room[],
       ownedMaps: [] as Room[],
+      displayNameBold: false,
     })
+
+    const name_colors = [
+      "black",
+      "red",
+      "blue",
+      "#1f77b4",
+      "#ff7f0e",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b",
+      "#e377c2",
+      "#7f7f7f",
+      "#bcbd22",
+      "#17becf",
+    ]
 
     const myself = computed((): Person | null => {
       return state.myUserId ? state.people[state.myUserId] : null
@@ -614,15 +647,68 @@ export default defineComponent({
     const updateLastLoaded = (t: number) => {
       state.lastLoaded = t
     }
+
     const clickAvatar = async (n: string) => {
+      const ts = state.people[state.myUserId].avatar?.split(":") || []
+      const icon = n
+      const color = ts[1] || "black"
+      const bold = ts[2] || ""
+      const new_avatar = `${n}:${color}:${bold}`
       const data = await client.people
         ._userId(state.myUserId)
-        .$patch({ body: { avatar: n } })
+        .$patch({ body: { avatar: new_avatar } })
       if (data.ok) {
         //Vue.set
-        state.people[state.myUserId].avatar = n
+        state.people[state.myUserId].avatar = new_avatar
       }
     }
+
+    const clickNameColor = async (c: string) => {
+      const ts = state.people[state.myUserId].avatar?.split(":") || []
+      const icon = ts[0]
+      const color = c
+      const bold = ts[2] || ""
+      if (
+        icon.indexOf(":") != -1 ||
+        color.indexOf(":") != -1 ||
+        bold.indexOf(":") != -1
+      ) {
+        console.error("Invalid character in avatar")
+        return
+      }
+      const new_avatar = `${icon}:${color}:${bold}`
+      const data = await client.people
+        ._userId(state.myUserId)
+        .$patch({ body: { avatar: new_avatar } })
+      if (data.ok) {
+        //Vue.set
+        state.people[state.myUserId].avatar = new_avatar
+      }
+    }
+
+    watch(
+      () => state.displayNameBold,
+      async (b: boolean) => {
+        const avatar = state.people[state.myUserId]?.avatar
+        if (avatar) {
+          const ts = avatar.split(":")
+          const avatar_icon = ts[0]
+          const avatar_name_color = ts[1] || "black"
+          const avatar_name_bold = b
+          const new_avatar = `${avatar_icon}:${avatar_name_color}:${
+            avatar_name_bold ? "bold" : ""
+          }`
+          const data = await client.people
+            ._userId(state.myUserId)
+            .$patch({ body: { avatar: new_avatar } })
+          if (data.ok) {
+            //Vue.set
+            state.people[state.myUserId].avatar = new_avatar
+          }
+        }
+      }
+    )
+
     const setPerson = (d: PersonUpdate) => {
       console.log("setPerson", d)
       const p = state.people[d.id]
@@ -667,13 +753,17 @@ export default defineComponent({
       state.people[state.myUserId].name = new_name
       state.editing.name = null
     }
+
     const signOut = async () => {
-      await firebase.auth().signOut()
-      console.log("Firebase signed out")
-      await client.logout.$post()
-      console.log("App signed out")
-      deleteUserInfoOnLogout()
-      location.href = "/login"
+      const client = api(axiosClient(axios))
+      const r = await client.logout.$post()
+      if (r.ok) {
+        console.log("Signed out")
+        deleteUserInfoOnLogout()
+        location.href = "/login"
+      } else {
+        console.log("Did not sign out")
+      }
     }
 
     onMounted(() => {
@@ -681,7 +771,7 @@ export default defineComponent({
         .$get()
         .then(data => {
           const url = data.socket_url as string
-          socket = io(url)
+          socket = io(url, { transports: ["websocket"] })
           if (!socket) {
             console.error("Socket connection failed.")
             return
@@ -785,6 +875,7 @@ export default defineComponent({
         state.bgPosition = bgPositions[state.count]
       }, 500)
     })
+
     watch(
       () => state.enableEncryption,
       () => {
@@ -1015,10 +1106,17 @@ export default defineComponent({
       }
     }
 
-    const submitAccessCode = async (code: string) => {
+    const AccessCodeInput = ref<HTMLInputElement>()
+
+    const submitAccessCode = async () => {
+      const access_code = AccessCodeInput.value?.value
+      if (!access_code) {
+        console.warn("Cannot find access code")
+        return
+      }
       const r = await client.people
         ._userId(state.myUserId)
-        .access_code.$post({ body: { access_code: code } })
+        .access_code.$post({ body: { access_code } })
       console.log(r)
       if (!r.ok) {
         const idx = r.error?.indexOf("Access code is invalid")
@@ -1030,6 +1128,9 @@ export default defineComponent({
         alert("何も追加されませんでした")
       } else {
         alert("追加されました")
+        if (AccessCodeInput.value) {
+          AccessCodeInput.value.value = ""
+        }
       }
     }
 
@@ -1085,6 +1186,7 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
+      name_colors,
       formatTime,
       postersSorted,
       onMouseOverAvatar,
@@ -1097,6 +1199,7 @@ export default defineComponent({
       signOut,
       reload,
       clickAvatar,
+      clickNameColor,
       inputName,
       startEditingName,
       saveName,
@@ -1112,6 +1215,7 @@ export default defineComponent({
       submitAccessCode,
       deleteRoom,
       exportLog,
+      AccessCodeInput,
     }
   },
 })
@@ -1154,6 +1258,20 @@ div.avatar:hover {
 
 div.avatar.current {
   border: blue 2px solid;
+}
+
+.name-color {
+  float: left;
+  width: 40px;
+  height: 40px;
+  padding: 0px;
+  margin: 5px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+div.name-color.current {
+  border: black 4px solid;
 }
 
 .edit-btn {
@@ -1218,10 +1336,14 @@ div.poster-entry {
   text-shadow: 0 0 16px rgba(0, 0, 0, 0.9);
 }
 
+.tab-content {
+  margin: 10px;
+}
+
 .tab-content > section {
   border: 1px solid #ccc;
   border-radius: 3px;
-  margin: 10px;
+  margin: 10px 0px;
   padding: 10px;
 }
 

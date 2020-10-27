@@ -211,6 +211,7 @@ CREATE TYPE chat_event_type AS ENUM (
     'join',
     'add',
     'leave',
+    'kick',
     'dissolve',
     'start_overhear',
     'end_overhear',

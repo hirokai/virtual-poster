@@ -70,6 +70,46 @@ async function routes(
     return { ok, error, leftGroup }
   })
 
+  fastify.delete<any>("/maps/:roomId/groups/:groupId/people", async req => {
+    //Kick out user
+    const room = req.params.roomId
+    const personToRemove: string = req.body.userId
+    const requester = req["requester"]
+    const {
+      ok,
+      error,
+      leftGroup,
+      removedGroup,
+      removedGroupOldMembers,
+      timestamp,
+    } = await model.chat.leaveChat(room, personToRemove)
+    if (ok && leftGroup && timestamp) {
+      emit.channel(room).group(leftGroup)
+      emit.channels(leftGroup.users.concat([personToRemove])).chatEvent({
+        kind: "event",
+        person: requester,
+        timestamp,
+        group: leftGroup.id,
+        event_type: "kick",
+        event_data: { left_user: personToRemove, users: leftGroup.users },
+      })
+    } else if (ok && removedGroup && timestamp) {
+      emit.channel(room).groupRemove(removedGroup)
+      if (removedGroupOldMembers) {
+        emit
+          .channels(removedGroupOldMembers.concat([personToRemove]))
+          .chatEvent({
+            kind: "event",
+            person: requester,
+            timestamp,
+            group: removedGroup,
+            event_type: "dissolve",
+          })
+      }
+    }
+    return { ok, error, leftGroup }
+  })
+
   fastify.post<any>("/maps/:roomId/groups/:groupId/people", async req => {
     const personToAdd: string = req.body.userId
     const requester = req["requester"]

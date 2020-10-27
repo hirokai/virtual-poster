@@ -199,7 +199,7 @@ async function routes(
           }
         }
       }
-      await model.initData(POSTGRES_CONNECTION_STRING)
+      await model.initMapModel(POSTGRES_CONNECTION_STRING)
       const all_rooms = Object.keys(model.maps)
       emit.channels(all_rooms).mapReset()
       return {

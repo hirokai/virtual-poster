@@ -4,7 +4,7 @@
     class="chat-container"
     :style="{
       width: isMobile
-        ? 'calc(100vw - 10px)'
+        ? 'calc(100vw - 20px)'
         : poster
         ? 'calc(100% - max(68vh,570px) - 569px)'
         : 'calc(100% - 570px)',
@@ -13,7 +13,7 @@
         : poster
         ? 'calc(550px + max(400px, 95vh / 1.4))'
         : '550px',
-      top: isMobile ? '0px' : undefined,
+      top: isMobile ? '-10px' : undefined,
       height: isMobile ? 'calc(100% - 20vw)' : undefined,
     }"
   >
@@ -24,11 +24,11 @@
     >
       <textarea
         id="local-chat-input"
-        ref="input"
-        v-model="inputText"
+        ref="ChatInput"
         :rows="numInputRows"
         @compositionstart="composing = true"
         @compositionend="composing = false"
+        @input="onInput"
         @keydown.enter="onKeyDownEnterChatInput($event)"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
@@ -45,8 +45,8 @@
           impossible: !encryptionPossibleInChat,
         }"
         ><img
+          class="encrypt-icon"
           src="/img/icon/lock-152879_1280.png"
-          height="25"
           alt="暗号化"
           @click="$emit('set-encryption', !enableEncryption)"
       /></span>
@@ -55,7 +55,7 @@
         @click="clickSubmit(localCommentHistory[replying?.id]?.__depth)"
         :disabled="
           (!replying && !editingOld && (!chatGroup || chatGroup.length == 0)) ||
-            inputText == ''
+            ChatInput.value?.value == ''
         "
       >
         <img
@@ -136,7 +136,9 @@
     <div
       class="chat-history"
       id="chat-local-history"
-      :style="{ height: 'calc(100% - ' + (142 + numInputRows * 22) + 'px)' }"
+      :style="{
+        height: 'calc(100% - ' + (142 + numInputRows * 20) + 'px)',
+      }"
     >
       <div
         v-for="c in localCommentHistory"
@@ -219,6 +221,12 @@
               {{
                 people[c.event_data.left_user].name
               }}がチャットから離脱しました
+            </span>
+            <span v-else-if="c.event_type == 'kick'" class="gray">
+              {{ formatTime(c.timestamp) }}:
+              {{ people[c.event_data.left_user].name }}が{{
+                people[c.person].name
+              }}によりチャットから退出されられました
             </span>
             <span v-else>
               {{ formatTime(c.timestamp) }}: （不明なイベント
@@ -334,6 +342,7 @@ import {
   computed,
   PropType,
   nextTick,
+  ref,
 } from "vue"
 
 import MyPicker from "./MyPicker.vue"
@@ -401,7 +410,6 @@ export default defineComponent({
   setup(props, context) {
     const state = reactive({
       composing: false,
-      inputText: "",
       voice: null as SpeechSynthesisVoice | null,
       inputTextWithoutDictation: undefined as string | undefined,
       dictation: {
@@ -411,30 +419,24 @@ export default defineComponent({
       recognition: null as any | null,
       showEmojiPicker: undefined as CommentId | undefined,
       replying: undefined as CommentEvent | undefined,
+      numInputRows: 1,
     })
-    const numInputRows = computed((): number => {
-      if (state.inputText == "") {
-        return 1
+    const ChatInput = ref<HTMLTextAreaElement>()
+
+    const onInput = async ev => {
+      const text = ev.target.value
+      console.log("watch ChatInput", text)
+      if (!text || text == "") {
+        state.numInputRows = 1
       }
-      const el = document.querySelector(
-        "#local-chat-input"
-      ) as HTMLTextAreaElement
-      if (el) {
-        const c = countLines(el)
-        console.log("countLines", c)
-        return Math.min(c, 15)
-      } else {
-        return 0
-      }
-    })
+      const c = countLines(ev.target)
+      console.log("countLines", c)
+      state.numInputRows = Math.min(c, 15)
+      context.emit("onInputTextChange")
+    }
+
     watch(
-      () => state.inputText,
-      (t: string) => {
-        context.emit("onInputTextChange", t)
-      }
-    )
-    watch(
-      () => numInputRows.value,
+      () => state.numInputRows,
       () => {
         nextTick(() => {
           let el = document.querySelector("#chat-local-history")
@@ -538,13 +540,21 @@ export default defineComponent({
     })
 
     const clearInput = () => {
-      state.inputText = ""
+      if (!ChatInput.value) {
+        console.error("Textarea ref not found")
+        return
+      }
+      ChatInput.value.value = ""
     }
 
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)
       state.replying = undefined
-      state.inputText = props.comments[cid].text_decrypted
+      if (!ChatInput.value) {
+        console.error("Textarea ref not found")
+        return
+      }
+      ChatInput.value.value = props.comments[cid].text_decrypted
       const el = document.querySelector(
         "#local-chat-input"
       ) as HTMLTextAreaElement
@@ -566,8 +576,9 @@ export default defineComponent({
       if (state.dictation.running) {
         return
       }
+      const text = ChatInput.value?.value
       console.log("Starting dictation")
-      state.inputTextWithoutDictation = state.inputText
+      state.inputTextWithoutDictation = text || ""
       state.dictation.running = true
 
       const SpeechRecognition = webkitSpeechRecognition
@@ -580,15 +591,25 @@ export default defineComponent({
         const text = event.results[0][0].transcript
         //Vue.set
         state.dictation.text = text
-        state.inputText = state.inputTextWithoutDictation + text
+        const ta = ChatInput.value
+        if (!ta) {
+          console.error("Textarea ref not found")
+          return
+        }
+        ta.value = state.inputTextWithoutDictation + text
         if (event.results[0].isFinal) {
-          state.inputText += "。"
+          ta.value += "。"
         }
         console.log(event.results[0][0].transcript, event.results[0])
       }
       recognition.onend = () => {
         console.log("Ended")
-        state.inputTextWithoutDictation = state.inputText
+        const ta = ChatInput.value
+        if (!ta) {
+          console.error("Textarea ref not found")
+          return
+        }
+        state.inputTextWithoutDictation = ta.value
         if (state.dictation.running) {
           recognition.start()
         }
@@ -680,20 +701,23 @@ export default defineComponent({
       console.log("startReply", c)
       state.replying = c
       context.emit("set-editing-old", undefined)
-      state.inputText = ""
-      const el = document.querySelector(
-        "#local-chat-input"
-      ) as HTMLTextAreaElement
-      if (el) {
-        el.value = state.inputText
-        el.focus()
+      if (!ChatInput.value) {
+        console.error("Textarea ref not found")
+        return
       }
+      ChatInput.value.value = ""
+
+      ChatInput.value.focus()
     }
 
     const clickSubmit = () => {
+      if (!ChatInput.value) {
+        console.error("Textarea ref not found")
+        return
+      }
       context.emit(
         "submit-comment",
-        state.inputText,
+        ChatInput.value.value,
         state.replying
           ? {
               id: state.replying.id,
@@ -701,7 +725,8 @@ export default defineComponent({
             }
           : undefined
       )
-      state.inputText = ""
+      ChatInput.value.value = ""
+      state.numInputRows = 1
     }
 
     const onKeyDownEnterChatInput = (ev: KeyboardEvent) => {
@@ -720,12 +745,13 @@ export default defineComponent({
 
     return {
       ...toRefs(state),
+      ChatInput,
       formatTime,
       localCommentHistory,
+      onInput,
       onKeyDownEnterChatInput,
       clearInput,
       startUpdateComment,
-      numInputRows,
       speechText,
       toggleDictation,
       is_chrome,
@@ -869,5 +895,9 @@ button#leave-chat {
 }
 .chat_event .gray {
   color: #999;
+}
+
+.encrypt-icon {
+  height: 25px;
 }
 </style>

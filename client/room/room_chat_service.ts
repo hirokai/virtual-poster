@@ -410,6 +410,24 @@ export const inviteToChat = async (
   }
 }
 
+export const kickFromChat = async (
+  axios: AxiosStatic | AxiosInstance,
+  props: RoomAppProps,
+  state: RoomAppState,
+  p: Person
+): Promise<{ ok: boolean; group_removed?: boolean; users?: UserId[] }> => {
+  const client = api(axiosClient(axios))
+  const group_id = myChatGroup(props, state).value
+  if (!group_id) {
+    return { ok: false }
+  }
+  const data = await client.maps
+    ._roomId(props.room_id)
+    .groups._groupId(group_id)
+    .people.$delete({ body: { userId: p.id } })
+  return { ok: data.ok, group_removed: !!data.group_removed, users: data.users }
+}
+
 export const initChatService = async (
   axios: AxiosStatic | AxiosInstance,
   socket: SocketIO.Socket | MySocketObject,

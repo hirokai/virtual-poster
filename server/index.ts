@@ -21,7 +21,8 @@ import * as model from "./model"
 import fs from "fs"
 import path from "path"
 import { registerSocket } from "./socket"
-import { AppNotification, RoomId } from "../@types/types"
+import { AppNotification } from "../@types/types"
+import * as bunyan from "bunyan"
 import io from "socket.io-emitter"
 import cluster from "cluster"
 import _ from "lodash"
@@ -45,20 +46,26 @@ const CERTIFICATE_FOLDER = config.certificate_folder
 const POSTGRES_CONNECTION_STRING = config.postgresql
 const GOOGLE_APPLICATION_CREDENTIALS = config.firebase_auth_credential
 
-console.log("Settings:")
-console.log({
-  PRODUCTION,
-  PORT,
-  HTTP2,
-  TLS,
-  RUST_WS_SERVER,
-  DEBUG_LOG,
-  RUN_CLUSTER,
-  CERTIFICATE_FOLDER,
-  POSTGRES_CONNECTION_STRING,
-  GOOGLE_APPLICATION_CREDENTIALS,
+const log = bunyan.createLogger({
+  name: "index",
+  src: !PRODUCTION,
+  level: DEBUG_LOG ? 1 : "info",
 })
 
+if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
+  log.info("Settings", {
+    PRODUCTION,
+    PORT,
+    HTTP2,
+    TLS,
+    RUST_WS_SERVER,
+    DEBUG_LOG,
+    RUN_CLUSTER,
+    CERTIFICATE_FOLDER,
+    POSTGRES_CONNECTION_STRING,
+    GOOGLE_APPLICATION_CREDENTIALS,
+  })
+}
 class HTTPEmitter {
   channels: string[] = []
   url =
@@ -72,10 +79,10 @@ class HTTPEmitter {
   emit(cmd: AppNotification, cmd_data?: any) {
     const data_to_send = encodeAppNotificationData(cmd, cmd_data)
     if (!data_to_send) {
-      console.error("Error in encoding notification", cmd, cmd_data)
+      log.error("Error in encoding notification", cmd, cmd_data)
       return
     }
-    console.log("Emitting: ", data_to_send)
+    log.info("Emitting: ", data_to_send)
     const data = { channels: this.channels, data: data_to_send }
     axios
       .post(this.url, data)
@@ -91,16 +98,10 @@ class HTTPEmitter {
   }
 }
 
-async function workerInitData(): Promise<RoomId[]> {
-  const poster_data_folder = "db/posters"
-  if (!fs.existsSync(poster_data_folder)) {
-    fs.mkdirSync(poster_data_folder, { recursive: true })
-  }
-  if (!(RUN_CLUSTER > 0) || cluster.worker?.id) {
-    const rooms = await model.initData(POSTGRES_CONNECTION_STRING)
-    return rooms
-  } else {
-    return []
+async function workerInitData(): Promise<void> {
+  await model.initMapModel(POSTGRES_CONNECTION_STRING)
+  if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
+    await model.initDataForMaster(POSTGRES_CONNECTION_STRING)
   }
 }
 
@@ -110,19 +111,19 @@ workerInitData()
   .then(() => {
     if (RUN_CLUSTER > 0 && cluster.isMaster) {
       const workers: number = RUN_CLUSTER // require('os').cpus().length
-      console.log("Master node run")
+      log.info("Master node run")
       _.range(workers).forEach(() => {
         const worker = cluster.fork()
-        console.log("CLUSTER: Worker %d forked", worker.id)
+        log.info("CLUSTER: Worker %d forked", worker.id)
       })
       cluster.on("exit", old_worker => {
-        console.log("CLUSTER: Worker %d exited", old_worker.id)
+        log.info("CLUSTER: Worker %d exited", old_worker.id)
         const worker = cluster.fork()
-        console.log("CLUSTER: Worker %d started", worker.id)
+        log.info("CLUSTER: Worker %d started", worker.id)
       })
     } else {
       if (cluster.worker?.id) {
-        console.log("Starting worker #" + cluster.worker?.id)
+        log.info("Starting worker #" + cluster.worker?.id)
       }
 
       let server: fastify_.FastifyInstance<any, any, any, any>
@@ -162,7 +163,6 @@ workerInitData()
       } else {
         registerSocket(io({ host: "localhost", port: 6379 }))
       }
-      console.log("Setup of socket done.")
       ;(async () => {
         try {
           await server.register(fastifyCookie, {
@@ -226,8 +226,15 @@ workerInitData()
             // log.info(
             //   "Worker #" + cluster.worker?.id + " is listening on port " + PORT
             // )
-            console.log(`Server started: listening on ${PORT}`)
             if (err) throw err
+            log.info(
+              `Server started: listening on ${PORT}` +
+                (cluster.isMaster
+                  ? " (Master node)"
+                  : cluster.worker
+                  ? " (Worker #" + cluster.worker?.id + ")"
+                  : "")
+            )
           })
         } catch (e) {
           console.log(e)

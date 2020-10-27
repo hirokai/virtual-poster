@@ -13,6 +13,7 @@ import {
   startChat,
   myChatGroup,
   inviteToChat,
+  kickFromChat,
   myChatGroup as _myChatGroup,
 } from "./room_chat_service"
 import { adjacentPoster } from "./room_poster_service"
@@ -49,6 +50,7 @@ const BATCH_MOVE_INTERVAL = 100
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
+import { posters } from "@/server/model"
 
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
   return (msg: string, timeout = 5000): void => {
@@ -117,6 +119,11 @@ export const enterPoster = (
     console.warn("Cannot start viewing a poster", r.error)
     return
   }
+
+  if (r.image_url) {
+    state.posters[pid].file_url = r.image_url
+  }
+
   if (props.isMobile) {
     location.hash = "poster"
     state.mobilePane = "poster"
@@ -411,13 +418,13 @@ moveOneStep = (
     state.center = {
       x: inRange(
         x,
-        props.isMobile ? 3 : 5,
-        state.cols - (props.isMobile ? 3 : 5) - 1
+        props.isMobile ? 4 : 5,
+        state.cols - (props.isMobile ? 4 : 5) - 1
       ),
       y: inRange(
         y,
-        props.isMobile ? 5 : 5,
-        state.rows - (props.isMobile ? 5 : 5) - 1
+        props.isMobile ? 6 : 5,
+        state.rows - (props.isMobile ? 6 : 5) - 1
       ),
     }
   }
@@ -640,24 +647,27 @@ export const dblClickHandler = (
       return
     }
 
-    if (myChatGroup(props, state).value) {
-      if (person && isAdjacent(me, person)) {
-        inviteToChat(axios, props, state, person)
-          .then(group => {
-            if (group) {
-              showMessage(
-                props,
-                state
-              )(
-                "会話に加わりました。参加者：" +
-                  group.users.map(u => state.people[u].name).join(",")
-              )
-              state.selectedUsers.clear()
-            }
-          })
-          .catch(err => {
-            console.error(err)
-          })
+    const chat_group = myChatGroup(props, state).value
+    if (chat_group) {
+      const chat_members = state.chatGroups[chat_group].users
+      if (
+        person &&
+        isAdjacent(me, person) &&
+        chat_members.indexOf(person.id) == -1
+      ) {
+        const group = await inviteToChat(axios, props, state, person)
+        if (group) {
+          showMessage(
+            props,
+            state
+          )(
+            "会話に加わりました。参加者：" +
+              group.users.map(u => state.people[u].name).join(",")
+          )
+          state.selectedUsers.clear()
+        }
+      } else if (person && chat_members.indexOf(person.id) != -1) {
+        const r = await kickFromChat(axios, props, state, person)
       } else {
         showMessage(
           props,

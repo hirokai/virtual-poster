@@ -357,7 +357,7 @@ export class MapModel {
         log.error(err)
       }
     }
-    await model.initData(POSTGRES_CONNECTION_STRING)
+    await model.initMapModel(POSTGRES_CONNECTION_STRING)
     return result
   }
   async numCols(): Promise<number> {
@@ -491,9 +491,18 @@ export class MapModel {
       typing ? "1" : "0"
     )
   }
-  async assignRandomOpenPos(user_id: UserId): Promise<PosDir | null> {
+  async assignRandomOpenPos(
+    user_id: UserId,
+    remove_old = false
+  ): Promise<PosDir | null> {
     const last_updated = Date.now()
-    const direction: Direction = "up"
+    const direction: Direction = "down"
+    if (remove_old) {
+      await db.query(
+        `DELETE FROM person_position WHERE room=$1 AND person=$2;`,
+        [this.room_id, user_id]
+      )
+    }
     const rows = await db.query(
       `INSERT INTO person_position
             (room,person,last_updated,x,y,direction)
@@ -574,7 +583,6 @@ export class MapModel {
       const direction = calcDirection(from, to)
 
       const person_at_dest = await this.anotherPersonAt(d.user, to)
-      console.log("person_at_dest", person_at_dest)
       if (person_at_dest) {
         const connected = await redis.accounts.sismember(
           "connected_users:room:" + this.room_id + ":__all__",
@@ -711,7 +719,9 @@ export class MapModel {
         poster_number,
         x: cells[0].x,
         y: cells[0].y,
-        file_url: domain + "files/" + poster_id + ".png",
+        file_url: config.aws.s3.upload
+          ? "not_disclosed"
+          : "/api/posters/" + poster_id + "/file",
         access_log,
         author_online_only,
       },
@@ -803,7 +813,30 @@ export class MapModel {
     return rows.map(r => r.id)
   }
   announce(d: Announcement): void {
-    this.announcement = d
+    this.announcement = d.text == "" ? null : d
+    ;(async () => {
+      if (d.text != "") {
+        await model.db.query(
+          `
+        INSERT INTO announce (room, text, marquee, period)
+            VALUES ($1, $2, $3, $4)
+        ON CONFLICT ON CONSTRAINT announce_pkey
+            DO UPDATE SET
+                text = $2, marquee = $3, period = $4;
+        `,
+          [d.room, d.text, d.marquee, d.period]
+        )
+      } else {
+        await model.db.query(
+          `
+        DELETE FROM announce WHERE room=$1;
+        `,
+          [d.room]
+        )
+      }
+    })().catch(err => {
+      console.error(err)
+    })
   }
 
   static async loadTemplate(template: string): Promise<{ map_data?: string }> {

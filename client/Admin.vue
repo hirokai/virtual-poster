@@ -23,20 +23,40 @@
     <div id="tabs" v-if="loggedIn">
       <div v-if="tab == 'announce'">
         <h1>アナウンス</h1>
-        <p>HTMLも送信可能（危険なリンクなどを送らないように注意）</p>
-        <textarea cols="60" rows="2" id="announce-input" v-model="inputText" />
-        <button @click="submitAnnouncement">送信</button>
+        <select name="" id="" v-model="announceRoom">
+          <option value="">部屋を選択</option>
+          <option :value="room.id" v-for="room in rooms" :key="room.id">{{
+            room.name
+          }}</option>
+          <option value="">----</option>
+          <option value="__all__">すべての部屋</option>
+        </select>
+        <div>
+          <small>※HTMLも送信可能（危険なリンクなどを送らないように注意）</small>
+        </div>
+        <textarea cols="60" rows="2" id="announce-input" ref="announceText" />
+        <button @click="submitAnnouncement" :disabled="announceRoom == ''">
+          送信
+        </button>
         <div>
           <label for="marquee">文字を流す</label>
           <input type="checkbox" id="marquee" v-model="announceMarquee" /><br />
-          <label for="marquee-period">周期 [秒]</label>
+          <label for="marquee-period" :disabled="!announceMarquee"
+            >周期 [秒]</label
+          >
           <input
             type="number"
             max="60"
             min="3"
             id="marquee-period"
+            :disabled="!announceMarquee"
             v-model="announceMarqueePeriod"
           />
+        </div>
+        <div>
+          <button @click="askReload" :disabled="announceRoom == ''">
+            会場の参加者にリロードを依頼
+          </button>
         </div>
       </div>
       <div v-if="tab == 'groups'">
@@ -124,13 +144,13 @@ import {
   watch,
   toRefs,
   computed,
+  ref,
 } from "vue"
 
 import Manage from "./admin/Manage.vue"
 import ManageRooms from "./admin/ManageRooms.vue"
 import MemberList from "./admin/MemberList.vue"
 import ManagePosters from "./admin/ManagePosters.vue"
-import firebaseConfig from "../firebaseConfig"
 
 import { keyBy, difference, flatten, pickBy } from "../common/util"
 import io from "socket.io-client"
@@ -145,9 +165,8 @@ const tab = url.hash.slice(1) || "people"
 location.hash = "#" + tab
 let socket: SocketIO.Socket | null = null
 
-import * as firebase from "firebase/app"
-import "firebase/auth"
 import jsSHA from "jssha"
+import { deleteUserInfoOnLogout } from "./util"
 
 export default defineComponent({
   components: {
@@ -181,6 +200,7 @@ export default defineComponent({
       }[]
       tab: string
       tabs: { id: string; name: string }[]
+      announceRoom: RoomId
     }>({
       jwt_hash: "",
       tab: tab,
@@ -207,15 +227,26 @@ export default defineComponent({
         { id: "announce", name: "アナウンス" },
         { id: "posters", name: "ポスター" },
       ],
+      announceRoom: "",
     })
 
+    const announceText = ref<HTMLInputElement>()
+
     const submitAnnouncement = () => {
-      console.log("submitAnnouncement")
-      socket?.emit("make_announcement", {
+      const d = {
+        room: state.announceRoom,
         marquee: state.announceMarquee,
-        text: state.inputText,
+        text: announceText.value?.value,
         period: state.announceMarqueePeriod,
-      })
+      }
+      console.log("submitAnnouncement", d)
+      socket?.emit("make_announcement", d)
+    }
+
+    const askReload = () => {
+      if (state.announceRoom != "") {
+        socket?.emit("AskReload", state.announceRoom)
+      }
     }
 
     const setPerson = (p: {
@@ -303,16 +334,16 @@ export default defineComponent({
       }
     }
 
-    const signOut = () => {
-      firebase
-        .auth()
-        .signOut()
-        .then(() => {
-          console.log("signed out")
-        })
-        .catch(err => {
-          console.error(err)
-        })
+    const signOut = async () => {
+      const client = api(axiosClient(axios))
+      const r = await client.logout.$post()
+      if (r.ok) {
+        console.log("Signed out")
+        deleteUserInfoOnLogout()
+        location.href = "/login"
+      } else {
+        console.log("Did not sign out")
+      }
     }
 
     const reload = async () => {
@@ -327,8 +358,16 @@ export default defineComponent({
       ])
       state.people = keyBy(data_p, "id")
       console.log(state.people)
-      for (const room of Object.keys(state.rooms)) {
-        socket?.emit("active", { user: state.myUserId, room })
+      const jwt_hash: string | undefined =
+        localStorage["virtual-poster:jwt_hash"]
+      if (jwt_hash) {
+        for (const room of Object.keys(state.rooms)) {
+          socket?.emit("Active", {
+            user: state.myUserId,
+            room,
+            token: jwt_hash,
+          })
+        }
       }
       state.chatGroups = keyBy(data_g, "id")
       state.posters = keyBy(data_posters, "id")
@@ -360,7 +399,10 @@ export default defineComponent({
       client.socket_url
         .$get()
         .then(data => {
-          socket = io(data.socket_url, { path: "/socket.io" })
+          socket = io(data.socket_url, {
+            path: "/socket.io",
+            transports: ["websocket"],
+          })
           if (!socket) {
             console.error("Socket connection failed.")
             return
@@ -382,10 +424,6 @@ export default defineComponent({
         .catch(err => {
           console.error(err)
         })
-
-      firebase.initializeApp(firebaseConfig)
-
-      // console.log("User", firebase.auth().currentUser)
       ;(async () => {
         const user = {
           name: localStorage["virtual-poster:name"],
@@ -412,6 +450,8 @@ export default defineComponent({
       signOut,
       submitAnnouncement,
       updatePoster,
+      announceText,
+      askReload,
     }
   },
 })
@@ -511,6 +551,10 @@ td {
   border-left: 2px solid black;
   border-right: 2px solid black;
   background: #99f;
+}
+
+label[disabled="true"] {
+  color: #999;
 }
 
 .r0 {

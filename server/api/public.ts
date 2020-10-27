@@ -118,6 +118,7 @@ async function public_api_routes(
                   expires: new Date(
                     Date.now() + 1000 * 60 * config.cookie_expires
                   ),
+                  path: "/",
                 })
                 .send({
                   ok: true,
@@ -156,6 +157,7 @@ async function public_api_routes(
                 expires: new Date(
                   Date.now() + 1000 * 60 * config.cookie_expires
                 ),
+                path: "/",
               })
               .send({
                 ok: false,
@@ -168,6 +170,7 @@ async function public_api_routes(
                 expires: new Date(
                   Date.now() + 1000 * 60 * config.cookie_expires
                 ),
+                path: "/",
               })
               .send({
                 ok: false,
@@ -198,7 +201,7 @@ async function public_api_routes(
       return { ok: true }
     })
     fastify.post("/reload_data", async () => {
-      await model.initData(config.postgresql)
+      await model.initMapModel(config.postgresql)
       return { ok: true }
     })
   }

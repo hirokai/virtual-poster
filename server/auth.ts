@@ -143,11 +143,6 @@ export async function protectedRoute(
     req.connection.remoteAddress ||
     undefined) as string | undefined
 
-  // if (cluster.worker) {
-  //   log.info(ip, req.path, "Worker #" + cluster.worker.id)
-  // } else {
-  //   log.info(ip, req.path)
-  // }
   req.log.info("Token: ", token || "(Not found)")
 
   if (!token) {

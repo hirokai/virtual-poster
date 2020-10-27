@@ -154,44 +154,6 @@ export const initPosterService = async (
 ): Promise<boolean> => {
   const client = api(axiosClient(axios))
 
-  const pid = state.people[props.myUserId]?.poster_viewing
-  if (pid) {
-    console.log("poster comment loading")
-    if (pid) {
-      const data = await client.posters._posterId(pid).comments.$get()
-      watch(
-        () => state.people[props.myUserId]?.poster_viewing,
-        async () => {
-          console.log("poster_viewing changed")
-          const pid = state.people[props.myUserId]?.poster_viewing
-          if (pid) {
-            const data = await client.posters._posterId(pid).comments.$get()
-            state.posterComments = keyBy(data, "id")
-          } else {
-            state.posterComments = {}
-          }
-        }
-      )
-      state.posterComments = keyBy(data, "id")
-    } else {
-      state.posterComments = {}
-    }
-  } else {
-    watch(
-      () => state.people[props.myUserId]?.poster_viewing,
-      async () => {
-        console.log("poster_viewing changed")
-        const pid = state.people[props.myUserId]?.poster_viewing
-        if (pid) {
-          const data = await client.posters._posterId(pid).comments.$get()
-          state.posterComments = keyBy(data, "id")
-        } else {
-          state.posterComments = {}
-        }
-      }
-    )
-  }
-
   socket.on("Poster", (d: Poster) => {
     console.log("socket Poster", d)
     //Vue.set
@@ -237,5 +199,48 @@ export const initPosterService = async (
   })
   const posters = await client.maps._roomId(props.room_id).posters.$get()
   state.posters = keyBy(posters, "id")
+
+  const pid = state.people[props.myUserId]?.poster_viewing
+  if (pid) {
+    if (pid) {
+      const r1 = await client.posters._posterId(pid).file_url.$get()
+      if (r1.ok && r1.url) {
+        state.posters[pid].file_url = r1.url
+      }
+      console.log("poster comment loading")
+      const data = await client.posters._posterId(pid).comments.$get()
+      watch(
+        () => state.people[props.myUserId]?.poster_viewing,
+        async () => {
+          console.log("poster_viewing changed")
+          const pid = state.people[props.myUserId]?.poster_viewing
+          if (pid) {
+            const data = await client.posters._posterId(pid).comments.$get()
+            state.posterComments = keyBy(data, "id")
+          } else {
+            state.posterComments = {}
+          }
+        }
+      )
+      state.posterComments = keyBy(data, "id")
+    } else {
+      state.posterComments = {}
+    }
+  } else {
+    watch(
+      () => state.people[props.myUserId]?.poster_viewing,
+      async () => {
+        console.log("poster_viewing changed")
+        const pid = state.people[props.myUserId]?.poster_viewing
+        if (pid) {
+          const data = await client.posters._posterId(pid).comments.$get()
+          state.posterComments = keyBy(data, "id")
+        } else {
+          state.posterComments = {}
+        }
+      }
+    )
+  }
+
   return true
 }

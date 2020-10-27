@@ -514,6 +514,7 @@ export type ChatEventSocketData = {
     | "join"
     | "add"
     | "leave"
+    | "kick"
     | "dissolve"
     | "start_overhear"
     | "end_overhear"
@@ -544,6 +545,7 @@ export type AppNotification =
   | "ActiveUsers"
   | "ChatTyping"
   | "MoveRequest"
+  | "AppReload"
 
 interface Emitter {
   emit(msg: AppNotification, data?: any): void

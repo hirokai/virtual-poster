@@ -41,6 +41,8 @@ export interface Aws {
 export interface CloudFront {
   id: string
   domain: string
+  key_pair_id: string
+  private_key: string
 }
 
 export interface S3 {
@@ -265,6 +267,8 @@ const typeMap: any = {
     [
       { json: "id", js: "id", typ: "" },
       { json: "domain", js: "domain", typ: "" },
+      { json: "key_pair_id", js: "key_pair_id", typ: "" },
+      { json: "private_key", js: "private_key", typ: "" },
     ],
     false
   ),

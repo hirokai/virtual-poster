@@ -61,9 +61,6 @@ import { Room, UserId } from "../@types/types"
 
 import axios from "axios"
 import * as encryption from "./encryption"
-import * as firebase from "firebase/app"
-import "firebase/auth"
-import firebaseConfig from "../firebaseConfig"
 import { deleteUserInfoOnLogout } from "./util"
 
 import axiosClient from "@aspida/axios"
@@ -207,8 +204,6 @@ export default defineComponent({
       })
     })
 
-    firebase.initializeApp(firebaseConfig)
-
     const selectKind = (kind: string) => {
       state.roomKind = kind
     }
@@ -230,33 +225,22 @@ export default defineComponent({
       }
     }
 
-    const signOut = () => {
+    const signOut = async () => {
       const client = api(axiosClient(axios))
-      firebase
-        .auth()
-        .signOut()
-        .then(() => {
-          console.log("Firebase signed out")
-          client.logout
-            .$post()
-            .then(() => {
-              console.log("App signed out")
-              deleteUserInfoOnLogout()
-              location.href = "/login"
-            })
-            .catch(err => {
-              console.error(err)
-              deleteUserInfoOnLogout()
-              location.href = "/login"
-            })
-        })
-        .catch(err => {
-          console.error(err)
-        })
+      const r = await client.logout.$post()
+      if (r.ok) {
+        console.log("Signed out")
+        deleteUserInfoOnLogout()
+        location.href = "/login"
+      } else {
+        console.log("Did not sign out")
+      }
     }
+
     const enterRoom = (room_id: string) => {
       location.href = "/room?room_id=" + room_id
     }
+
     return {
       ...toRefs(state),
       signOut,

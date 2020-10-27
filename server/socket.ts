@@ -3,6 +3,7 @@ import SocketIO from "socket.io"
 import * as bunyan from "bunyan"
 import cluster from "cluster"
 import _ from "lodash"
+import cookie from "cookie"
 
 import {
   Announcement,
@@ -154,6 +155,9 @@ export class Emit {
   announce(d: Announcement, socket: Emitter = this.emitter): void {
     socket.emit("Announce", d)
   }
+  appReload(socket: Emitter = this.emitter): void {
+    socket.emit("AppReload")
+  }
   posterComment(
     d: PosterCommentDecrypted,
     socket: Emitter = this.emitter
@@ -203,8 +207,8 @@ export function registerSocket(_io: Emitter, logger = bunyanLogger): void {
 function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
   ;(async () => {
     log.debug("move", d)
-    const verified = await model.people.authSocket(d, socket.id) // Normal users can only move themselves (or admin can move anything)
-    if (!verified) {
+    const verified_user = await model.people.authSocket(d, socket.id) // Normal users can only move themselves (or admin can move anything)
+    if (!verified_user) {
       emit.moveError(
         {
           user_id: d.user,
@@ -311,9 +315,25 @@ function addHandler(
 }
 
 export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
-  io.on("connection", function(socket: SocketIO.Socket) {
+  io.on("connection", async (socket: SocketIO.Socket) => {
     log.info("Connected:", socket.id)
-    socket.emit("greeting")
+    socket.emit("Greeting", {
+      worker: cluster && cluster.worker ? cluster.worker.id : -1,
+    })
+
+    const cookies = cookie.parse(socket.handshake.headers.cookie)
+    const cookie_session_id = cookies.virtual_poster_session_id
+    const user_id = await model.redis.sessions.get(
+      "cookie:uid:" + cookie_session_id
+    )
+    log.debug(cookies, cookie_session_id, user_id)
+    if (user_id) {
+      const ttl = await model.redis.sessions.ttl(
+        "cookie:uid:" + cookie_session_id
+      )
+      await model.redis.sockets.setex("auth:" + socket.id, ttl, user_id)
+      socket.emit("AuthComplete")
+    }
 
     addHandler(socket, "Move", d => onMoveSocket(d, socket, log))
     addHandler(socket, "Direction", (d: DirectionSendSocket) => {
@@ -352,13 +372,18 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           socket.id
         )
         if (verified) {
+          const ttl = await model.redis.sessions.ttl(
+            "cookie:uid:" + cookie_session_id
+          )
           await model.redis.sockets.setex(
             "auth:" + socket.id,
-            60 * config.cookie_expires,
+            ttl >= 0 ? ttl : 60 * 60, // Expiration time of cookie or ID token
             user
           )
+          socket.join("__all__")
         } else {
-          socket.emit("auth_error")
+          socket.emit("AuthError")
+          return
         }
 
         log.debug("User Active", room, user)
@@ -457,16 +482,53 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         log.error(err)
       })
     })
-    socket.on("make_announcement", (d: Announcement) => {
+    socket.on("AskReload", async (room_id: RoomId) => {
+      const verified_user = await model.people.authSocket(
+        { user: "NA" },
+        socket.id
+      )
+      if (!verified_user) {
+        socket.emit("AuthError", "User not found")
+        return
+      }
+      const is_admin =
+        (await model.people.getUserType(verified_user)) == "admin"
+      if (!is_admin) {
+        socket.emit("AuthError", "User not admin")
+        return
+      }
+      emit.channel(room_id).appReload()
+    })
+    socket.on("make_announcement", async (d: Announcement) => {
       userLog({
         userId: "__admin",
         operation: "announce",
         data: d,
       })
+      const verified_user = await model.people.authSocket(
+        { user: "NA" },
+        socket.id
+      )
+      if (!verified_user) {
+        socket.emit("AuthError", "User not found")
+        return
+      }
+      const is_admin =
+        (await model.people.getUserType(verified_user)) == "admin"
+      if (!is_admin) {
+        socket.emit("AuthError", "User not admin")
+        return
+      }
       log.debug("make_announcement", d)
-      if (d.room && d.text) {
+      if (d.room) {
         emit.channel(d.room).announce(d)
-        model.maps[d.room].announce(d)
+        if (d.room == "__all__") {
+          for (const r of Object.values(model.maps)) {
+            r.announce({ ...d, room: r.room_id })
+          }
+        } else {
+          model.maps[d.room].announce(d)
+        }
       }
     })
   })

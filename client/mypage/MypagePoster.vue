@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <div>ドラッグ＆ドロップでポスターを掲載（10 MB以内）</div>
+  <div class="tab-content">
     <div v-if="!posters">
       ポスターがありません。
     </div>
@@ -20,6 +19,9 @@
               <img :src="dataURI[poster.id]" alt="Image" />
             </figure>
           </div>
+          <small class="poster-image-note"
+            >枠内にドラッグ＆ドロップでポスターを掲載（10 MB以内）</small
+          >
         </div>
         <div class="column is-two-thirds">
           <div class="poster_title">
@@ -248,38 +250,35 @@ export default defineComponent({
       }
     }
 
-    const loadPosterImages = () => {
+    const loadPosterImages = async () => {
       for (const poster of Object.values(props.posters)) {
         console.log("get poster ", poster.id)
         if (props.lastLoaded > poster.last_updated) {
           continue
         }
-        const url = poster.file_url
-        console.log
-        axiosDefault({
+        let url: string | undefined = poster.file_url
+        if (url == "not_disclosed") {
+          url = (await client.posters._posterId(poster.id).file_url.$get()).url
+        }
+        const { data } = await axiosDefault({
           method: "GET",
           responseType: "arraybuffer",
           url,
         })
-          .then(({ data }) => {
-            const image = btoa(
-              new Uint8Array(data).reduce(
-                (d, byte) => d + String.fromCharCode(byte),
-                ""
-              )
-            )
-            //Vue.set
-            state.dataURI[poster.id] = "data:image/png;base64," + image
-          })
-          .catch(() => {
-            //
-          })
+        const image = btoa(
+          new Uint8Array(data).reduce(
+            (d, byte) => d + String.fromCharCode(byte),
+            ""
+          )
+        )
+        //Vue.set
+        state.dataURI[poster.id] = "data:image/png;base64," + image
       }
       context.emit("update-last-loaded", Date.now())
     }
 
-    onMounted(() => {
-      loadPosterImages()
+    onMounted(async () => {
+      await loadPosterImages()
     })
 
     watch(() => props.posters, loadPosterImages)
@@ -341,6 +340,7 @@ div.poster-img {
   border: 1px solid black;
   /* width: 280px; */
   /* height: calc(280px * 1.414); */
+  min-height: 300px;
   max-height: 600px;
   top: 80px;
   margin: 10px;
@@ -355,6 +355,10 @@ div.poster-img img {
   /* width: auto; */
   max-width: 400px;
   max-height: 550px;
+}
+
+.poster-image-note {
+  margin: 0px 0px 0px 10px;
 }
 
 .poster_info {

@@ -40,9 +40,16 @@
           v-if="mobilePane == 'poster_chat'"
         ></div>
       </div>
+      <div class="mobile-menu-item" @click="moveToMypage('account')">
+        <img src="/img/icon/settings.png" width="96" alt="" />
+        <div
+          class="mobile-menu-item-active"
+          v-if="mobilePane == 'mypage'"
+        ></div>
+      </div>
     </div>
     <Map
-      v-show="!!myself && mobilePane == 'map'"
+      v-if="!!myself && mobilePane == 'map'"
       :myself="myself"
       :isMobile="isMobile"
       :hidden="hidden"
@@ -67,7 +74,7 @@
       @input-arrow-key="inputArrowKey"
     />
     <MiniMap
-      v-show="mobilePane == 'minimap'"
+      v-if="mobilePane == 'minimap'"
       :isMobile="isMobile"
       :hidden="hidden"
       :cells="hallMap"
@@ -84,7 +91,7 @@
     />
     <ChatLocal
       ref="chatLocal"
-      v-show="mobilePane == 'chat'"
+      v-if="mobilePane == 'chat'"
       :isMobile="isMobile"
       :myself="myself"
       :contentHidden="hidden"
@@ -134,6 +141,7 @@
     <div id="tools-on-map" v-if="mobilePane == 'map'">
       <button
         id="enter-poster-on-map"
+        class="button is-primary"
         @click="enterPoster"
         v-if="adjacentPoster && !posterLooking"
       >
@@ -155,22 +163,25 @@
           このポスターを閲覧すると<br />足あとが記録されます
         </span>
       </div>
-      <button
-        id="leave-poster-on-map"
-        @click="leavePoster"
-        v-if="posterLooking"
-      >
-        ポスターから離脱
-      </button>
       <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
         会話から離脱
       </button>
     </div>
+    <button
+      id="leave-poster-on-map"
+      class="button is-primary"
+      @click="leavePoster"
+      v-if="posterLooking && (mobilePane == 'poster' || mobilePane == 'map')"
+    >
+      ポスターから離脱
+    </button>
     <div id="message" :class="{ hide: message.hide }">
       <div id="message-close" @click="hideMessage">&times;</div>
       {{ message.text }}
     </div>
+    <MyPage v-if="mobilePane == 'mypage'" />
   </div>
+
   <div
     id="app-main"
     v-if="!isMobile"
@@ -241,6 +252,13 @@
         height="25"
       />
       <div style="clear:both;"></div>
+    </div>
+    <div id="all-connection-status" v-if="!hidden">
+      <span
+        >会場に{{
+          Object.values(people).filter(p => p.connected).length
+        }}人が接続中</span
+      >
     </div>
     <div id="connection-status" v-if="!hidden">
       <span v-if="socket_active" class="connected">接続されています</span>
@@ -342,6 +360,7 @@
       ref="posterComponent"
       :isMobile="isMobile"
       :myself="myself"
+      :axios="axios"
       :poster="posterLooking ? adjacentPoster : undefined"
       :comments="posterComments"
       :commentTree="posterCommentTree"
@@ -383,6 +402,7 @@
     <button id="leave-poster-on-map" @click="leavePoster" v-if="posterLooking">
       ポスターから離脱
     </button>
+
     <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
       会話から離脱
     </button>
@@ -430,6 +450,8 @@ import MiniMap from "./MiniMap.vue"
 import Poster from "./Poster.vue"
 import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
+import MyPage from "../mypage/MyPage.vue"
+
 import { inRange, keyBy } from "@/common/util"
 import { formatTime, truncateComment } from "../util"
 
@@ -507,8 +529,8 @@ const setupSocketHandlers = (
     console.log("socket auth_error")
   })
 
-  socket.on("greeting", () => {
-    console.log("Greeting received.")
+  socket.on("Greeting", d => {
+    console.log("Greeting received.", d?.worker)
     socket.emit("Active", { room: props.room_id, user: props.myUserId })
   })
 
@@ -521,14 +543,14 @@ const setupSocketHandlers = (
     console.log("map.reset not implemented")
     // reloadData()
   })
-  socket.on("app.reload", () => {
+  socket.on("AppReload", () => {
     if (
       confirm("アプリケーションが更新されました。リロードしても良いですか？")
     ) {
       location.reload()
     }
   })
-  socket.on("app.reload.silent", () => {
+  socket.on("AppReloadSilent", () => {
     location.reload()
   })
 }
@@ -542,6 +564,7 @@ export default defineComponent({
     Poster,
     CellInfo,
     ChatLocal,
+    MyPage,
   },
 
   props: {
@@ -574,6 +597,9 @@ export default defineComponent({
       type: Boolean,
       required: true,
     },
+    mobilePaneFromHash: {
+      type: String,
+    },
   },
   setup(props, context) {
     if (props.isMobile) {
@@ -586,8 +612,6 @@ export default defineComponent({
     })
 
     let REPORT_LATENCY = false
-
-    const ChatLocal = ref()
 
     props.axios.interceptors.response.use(response => {
       const latency = Math.round(
@@ -770,11 +794,15 @@ export default defineComponent({
         ._roomId(props.room_id)
         .posters._posterId(poster_id)
         .leave.$post()
+      console.log("leavePoster results")
       if (r.ok) {
         state.posterComments = {}
         state.socket?.emit("Unsubscribe", {
           channel: poster_id,
         })
+        if (props.isMobile) {
+          state.mobilePane = "map"
+        }
       } else {
         console.error("Leave poster failed")
       }
@@ -976,7 +1004,9 @@ export default defineComponent({
         }
         console.log("Socket URL: " + socket_url)
         if (data.socket_protocol == "Socket.IO") {
-          state.socket = io(socket_url)
+          state.socket = io(socket_url, {
+            transports: ["websocket"],
+          })
         } else if (data.socket_protocol == "WebSocket") {
           let url
           if (
@@ -1051,13 +1081,13 @@ export default defineComponent({
           state.center = {
             x: inRange(
               me.x,
-              props.isMobile ? 3 : 5,
-              state.cols - (props.isMobile ? 3 : 5) - 1
+              props.isMobile ? 4 : 5,
+              state.cols - (props.isMobile ? 4 : 5) - 1
             ),
             y: inRange(
               me.y,
-              props.isMobile ? 5 : 5,
-              state.rows - (props.isMobile ? 5 : 5) - 1
+              props.isMobile ? 6 : 5,
+              state.rows - (props.isMobile ? 6 : 5) - 1
             ),
           }
           state.hidden = false
@@ -1330,9 +1360,18 @@ export default defineComponent({
       state.mobilePane = pane
     }
 
+    const moveToMypage = (tab: string) => {
+      location.hash = "#" + tab
+      state.mobilePane = "mypage"
+    }
+
     if (props.isMobile) {
-      if (location.hash == "") {
-        location.hash = "map"
+      if (["", "#"].indexOf(location.hash) != -1) {
+        location.hash = "#map"
+      } else if (["#account", "#avatar"].indexOf(location.hash) != -1) {
+        state.mobilePane = "mypage"
+      } else {
+        state.mobilePane = location.hash.slice(1)
       }
     }
 
@@ -1376,6 +1415,7 @@ export default defineComponent({
       enterPoster: enterPoster(props.axios, props, state),
       leavePoster,
       moveToPane,
+      moveToMypage,
     }
   },
 })
@@ -1392,6 +1432,23 @@ export default defineComponent({
 html {
   -webkit-box-sizing: border-box;
   box-sizing: border-box;
+}
+
+@media (max-width: 600px) {
+  html {
+    position: fixed;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0px;
+    width: 100vw;
+    height: 100vh;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @font-face {
@@ -1470,9 +1527,14 @@ button#enter-poster-on-map {
   top: 90px;
 }
 
-#app-main.mobile #enter-poster-on-map {
-  right: 10px;
+.mobile button#enter-poster-on-map,
+.mobile button#leave-poster-on-map {
+  font-size: 27px;
+  left: 10vw;
   top: 10px;
+  width: 80vw;
+  /* right: 10px; */
+  height: 40px;
 }
 
 div#poster-preview {
@@ -1484,6 +1546,11 @@ div#poster-preview {
   top: 120px;
   font-size: 14px;
   background: rgba(255, 255, 255, 0.6);
+}
+
+.mobile div#poster-preview {
+  left: 10vw;
+  width: 80vw;
 }
 
 button#leave-poster-on-map {
@@ -1571,10 +1638,18 @@ button#leave-poster-on-map {
   float: right;
 }
 
+#all-connection-status {
+  position: absolute;
+  top: 35px;
+  left: 300px;
+  font-weight: bold;
+  font-size: 10px;
+}
+
 #connection-status {
   position: absolute;
   top: 35px;
-  left: 430px;
+  left: 450px;
   font-weight: bold;
   font-size: 10px;
 }
@@ -1640,25 +1715,32 @@ button#leave-poster-on-map {
   opacity: 0.3;
 }
 
+#app-main.mobile {
+  height: 100%;
+  margin: 0px 0px calc(100vw / 6) 0px;
+}
+
 #mobile-menu {
   position: fixed;
   width: 100%;
-  height: 20vw;
+  height: calc(100vw / 6 + 5px);
   margin: 0px;
-  bottom: 0px;
+  top: calc(100vh - 100vw / 6);
+  z-index: 100;
 }
 
 .mobile-menu-item {
   background: #bbb;
-  width: 20vw;
-  height: 100%;
+  width: calc(100vw / 6);
+  height: 105%;
   margin: 0px;
+  margin-bottom: 30px;
   float: left;
 }
 
 .mobile-menu-item img {
-  width: 12vw;
-  margin: calc((20vw - 12vw) / 2);
+  width: 10vw;
+  margin: calc((100vw / 6 - 10vw) / 2);
   display: block;
   text-align: center;
 }
@@ -1670,24 +1752,16 @@ button#leave-poster-on-map {
 .mobile-menu-item-active {
   position: absolute;
   background: #33f;
-  width: 20vw;
-  height: 2vw;
+  width: calc(100vw / 6);
+  height: calc(100vw / 6 / 10);
   bottom: 0px;
 }
 
-.mobile #tools-on-map button#leave-poster-on-map {
-  font-size: 27px;
-  left: 100px;
-  width: 400px;
-  right: 10px;
-  height: 40px;
-}
-
-.mobile #tools-on-map button#enter-poster-on-map {
-  font-size: 27px;
-  left: 100px;
-  width: 400px;
-  right: 10px;
-  height: 40px;
+#tools-on-map {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: calc(100vh - 30px);
+  height: calc(200px);
 }
 </style>

@@ -3,7 +3,9 @@
 //
 
 import express from "express"
-import sticky from "sticky-session"
+// import sticky from "sticky-session"
+import { listen as sticky_listen } from "./sticky"
+import _ from "lodash"
 import * as bunyan from "bunyan"
 import fs from "fs"
 import path from "path"
@@ -15,7 +17,7 @@ import cluster from "cluster"
 import SocketIO from "socket.io"
 import redis, { RedisAdapter } from "socket.io-redis"
 import * as model from "./model"
-import { AppNotification, RoomId } from "../@types/types"
+import { AppNotification } from "../@types/types"
 import dotenv from "dotenv"
 import { config } from "./config"
 import bodyParser from "body-parser"
@@ -31,20 +33,22 @@ const DEBUG_LOG = config.socket_server.debug_log
 const CERTIFICATE_FOLDER = config.certificate_folder
 const POSTGRES_CONNECTION_STRING = config.postgresql
 
-const log = bunyan.createLogger({
-  name: "index",
+export const log = bunyan.createLogger({
+  name: "socket_index",
   src: !PRODUCTION,
   level: DEBUG_LOG ? 1 : "info",
 })
 
-log.info("Settings", {
-  PRODUCTION,
-  PORT,
-  TLS,
-  DEBUG_LOG,
-  RUN_CLUSTER,
-  CERTIFICATE_FOLDER,
-})
+if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
+  log.info("Settings", {
+    PRODUCTION,
+    PORT,
+    TLS,
+    DEBUG_LOG,
+    RUN_CLUSTER,
+    CERTIFICATE_FOLDER,
+  })
+}
 
 const app = express()
 
@@ -75,86 +79,81 @@ app.post("/input/:debug_token", (req, res) => {
 let server: https.Server | http.Server | null = null
 
 function run() {
-  if (TLS) {
-    if (!CERTIFICATE_FOLDER) {
-      log.error("CERTIFICATE_FOLDER is not specified. Aborting.")
-      return
-    }
-    // https://itnext.io/node-express-letsencrypt-generate-a-free-ssl-certificate-and-run-an-https-server-in-5-minutes-a730fbe528ca
-    const privateKey = fs.readFileSync(
-      path.join(CERTIFICATE_FOLDER, "privkey.pem"),
-      "utf8"
-    )
-    const certificate = fs.readFileSync(
-      path.join(CERTIFICATE_FOLDER, "cert.pem"),
-      "utf8"
-    )
-    const ca = fs.readFileSync(
-      path.join(CERTIFICATE_FOLDER, "chain.pem"),
-      "utf8"
-    )
-    const credentials = {
-      key: privateKey,
-      cert: certificate,
-      ca: ca,
-    }
-    server = spdy.createServer(credentials, app)
-    log.info("HTTP2 (HTTPS) Socket.IO server started")
+  if (RUN_CLUSTER > 0 && cluster.isMaster) {
+    const workers: number = RUN_CLUSTER
+    log.info("Master node run")
+    _.range(workers).forEach(() => {
+      const worker = cluster.fork()
+      log.info("CLUSTER: Worker %d forked", worker.id)
+    })
+    cluster.on("exit", old_worker => {
+      log.info("CLUSTER: Worker %d exited", old_worker.id)
+      const worker = cluster.fork()
+      log.info("CLUSTER: Worker %d started", worker.id)
+    })
   } else {
-    server = http.createServer(app)
-    log.info("HTTP Socket.IO server started")
-  }
-  if (RUN_CLUSTER) {
-    const workers: number = config.socket_server.cluster // require('os').cpus().length
-    if (!sticky.listen(server, PORT, { workers })) {
-      log.info("Socket.IO Master node run")
-      server.once("listening", () => {
-        log.info("Cluster Socket.IO master node is listening on port: " + PORT)
-      })
-      // initSocket(server, rooms)
+    if (TLS) {
+      if (!CERTIFICATE_FOLDER) {
+        log.error("CERTIFICATE_FOLDER is not specified. Aborting.")
+        return
+      }
+      // https://itnext.io/node-express-letsencrypt-generate-a-free-ssl-certificate-and-run-an-https-server-in-5-minutes-a730fbe528ca
+      const privateKey = fs.readFileSync(
+        path.join(CERTIFICATE_FOLDER, "privkey.pem"),
+        "utf8"
+      )
+      const certificate = fs.readFileSync(
+        path.join(CERTIFICATE_FOLDER, "cert.pem"),
+        "utf8"
+      )
+      const ca = fs.readFileSync(
+        path.join(CERTIFICATE_FOLDER, "chain.pem"),
+        "utf8"
+      )
+      const credentials = {
+        key: privateKey,
+        cert: certificate,
+        ca: ca,
+      }
+      server = spdy.createServer(credentials, app)
+      log.info("HTTP2 (HTTPS) Socket.IO server created")
     } else {
-      log.info("Worker node: " + cluster.worker.id, cluster.worker.process.pid)
+      server = http.createServer(app)
+      log.info(
+        "HTTP Socket.IO server created" +
+          (cluster.isMaster
+            ? " (Master node)"
+            : cluster.worker
+            ? " (Worker #" + cluster.worker?.id + ")"
+            : "")
+      )
     }
-  } else {
+    const io = SocketIO(server, {
+      path: "/socket.io",
+      origins: "*:*",
+      transports: ["websocket"],
+    })
+
+    const adapter: RedisAdapter = redis(config.redis)
+    io.adapter(adapter)
+
+    registerSocket(io)
+    setupSocketHandlers(io, log)
     server.listen(PORT, () => {
       log.info("Socket.IO server is listening on port: " + PORT)
     })
   }
-
-  const io = SocketIO(server, {
-    path: "/socket.io",
-    origins: "*:*",
-  })
-
-  // middleware
-  io.use((socket, next) => {
-    const cookie = socket.handshake.headers.cookie
-
-    log.debug(cookie)
-    return next()
-    // }
-    // return next(new Error("authentication error"))
-  })
-
-  const adapter: RedisAdapter = redis()
-  io.adapter(adapter)
-
-  registerSocket(io)
-  setupSocketHandlers(io, log)
 }
 
-async function workerInitData(): Promise<RoomId[]> {
+async function workerInitData(): Promise<void> {
   if (!RUN_CLUSTER || cluster.worker?.id) {
-    const rooms = await model.initData(POSTGRES_CONNECTION_STRING)
-    return rooms
-  } else {
-    return []
+    await model.initMapModel(POSTGRES_CONNECTION_STRING)
+    log.info(`Worker #${cluster.worker?.id}: Initialization of map data done.`)
   }
 }
 
 workerInitData()
   .then(() => {
-    log.info("Data initialization done.")
     run()
   })
   .catch(err => {

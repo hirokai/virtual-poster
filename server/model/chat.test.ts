@@ -1,4 +1,4 @@
-import { initData, dbWith, resetDb } from "."
+import { initMapModel, dbWith, resetDb } from "."
 import * as model from "."
 import _ from "lodash"
 import { UserId } from "../../@types/types"
@@ -7,7 +7,7 @@ import { createUser, mkMapData, rand_non_adjacent } from "../test_util"
 beforeEach(async () => {
   const db = dbWith("postgres://postgres@localhost/virtual_poster_test")
   await db.query(resetDb)
-  await initData("postgres://postgres@localhost/virtual_poster_test", false)
+  await initMapModel("postgres://postgres@localhost/virtual_poster_test")
 })
 
 describe("Chat group", () => {

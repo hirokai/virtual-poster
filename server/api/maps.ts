@@ -194,6 +194,7 @@ async function maps_api_routes(
       ok: r.ok,
       error: r.error,
       image_allowed: r.image_allowed,
+      image_url: r.image_url,
     }
   })
 

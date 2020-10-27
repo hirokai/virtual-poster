@@ -189,6 +189,7 @@ async function routes(
       return await res
         .setCookie("virtual_poster_session_id", sid, {
           expires: new Date(Date.now() + 1000 * 60 * config.cookie_expires),
+          path: "/",
         })
         .send(r)
     } else {
@@ -200,26 +201,46 @@ async function routes(
     const access_code = ((
       req.body.access_code || ""
     ).toString() as string).trim()
-    const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
-    const added_rooms: RoomId[] = []
-    if (rooms) {
-      const p = await model.people.get(req["requester"], false, true)
-      console.log(p)
-      const rooms_already = (p?.rooms || []).map(r => r.room_id)
-      for (const rid of rooms) {
-        if (rooms_already.indexOf(rid) != -1) {
-          continue
+    if (access_code.indexOf("set_avatar:") == 0) {
+      const avatar = access_code.slice(11)
+      const user_id = req["requester"]
+      const modified = await model.people.update(user_id, { avatar })
+      if (modified) {
+        const u: PersonUpdate = {
+          id: user_id,
+          last_updated: modified.update.last_updated,
+          avatar: avatar,
         }
-        const r = await model.maps[rid].addUser(req["requester"], true, "user")
-        if (!r.ok) {
-          req.log.debug(r)
-          return { ok: false }
-        }
-        added_rooms.push(rid)
+        const all_rooms = Object.keys(model.maps)
+        emit.channels(all_rooms).peopleUpdate([u])
       }
-      return { ok: added_rooms.length > 0, added: added_rooms }
+      return { ok: !!modified, added: ["__avatar__"] }
     } else {
-      return { ok: false, error: "Access code is invalid" }
+      const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
+      const added_rooms: RoomId[] = []
+      if (rooms) {
+        const p = await model.people.get(req["requester"], false, true)
+        console.log(p)
+        const rooms_already = (p?.rooms || []).map(r => r.room_id)
+        for (const rid of rooms) {
+          if (rooms_already.indexOf(rid) != -1) {
+            continue
+          }
+          const r = await model.maps[rid].addUser(
+            req["requester"],
+            true,
+            "user"
+          )
+          if (!r.ok) {
+            req.log.debug(r)
+            return { ok: false }
+          }
+          added_rooms.push(rid)
+        }
+        return { ok: added_rooms.length > 0, added: added_rooms }
+      } else {
+        return { ok: false, error: "Access code is invalid" }
+      }
     }
   })
 

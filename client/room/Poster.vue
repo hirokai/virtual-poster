@@ -1,9 +1,9 @@
 <template>
   <div>
-    <transition name="fade">
+    <transition :name="isMobile ? '' : 'fade'">
       <div
         id="poster-container"
-        v-if="poster && (!isMobile || mobilePane == 'poster')"
+        v-show="poster && (!isMobile || mobilePane == 'poster')"
         :class="{ mobile: isMobile }"
       >
         <h2>
@@ -64,7 +64,11 @@
             {{
               people[poster.author] ? people[poster.author].name : "（不明）"
             }}さんのポスター<br />（ポスター板の場所が確保されていますが<br />画像はアップロードされていません。）
-            <div class="note" v-if="poster.author == myself.id">
+            <div class="note" v-if="poster.author == myself.id && isMobile">
+              マイページ（画面上部の人型のアイコン）→ポスター
+              からアップロードしてください。
+            </div>
+            <div class="note" v-if="poster.author == myself.id && !isMobile">
               以下のいずれかの方法でファイル（PNGあるいはPDF）を<br />アップロードできます。
               <ul>
                 <li>この枠内にPNGまたはPDFをドラッグ＆ドロップする</li>
@@ -102,7 +106,7 @@
         </div>
       </div>
     </transition>
-    <transition name="fade">
+    <transition :name="isMobile ? '' : 'fade'">
       <h3
         id="poster-comment-title"
         v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
@@ -110,7 +114,7 @@
         ポスターへのコメント
       </h3>
     </transition>
-    <transition name="fade">
+    <transition :name="isMobile ? '' : 'fade'">
       <div
         id="poster-comments-container"
         class="chat-container"
@@ -118,7 +122,10 @@
         :style="{
           width: isMobile ? '100vw' : undefined,
           top: isMobile ? '0px' : undefined,
-          bottom: isMobile ? '20vw' : '' + (102 + numInputRows * 20) + 'px',
+          bottom: isMobile ? '' : '' + (102 + numInputRows * 20) + 'px',
+          height: isMobile
+            ? 'calc(100vh - 100vw / 6 - 100px - 20px * ' + numInputRows + ')'
+            : '',
         }"
         v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
       >
@@ -213,12 +220,12 @@
       v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
     >
       <textarea
-        ref="input"
+        ref="PosterCommentInput"
         id="poster-chat-input"
-        v-model="inputText"
         :rows="numInputRows"
         @compositionstart="composing = true"
         @compositionend="composing = false"
+        @input="onInput"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
         @keydown.enter="onKeyDownEnterPosterCommentInput"
@@ -226,8 +233,8 @@
       ></textarea>
       <button
         id="submit-poster-comment"
-        @click="$emit('submit-poster-comment', inputText, replying)"
-        :disabled="inputText == ''"
+        @click="clickSubmit"
+        :disabled="!PosterCommentInput || PosterCommentInput.value?.value == ''"
       >
         <img
           class="icon"
@@ -255,6 +262,9 @@ import { inRange, flattenTree } from "@/common/util"
 import axiosDefault from "axios"
 import { countLines, formatTime } from "../util"
 import { sameDate, formatDate } from "./room_chat_service"
+import { AxiosInstance } from "axios"
+import axiosClient from "@aspida/axios"
+import api from "@/api/$api"
 
 import {
   defineComponent,
@@ -301,11 +311,14 @@ export default defineComponent({
     mobilePane: {
       type: String,
     },
+    axios: {
+      type: Function as PropType<AxiosInstance>,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({
       posterDataURI: "",
-      inputText: "",
       posterStatus: "unknown" as
         | "unknown"
         | "inactive"
@@ -325,7 +338,9 @@ export default defineComponent({
       showEmojiPicker: undefined as CommentId | undefined,
       replying: undefined as CommentEvent | undefined,
       showDateEvent: false,
+      numInputRows: 1,
     })
+    const PosterCommentInput = ref<HTMLTextAreaElement>()
     const posterCommentHistory = computed((): CommentHistoryEntry[] => {
       const comments = flattenTree(props.commentTree).map(c => {
         return {
@@ -381,24 +396,34 @@ export default defineComponent({
     const startUpdateComment = (cid: string) => {
       context.emit("set-editing-old", cid)
       state.replying = undefined
-      state.inputText = props.comments[cid].text_decrypted
-      const el = document.querySelector(
-        "#poster-chat-input"
-      ) as HTMLTextAreaElement
-      if (el) {
-        el.value = state.inputText
-        el.focus()
+      if (!PosterCommentInput.value) {
+        console.error("Poster comment textarea ref not found")
+        return
       }
+      PosterCommentInput.value.value = props.comments[cid].text_decrypted
+      PosterCommentInput.value.focus()
     }
     watch(
-      () => [props.poster, props.poster?.last_updated],
-      () => {
+      () => [props.poster, props.poster?.last_updated, props.poster?.file_url],
+      async () => {
+        const client = api(axiosClient(props.axios))
         console.log("watch poster invoked", props.poster)
         state.posterStatus = "checking"
-        if (props.poster) {
+        let signed_file_url: string | undefined = undefined
+        if (props.poster && props.poster?.file_url == "not_disclosed") {
+          const r = await client.posters
+            ._posterId(props.poster.id)
+            .file_url.$get()
+          signed_file_url = r.url
+        }
+        console.log(signed_file_url)
+        if (
+          props.poster &&
+          (signed_file_url || props.poster?.file_url != "not_disclosed")
+        ) {
           axiosDefault({
             method: "GET",
-            url: props.poster.file_url,
+            url: signed_file_url || props.poster.file_url,
             responseType: "arraybuffer",
           })
             .then(res => {
@@ -426,21 +451,17 @@ export default defineComponent({
       }
     )
 
-    const numInputRows = computed((): number => {
-      if (state.inputText == "") {
-        return 1
-      }
-      const el = document.querySelector(
-        "#poster-chat-input"
-      ) as HTMLTextAreaElement
-      if (el) {
-        const c = countLines(el)
-        console.log("countLines", c)
-        return Math.min(c, 15)
+    const onInput = async ev => {
+      if (!PosterCommentInput.value) {
+        console.error("Poster comment textarea ref not found")
+        state.numInputRows = 1
+      } else if (ev.target.value == "") {
+        state.numInputRows = 1
       } else {
-        return 0
+        const c = countLines(ev.target)
+        state.numInputRows = Math.min(c, 15)
       }
-    })
+    }
 
     const speechText = (text: string) => {
       window.speechSynthesis.cancel()
@@ -469,7 +490,11 @@ export default defineComponent({
     }
 
     const clearInput = () => {
-      state.inputText = ""
+      if (!PosterCommentInput.value) {
+        console.error("Poster comment textarea ref not found")
+        return
+      }
+      PosterCommentInput.value.value = ""
     }
 
     const posterImage = ref<Element>()
@@ -563,15 +588,20 @@ export default defineComponent({
       }
     }
 
+    const clickSubmit = ev => {
+      context.emit("submit-poster-comment", ev.target.value, state.replying)
+      ev.target.value = ""
+      state.numInputRows = 1
+    }
+
     const onKeyDownEnterPosterCommentInput = (ev: KeyboardEvent) => {
       // console.log(ev);
       if (ev.shiftKey) {
         if (state.composing) {
           state.composing = false
         } else {
-          context.emit("submit-poster-comment", state.inputText, state.replying)
+          clickSubmit(ev)
           ev.preventDefault()
-          state.inputText = ""
           return true
         }
         return false
@@ -611,18 +641,17 @@ export default defineComponent({
       console.log("startReply", c)
       state.replying = c
       context.emit("set-editing-old", undefined)
-      state.inputText = ""
-      const el = document.querySelector(
-        "#poster-chat-input"
-      ) as HTMLTextAreaElement
-      if (el) {
-        el.value = state.inputText
-        el.focus()
+      if (!PosterCommentInput.value) {
+        console.error("Poster comment textarea ref not found")
+        return
       }
+      PosterCommentInput.value.value = ""
+      PosterCommentInput.value.focus()
     }
 
     return {
       ...toRefs(state),
+      PosterCommentInput,
       formatTime,
       offline_disallowed,
       mouseDownPoster,
@@ -633,7 +662,6 @@ export default defineComponent({
       posterCommentHistory,
       clearInput,
       speechText,
-      numInputRows,
       zoomIn,
       zoomOut,
       zoomFit,
@@ -645,6 +673,7 @@ export default defineComponent({
       clickReaction,
       startReply,
       inRange,
+      onInput,
     }
   },
 })
@@ -664,6 +693,11 @@ h3 {
   height: 100%;
   padding-top: 300px;
   text-align: center;
+}
+
+.mobile #poster-notfound {
+  padding-top: 10vh;
+  width: 90vw;
 }
 
 #poster-notfound.dragover {
@@ -696,9 +730,10 @@ div#poster-container {
 
 #app-main.mobile div#poster-container {
   left: 0px;
-  top: 0px;
+  top: 15vw;
+  min-height: 0px;
   width: 100%;
-  height: calc(100vh - 20vw - 20px);
+  height: calc(100vh - 100vw / 6 - 15vw);
 }
 
 .fade-enter-active,
@@ -709,13 +744,6 @@ div#poster-container {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-}
-
-div#poster {
-  min-width: 400px;
-  width: calc((100vh - 52px) / 1.414);
-  min-height: 560px;
-  height: calc(100vh - 52px);
 }
 
 div#poster-comments-container {
@@ -751,6 +779,12 @@ h3#poster-comment-title {
   left: 10px;
 }
 
+.mobile h3#poster-comment-title {
+  position: absolute;
+  top: 0px;
+  left: 10vw;
+}
+
 div#poster-comments {
   margin: 0px 0px 0px 0px;
 }
@@ -759,22 +793,16 @@ div#poster-comments {
   margin-left: 0px;
 }
 
-.mobile div#poster-comments-container {
-  height: calc(100% - 580px);
-  top: 560px;
-}
-
-.mobile div#poster-comments-container.poster_active {
-  top: 280px;
-  height: calc(100% - 400px);
-}
-
 .comment-edit,
 .comment-delete {
   cursor: pointer;
 }
 
 div#poster {
+  min-width: 400px;
+  width: calc((100vh - 52px) / 1.414);
+  min-height: 560px;
+  height: calc(100vh - 52px);
   cursor: grab;
   background: #ccc;
   background-size: 200%;
@@ -783,6 +811,11 @@ div#poster {
   max-width: 100%;
   max-height: calc(100% - 5px);
   transition: 0.3s linear background-color;
+}
+
+.mobile div#poster {
+  height: calc(100vh - 100vw / 6 - 15vw - 21px);
+  min-height: 0px;
 }
 
 div#poster > img {
@@ -828,10 +861,16 @@ textarea#poster-chat-input {
 
 #app-main.mobile #poster-chat-input-container {
   bottom: 20vw;
+  width: 100%;
 }
 
 .comment-content {
   padding: 0px 10px;
+}
+
+.mobile #poster-tools {
+  position: absolute;
+  right: 10vw;
 }
 
 #poster-tools .toolbar-icon {

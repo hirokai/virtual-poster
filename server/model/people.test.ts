@@ -1,13 +1,13 @@
 import { Person } from "../../@types/types"
 import _ from "lodash"
-import { dbWith, resetDb, initData } from "."
+import { dbWith, resetDb, initMapModel } from "."
 import * as model from "."
 import { random_str } from "../test_util"
 
 beforeAll(async () => {
   const db = dbWith("postgres://postgres@localhost/virtual_poster_test")
   await db.query(resetDb)
-  await initData("postgres://postgres@localhost/virtual_poster_test", false)
+  await initMapModel("postgres://postgres@localhost/virtual_poster_test")
 })
 
 describe("Add person", () => {
@@ -32,7 +32,7 @@ describe("Add person", () => {
     expect(people2.length - people.length).toBe(NUM_PEOPLE)
   })
   test("Re-init", async () => {
-    await model.people.init()
+    await model.people.writePeopleCache()
     const people3 = await model.people.getAllPeopleList(null)
     expect(people3.length).toBe(NUM_PEOPLE)
     expect(people2).toEqual(people3)

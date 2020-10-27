@@ -1,9 +1,7 @@
 <template>
-  <div>
+  <div id="minimap-container">
     <canvas
       id="minimap-canvas"
-      width="528"
-      height="360"
       :style="{
         opacity: hidden ? 0 : 1,
       }"
@@ -41,43 +39,44 @@
           "
         >
           <image
+            v-if="size >= 5"
             :xlink:href="
               avatarImages[
-                person.avatar +
+                person.avatar.split(':')[0] +
                   '-' +
                   (person.direction == 'none' ? 'down' : person.direction)
               ]
                 ? 'data:image/png;base64,' +
                   avatarImages[
-                    person.avatar +
+                    person.avatar.split(':')[0] +
                       '-' +
                       (person.direction == 'none' ? 'down' : person.direction)
                   ]
-                : ''
+                : '/img/avatar/' +
+                  person.avatar.split(':')[0] +
+                  '-' +
+                  person.direction +
+                  '.png'
             "
             :style="{ opacity: person.connected ? 1 : 0.5 }"
             :width="'' + size + 'px'"
             :height="'' + size + 'px'"
           />
           <rect
+            v-else
+            :width="'' + size + 'px'"
+            :height="'' + size + 'px'"
+            :fill="person.connected ? 'red' : 'gray'"
+            opacity="0.7"
+            stroke="none"
+          />
+          <rect
+            v-if="size >= 5 && people_typing[person.id]"
             class="typing-indicator"
             :width="'' + size + 'px'"
             :height="'' + size + 'px'"
             opacity="0.4"
-            v-if="people_typing[person.id]"
           />
-          <!-- <rect
-            v-if="cell.contact || cell.chat || cell.chat_color"
-            class="minimap-outline"
-            x="1"
-            y="1"
-            width="7"
-            height="7"
-            rx="1px"
-            fill="none"
-            stroke-width="1"
-            :stroke="cell.chat_color || 'rgba(0,0,255,0.3)'"
-          /> -->
         </g>
       </g>
     </svg>
@@ -85,8 +84,14 @@
       id="minimap-area"
       :style="{
         opacity: hidden ? 0 : 1,
-        left: (isMobile ? 0 : 8) + (this.center.x - mapRadiusX) * size + 'px',
-        top: (isMobile ? 0 : 612) + (this.center.y - mapRadiusY) * size + 'px',
+        left:
+          '' +
+          ((isMobile ? 10 : 8) + (this.center.x - mapRadiusX) * size) +
+          'px',
+        top:
+          '' +
+          ((isMobile ? 0 : 612) + (this.center.y - mapRadiusY) * size) +
+          'px',
         width: size * (mapRadiusX * 2 + 1) + 'px',
         height: size * (mapRadiusY * 2 + 1) + 'px',
       }"
@@ -95,7 +100,16 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType, computed, watch, onMounted } from "vue"
+import {
+  defineComponent,
+  PropType,
+  reactive,
+  toRefs,
+  watch,
+  onMounted,
+  nextTick,
+  onUpdated,
+} from "vue"
 import { Cell, Point, ChatGroup, Person, Direction } from "@/@types/types"
 
 export default defineComponent({
@@ -149,16 +163,77 @@ export default defineComponent({
   },
 
   setup(props, context) {
+    const state = reactive({
+      size:
+        props.cells.length == 0
+          ? 0
+          : Math.floor(
+              Math.max(
+                1,
+                Math.min(
+                  528 / props.cells[0].length,
+                  (window.innerHeight - 612 - 8) / props.cells.length
+                )
+              )
+            ),
+    })
+    let rtime
+    let timeout = false
+    const delta = 200
+
+    watch([props.cells], () => {
+      state.size =
+        props.cells.length == 0
+          ? 0
+          : Math.floor(
+              Math.max(
+                1,
+                Math.min(
+                  528 / props.cells[0].length,
+                  (window.innerHeight - 612 - 8) / props.cells.length
+                )
+              )
+            )
+    })
+
+    function resizeend() {
+      if (Date.now() - rtime < delta) {
+        setTimeout(resizeend, delta)
+      } else {
+        timeout = false
+        state.size =
+          props.cells.length == 0
+            ? 1
+            : Math.floor(
+                Math.max(
+                  1,
+                  Math.min(
+                    528 / props.cells[0].length,
+                    (window.innerHeight - 612 - 8) / props.cells.length
+                  )
+                )
+              )
+      }
+    }
+
+    onUpdated(async () => {
+      await nextTick(() => {
+        resizeend()
+      })
+    })
+
+    window.onresize = () => {
+      rtime = Date.now()
+      if (timeout === false) {
+        timeout = true
+        setTimeout(resizeend, delta)
+      }
+    }
+
     const select = (p: Point) => {
       context.emit("select", p)
     }
-    const size = computed(() => {
-      return props.cells.length == 0
-        ? 9
-        : Math.floor(
-            Math.min(528 / props.cells[0].length, 360 / props.cells.length)
-          )
-    })
+
     const personImgOffset = (direction: Direction): string => {
       if (direction == "left") {
         return -8 + "px"
@@ -190,8 +265,8 @@ export default defineComponent({
     const dblClick = (ev: MouseEvent) => {
       console.log(ev)
       const p: Point = {
-        x: Math.floor(ev.offsetX / size.value),
-        y: Math.floor(ev.offsetY / size.value),
+        x: Math.floor(ev.offsetX / state.size),
+        y: Math.floor(ev.offsetY / state.size),
       }
       context.emit("dbl-click", p)
       ev.stopPropagation()
@@ -202,7 +277,10 @@ export default defineComponent({
         "minimap-canvas"
       ) as HTMLCanvasElement
 
-      const s = size.value
+      const s = state.size
+      canvas.height = s * props.cells.length
+      canvas.width = s * (props.cells[0] || []).length
+
       // const s = 3.5
       console.log("Minimap cell size", s, props.cells.length)
       // Draw a image.
@@ -262,18 +340,26 @@ export default defineComponent({
       )
     }
 
-    watch(() => [size, props.cells], drawMap)
+    watch(
+      () => [state.size, props.cells],
+      async (newValues, oldValues) => {
+        if (state.size > 0) {
+          console.log("watch", state.size, props.cells)
+          await drawMap()
+        }
+      }
+    )
     onMounted(async () => {
-      await drawMap()
+      // await drawMap()
     })
 
     return {
+      ...toRefs(state),
       dblClick,
       moveTo,
       select,
       personImgOffset,
       personImgClipPath,
-      size,
     }
   },
 })
@@ -296,6 +382,7 @@ svg#minimap {
 #minimap-area {
   transition: opacity 0.3s linear;
 }
+
 canvas#minimap-canvas {
   position: absolute;
   top: 612px;
@@ -305,6 +392,9 @@ canvas#minimap-canvas {
 }
 
 .mobile canvas#minimap-canvas {
+  /* max-height: calc(100vh - 100vw / 6); */
+  /* max-width: calc(100vh); */
+
   top: 0px;
   left: 8px;
 }

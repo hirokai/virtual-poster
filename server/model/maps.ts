@@ -68,6 +68,7 @@ export class MapModel {
   static async mkNewRoom(
     name: string,
     map_data: string,
+    allow_poster_assignment: boolean,
     owner?: UserId
   ): Promise<{ map?: MapModel; error?: string }> {
     const room_id = MapModel.genRoomId()
@@ -78,11 +79,10 @@ export class MapModel {
     if (rows.length > 0) {
       return { error: "Room name already exists" }
     }
-    await db.query(`INSERT INTO room (id,name,room_owner) values ($1,$2,$3)`, [
-      room_id,
-      name,
-      owner,
-    ])
+    await db.query(
+      `INSERT INTO room (id,name,room_owner,allow_poster_assignment) values ($1,$2,$3,$4)`,
+      [room_id, name, owner, allow_poster_assignment]
+    )
     const m = new MapModel(room_id, name)
     const res = await m.importMapString(map_data)
     if (!res) {
@@ -93,30 +93,160 @@ export class MapModel {
     return { map: m }
   }
 
-  // Give a user room access and place in a map.
+  async getOwner(): Promise<UserId | undefined> {
+    const rows = await db.query(`SELECT room_owner FROM room WHERE id=$1`, [
+      this.room_id,
+    ])
+    return rows[0]?.room_owner
+  }
+
+  async get(): Promise<{
+    cells: Cell[][]
+    numRows: number
+    numCols: number
+    allow_poster_assignment: boolean
+  }> {
+    const data1 = await this.getStaticMap()
+    const allow_poster_assignment = !!(
+      await model.db.oneOrNone(
+        `SELECT allow_poster_assignment FROM room WHERE id=$1`,
+        [this.room_id]
+      )
+    )?.allow_poster_assignment
+    const data = { ...data1, allow_poster_assignment }
+    return data
+  }
+
+  async getMetadata(): Promise<{
+    id: RoomId
+    allow_poster_assignment: boolean
+  }> {
+    const allow_poster_assignment = !!(
+      await model.db.oneOrNone(
+        `SELECT allow_poster_assignment FROM room WHERE id=$1`,
+        [this.room_id]
+      )
+    )?.allow_poster_assignment
+    return { id: this.room_id, allow_poster_assignment }
+  }
+
+  // Give a user room access and optionally place in a map.
   async addUser(
-    user_id: UserId,
+    user_email: string,
     assignPosition = true,
-    role: "user" | "admin" = "user"
-  ): Promise<{ ok: boolean; error?: string }> {
+    role: "user" | "admin" = "user",
+    added_by?: string
+  ): Promise<{
+    ok: boolean
+    error?: string
+    num_people_joined?: number
+    num_people_with_access?: number
+  }> {
     try {
       await db.query(
-        `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING `,
-        [this.room_id, user_id, role]
+        `INSERT INTO person_room_access (room,email,"role",added_by) values ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING `,
+        [this.room_id, user_email, role, added_by]
       )
+      const user_id = await model.people.getUserIdFromEmail(user_email)
       if (assignPosition) {
+        if (!user_id) {
+          return {
+            ok: false,
+            error:
+              "Cannot assign a position to a user that has not registered yet.",
+          }
+        }
         const r = await this.assignUserPosition(user_id)
         return {
           ok: r.ok,
           error: r.ok ? undefined : "AssignPostion error: " + r.status,
         }
       }
-      return { ok: true }
+      const num_people_joined = +(
+        await db.query(
+          `SELECT count(*) as c FROM person_position WHERE room=$1`,
+          [this.room_id]
+        )
+      )[0].c
+      const num_people_with_access = +(
+        await db.query(
+          `SELECT count(*) as c FROM person_room_access WHERE room=$1`,
+          [this.room_id]
+        )
+      )[0].c
+      return { ok: true, num_people_joined, num_people_with_access }
     } catch (err) {
       console.log(err)
       return { ok: false, error: "DB error in addUser()" }
     }
   }
+
+  // Remove room access of a user
+  async removeUser(d: {
+    user_id?: UserId
+    email?: string
+  }): Promise<{
+    ok: boolean
+    error?: string
+    num_people_active?: number
+    num_people_joined?: number
+    num_people_with_access?: number
+  }> {
+    const user_email = d.email || (await redis.accounts.get("uid:" + d.user_id))
+    const user_id = d.user_id || (await redis.accounts.get("email:" + d.email))
+    log.debug("removeUser()", user_id, user_email)
+    if (!user_email) {
+      return { ok: false, error: "User email is not found" }
+    }
+    try {
+      //FIXME: Delete other activities such as comments, groups, posters, etc.
+      if (user_id) {
+        await db.query(
+          `DELETE FROM person_position WHERE room=$1 AND person=$2`,
+          [this.room_id, user_id]
+        )
+        await model.redis.accounts.srem(
+          "connected_users:room:" + this.room_id + ":__all__",
+          user_id
+        )
+        await model.redis.accounts.hdel(
+          "connected_users:room:" + "__any__",
+          user_id
+        )
+        await model.redis.sockets.del("room:" + this.room_id + ":" + user_id)
+      }
+      await db.query(
+        `DELETE FROM person_room_access WHERE room=$1 AND email=$2`,
+        [this.room_id, user_email]
+      )
+      const num_people_active = await model.redis.accounts.scard(
+        "connected_users:room:" + this.room_id + ":__all__"
+      )
+      const num_people_joined = +(
+        await db.query(
+          `SELECT count(*) as c FROM person_position WHERE room=$1`,
+          [this.room_id]
+        )
+      )[0].c
+      const num_people_with_access = +(
+        await db.query(
+          `SELECT count(*) as c FROM person_room_access WHERE room=$1`,
+          [this.room_id]
+        )
+      )[0].c
+
+      return {
+        ok: true,
+        num_people_active,
+        num_people_joined,
+        num_people_with_access,
+      }
+    } catch (err) {
+      console.log(err)
+      return { ok: false, error: "DB error in removeUser()" }
+    }
+  }
+
   async writeRedisCache(): Promise<void> {
     await this.initStaticMap()
     await this.initLiveObjects()
@@ -396,10 +526,14 @@ export class MapModel {
     ok: boolean
     status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
   }> {
-    console.log("assignUserPosition()", user_id)
+    log.debug("assignUserPosition()", user_id)
+    const user = await model.people.get(user_id, true)
+    if (!user) {
+      return { ok: false, status: "DoesNotExist" }
+    }
     const r = await db.query(
-      `SELECT count(*) from person_room_access where room=$1 and person=$2;`,
-      [this.room_id, user_id]
+      `SELECT count(*) from person_room_access where room=$1 and email=$2;`,
+      [this.room_id, user.email]
     )
     if (r[0].count == 0) {
       return { ok: false, status: "NoAccess" }
@@ -409,7 +543,7 @@ export class MapModel {
       log.error("No open space")
       return { ok: false, status: "NoSpace" }
     }
-    console.log("Found open pos for user:", pos)
+    log.debug("Found open pos for user:", pos)
     await model.people.setPos(
       user_id,
       this.room_id,
@@ -419,11 +553,13 @@ export class MapModel {
     )
     return { ok: true, status: "New" }
   }
+
   async enterRoom(
     user_id: UserId
   ): Promise<{
     ok: boolean
     status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
+    num_people_joined?: number
   }> {
     const r1 = (
       await db.query(`SELECT count(*) from room where id=$1`, [this.room_id])
@@ -438,6 +574,15 @@ export class MapModel {
     )
     if (rows[0].count == 0) {
       const r = await this.assignUserPosition(user_id)
+      if (r.status == "New") {
+        const num_people_joined = +(
+          await db.query(
+            `SELECT count(*) as c FROM person_position WHERE room=$1`,
+            [this.room_id]
+          )
+        )[0].c
+        return { ...r, num_people_joined }
+      }
       return r
     } else {
       return { ok: true, status: "ComeBack" }
@@ -485,12 +630,22 @@ export class MapModel {
     return { ok: true }
   }
 
+  async getPeopleWithAccess(): Promise<{ email: string }[]> {
+    const rows = await db.query(
+      `SELECT email FROM person_room_access WHERE room=$1;`,
+      [this.room_id]
+    )
+    return rows.map(r => {
+      return { email: r["email"] as string }
+    })
+  }
   async setTyping(user: UserId, typing: boolean): Promise<void> {
     await redis.accounts.set(
       "typing:" + this.room_id + ":" + user,
       typing ? "1" : "0"
     )
   }
+
   async assignRandomOpenPos(
     user_id: UserId,
     remove_old = false
@@ -660,7 +815,12 @@ export class MapModel {
     title?: string,
     access_log = false,
     author_online_only = false
-  ): Promise<{ ok: boolean; poster?: Poster; error?: string }> {
+  ): Promise<{
+    ok: boolean
+    poster?: Poster
+    error?: string
+    poster_count?: number
+  }> {
     log.debug("assignPosterLocation()", poster_number, author, title, overwrite)
     const poster_id = Posters.genPosterId()
     const last_updated = Date.now()
@@ -673,33 +833,38 @@ export class MapModel {
     }
     let res: any[] = []
     const location = cells[0].id
-    if (overwrite) {
-      res = await db.query(
-        `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
-        [
-          poster_id,
-          last_updated,
-          title,
-          author,
-          location,
-          access_log,
-          author_online_only,
-        ]
-      )
-      log.debug("poster overwrite", res)
-    } else {
-      res = await db.query(
-        `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id;`,
-        [
-          poster_id,
-          last_updated,
-          title,
-          author,
-          location,
-          access_log,
-          author_online_only,
-        ]
-      )
+    try {
+      if (overwrite) {
+        res = await db.query(
+          `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only,file_uploaded) VALUES ($1,$2,$3,$4,$5,$6,$7,'f') ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
+          [
+            poster_id,
+            last_updated,
+            title,
+            author,
+            location,
+            access_log,
+            author_online_only,
+          ]
+        )
+        log.debug("poster overwrite", res)
+      } else {
+        res = await db.query(
+          `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only,file_uploaded) VALUES ($1,$2,$3,$4,$5,$6,$7,'f') RETURNING id;`,
+          [
+            poster_id,
+            last_updated,
+            title,
+            author,
+            location,
+            access_log,
+            author_online_only,
+          ]
+        )
+      }
+    } catch (err) {
+      log.error(err)
+      return { ok: false, error: "DB error" }
     }
     if (res.length == 0 || res[0].id != poster_id) {
       return { ok: false, error: "DB error" }
@@ -707,6 +872,12 @@ export class MapModel {
     const domain = USE_S3_CDN
       ? (CDN_DOMAIN as string)
       : "https://" + (S3_BUCKET as string) + ".s3.amazonaws.com/"
+    const poster_count: number | undefined = +(
+      await db.query(
+        `SELECT count(*) as c FROM poster WHERE location IN (SELECT id FROM map_cell WHERE room=$1)`,
+        [this.room_id]
+      )
+    )[0].c
     return {
       ok: true,
       poster: {
@@ -719,24 +890,27 @@ export class MapModel {
         poster_number,
         x: cells[0].x,
         y: cells[0].y,
-        file_url: config.aws.s3.upload
-          ? "not_disclosed"
-          : "/api/posters/" + poster_id + "/file",
+        file_url: undefined,
+        // file_url: config.aws.s3.upload
+        //   ? "not_disclosed"
+        //   : "/api/posters/" + poster_id + "/file",
         access_log,
         author_online_only,
       },
+      poster_count,
     }
   }
 
   async freePosterLocation(
     poster_number: number,
-    author: UserId,
+    requester: UserId,
     forceRemoveComments = false
   ): Promise<{
     ok: boolean
     poster_id?: PosterId
     viewers?: UserId[]
     error?: string
+    poster_count?: number
   }> {
     try {
       const poster: Poster | null = await model.posters.getByNumber(
@@ -746,7 +920,8 @@ export class MapModel {
       if (!poster) {
         return { ok: false, error: "Poster not found" }
       }
-      if (poster.author != author) {
+      const typ = await model.people.getUserType(requester)
+      if (poster.author != requester && typ != "admin") {
         return {
           ok: false,
           poster_id: poster.id,
@@ -767,9 +942,20 @@ export class MapModel {
 
       const rows = await db.query(
         `DELETE FROM poster WHERE author=$1 AND location in (SELECT id FROM map_cell WHERE room=$2 AND poster_number=$3) RETURNING id;`,
-        [author, this.room_id, poster_number]
+        [poster.author, this.room_id, poster_number]
       )
-      return { ok: rows.length == 1, poster_id: rows[0]?.id, viewers }
+      const poster_count: number | undefined = +(
+        await db.query(
+          `SELECT count(*) as c FROM poster WHERE location IN (SELECT id FROM map_cell WHERE room=$1)`,
+          [this.room_id]
+        )
+      )[0].c
+      return {
+        ok: rows.length == 1,
+        poster_id: rows[0]?.id,
+        viewers,
+        poster_count,
+      }
     } catch (err) {
       log.error(err)
       return { ok: false, error: "DB error" }
@@ -911,12 +1097,19 @@ export class MapModel {
     code: string
   ): Promise<RoomId[] | undefined> {
     // If it has non-existent room ID, return undefined
-    const rooms = code.split(":")
+    const codes = code.split(":")
     const rooms_ok: RoomId[] = []
-    for (const rid of rooms) {
-      const mm = model.maps[rid]
-      if (mm) {
-        rooms_ok.push(rid)
+    for (const code of codes) {
+      const rows = await model.db.query(
+        `SELECT room FROM room_access_code WHERE code=$1`,
+        [code]
+      )
+      const rid: string | undefined = rows[0]?.room
+      if (rid) {
+        const mm = model.maps[rid]
+        if (mm) {
+          rooms_ok.push(rid)
+        }
       }
     }
     return rooms_ok.concat(DEFAULT_ROOMS)

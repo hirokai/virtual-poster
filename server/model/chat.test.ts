@@ -15,7 +15,11 @@ describe("Chat group", () => {
   const rows = 30
   test("Make a group", async () => {
     const map_data = mkMapData(rows, cols)
-    const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data)
+    const { map: mm } = await model.MapModel.mkNewRoom(
+      "Room 1",
+      map_data,
+      false
+    )
     expect(mm).toBeDefined()
     if (!mm) {
       throw "MapModel failed to init"
@@ -38,7 +42,11 @@ describe("Chat group", () => {
 
   test("Cannot make a group with a remote person", async () => {
     const map_data = mkMapData(rows, cols)
-    const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data)
+    const { map: mm } = await model.MapModel.mkNewRoom(
+      "Room 1",
+      map_data,
+      false
+    )
     expect(mm).toBeDefined()
     if (!mm) {
       throw "MapModel failed to init"

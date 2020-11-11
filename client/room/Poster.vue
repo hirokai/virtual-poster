@@ -97,7 +97,11 @@
           >
             {{
               people[poster.author] ? people[poster.author].name : "（不明）"
-            }}さんのポスターをロード中...
+            }}さんのポスターをロード中...{{
+              posterDownloadProgress
+                ? "（" + Math.floor(posterDownloadProgress * 100) + "%）"
+                : ""
+            }}
           </div>
           <div id="poster-inactive" v-if="!poster">
             ポスターに近づくと表示されます
@@ -339,6 +343,7 @@ export default defineComponent({
       replying: undefined as CommentEvent | undefined,
       showDateEvent: false,
       numInputRows: 1,
+      posterDownloadProgress: undefined as number | undefined,
     })
     const PosterCommentInput = ref<HTMLTextAreaElement>()
     const posterCommentHistory = computed((): CommentHistoryEntry[] => {
@@ -416,7 +421,7 @@ export default defineComponent({
             .file_url.$get()
           signed_file_url = r.url
         }
-        console.log(signed_file_url)
+        // console.log(signed_file_url)
         if (
           props.poster &&
           (signed_file_url || props.poster?.file_url != "not_disclosed")
@@ -425,6 +430,15 @@ export default defineComponent({
             method: "GET",
             url: signed_file_url || props.poster.file_url,
             responseType: "arraybuffer",
+            onDownloadProgress: progressEvent => {
+              console.log(
+                progressEvent.loaded,
+                progressEvent.total,
+                progressEvent
+              )
+              state.posterDownloadProgress =
+                progressEvent.loaded / progressEvent.total
+            },
           })
             .then(res => {
               console.log(res)

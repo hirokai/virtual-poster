@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>メンバー</h1>
-    <table>
+    <table class="table">
       <tr>
         <td>メンバー</td>
 

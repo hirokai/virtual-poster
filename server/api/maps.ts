@@ -1,7 +1,13 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import _ from "lodash"
-import { RoomId, MapEnterResponse, UserId } from "../../@types/types"
+import {
+  RoomId,
+  MapEnterResponse,
+  UserId,
+  Room,
+  RoomUpdateSocketData,
+} from "../../@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 import { config } from "../config"
@@ -16,73 +22,102 @@ async function maps_api_routes(
 
   fastify.get(
     "/maps",
-    async (
-      req
-    ): Promise<
-      {
-        id: RoomId
-        name: string
-        numCols: number
-        numRows: number
-        poster_count: number
-        poster_location_count: number
-      }[]
-    > => {
-      const rows: any[] =
-        req["requester_type"] == "admin"
-          ? await model.db.query(
-              `
+    async (req): Promise<Room[]> => {
+      const requester_email = req["requester_email"]
+      const is_admin = req["requester_type"] == "admin"
+      const rows: any[] = is_admin
+        ? await model.db.query(
+            `
         SELECT
-            room.id,
-            room.name,
+            room.*,
             count(c.poster_number) AS poster_location_count,
             count(poster.id) AS poster_count,
             max(c.x) AS max_x,
             max(c.y) AS max_y,
-            room.room_owner
+            cd.code AS access_code,
+            cd.active AS access_code_active
         FROM
             room
+            LEFT JOIN room_access_code AS cd ON room.id = cd.room
             LEFT JOIN map_cell AS c ON room.id = c.room
             LEFT JOIN poster ON c.id = poster.location
         GROUP BY
-            room.id;`
-            )
-          : await model.db.query(
-              `
-        SELECT
             room.id,
-            room.name,
+            cd.code,
+            cd.active;`
+          )
+        : await model.db.query(
+            `
+        SELECT
+            room.*,
             count(c.poster_number) as poster_location_count,
             count(poster.id) as poster_count,
             max(c.x) as max_x,
             max(c.y) as max_y,
-            room.room_owner
+            cd.code AS access_code,
+            cd.active AS access_code_active
         FROM
             room
+            LEFT JOIN room_access_code AS cd ON room.id = cd.room
             LEFT JOIN map_cell as c on room.id = c.room
             LEFT JOIN poster ON c.id = poster.location
             JOIN person_room_access AS a ON room.id = a.room
         WHERE
-            a.person = $1
+            a.email = $1
         GROUP BY
-            room.id;`,
-              [req["requester"]]
-            )
-      const result = rows.map(r => {
+            room.id,
+            cd.code,
+            cd.active;`,
+            [requester_email]
+          )
+      const result: Room[] = []
+      for (const r of rows) {
+        const room_id = r["id"]
         const numCols: number = r["max_y"] + 1
         const numRows: number = r["max_x"] + 1
         const poster_count = parseInt(r.poster_count)
         const poster_location_count = parseInt(r.poster_location_count)
-        return {
-          id: r["id"],
+        const allow_poster_assignment = r["allow_poster_assignment"]
+
+        const rows1 = await model.db.query(
+          `SELECT count(*) as c FROM person_position WHERE room=$1`,
+          [room_id]
+        )
+        const rows2 = await model.db.query(
+          `SELECT count(*) as c FROM person_room_access WHERE room=$1`,
+          [room_id]
+        )
+
+        const access_code_active = r["access_code_active"]
+        const owner = r["room_owner"]
+        const is_owner = req["requester"] == owner
+
+        const num_people_joined: number = +rows1[0]["c"]
+        const num_people_with_access: number | undefined =
+          is_admin || is_owner ? +rows2[0]["c"] : undefined
+
+        const num_people_active = await model.redis.accounts.scard(
+          "connected_users:room:" + room_id + ":__all__"
+        )
+
+        result.push({
+          id: room_id,
           name: r["name"],
           poster_location_count,
           poster_count,
+          num_people_joined,
+          num_people_with_access,
+          allow_poster_assignment,
           numCols,
           numRows,
-          owner: r["room_owner"],
-        }
-      })
+          owner,
+          num_people_active,
+          access_code:
+            owner == req["requester"] || req["requester_type"] == "admin"
+              ? { code: r["access_code"], active: access_code_active }
+              : undefined,
+        })
+      }
       return result
     }
   )
@@ -90,6 +125,8 @@ async function maps_api_routes(
   fastify.post<any>("/maps", async req => {
     const name: string = req.body.name
     const template: string = req.body.template
+    const allow_poster_assignment: boolean =
+      req.body.allow_poster_assignment != false
 
     const { map_data } = await model.MapModel.loadTemplate(template)
     if (!map_data) {
@@ -98,12 +135,18 @@ async function maps_api_routes(
       const { map: mm, error } = await model.MapModel.mkNewRoom(
         name,
         map_data,
+        allow_poster_assignment,
         req["requester"]
       )
       if (!mm) {
         return { ok: false, error }
       }
-      await model.maps[mm.room_id].addUser(req["requester"], true)
+      await model.maps[mm.room_id].addUser(
+        req["requester_email"],
+        true,
+        "admin",
+        req["requester"]
+      )
       return { ok: true, room: { id: mm.room_id, name } }
     }
   })
@@ -123,17 +166,33 @@ async function maps_api_routes(
         .send(cache)
       return
     } else {
-      const data = await map.getStaticMap()
-      model.redis.staticMap
-        .set(key, JSON.stringify(data))
-        .then(() => {
-          //
-        })
-        .catch(err => {
-          console.error(err)
-        })
+      const data = await map.get()
+      await model.redis.staticMap.set(key, JSON.stringify(data))
       return data
     }
+  })
+
+  fastify.patch<any>("/maps/:roomId", async (req, res) => {
+    const map = model.maps[req.params.roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const allow_poster_assignment = req.body.allow_poster_assignment as
+      | boolean
+      | undefined
+    if (allow_poster_assignment != undefined) {
+      await model.db.query(
+        `UPDATE room SET allow_poster_assignment=$1 WHERE id=$2`,
+        [allow_poster_assignment, map.room_id]
+      )
+      const key = "map_cache:" + map.room_id
+      await model.redis.staticMap.del(key)
+      const data = await map.getMetadata()
+      emit.room(data)
+      return { ok: true }
+    }
+    return { ok: false, error: "Stub" }
   })
 
   fastify.delete<any>("/maps/:roomId", async (req, res) => {
@@ -159,6 +218,109 @@ async function maps_api_routes(
       delete model.maps[roomId]
     }
     return { ok }
+  })
+
+  const random_str = (N?: number): string => {
+    const MAX_LENGTH = 100
+    const MIN_LENGTH = 10
+    N = N
+      ? N
+      : MIN_LENGTH + Math.floor(Math.random() * (MAX_LENGTH - MIN_LENGTH))
+    const S = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    return Array.from(Array(N))
+      .map(() => S[Math.floor(Math.random() * S.length)])
+      .join("")
+  }
+
+  fastify.delete<any>("/maps/:roomId/access_code", async (req, res) => {
+    const map = model.maps[req.params.roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const owner = await map.getOwner()
+    if (owner != req["requester"] && req["requester_type"] != "admin") {
+      return res.status(403).send("Not an owner or admin")
+    }
+    try {
+      const rows = await model.db.query(
+        `DELETE FROM room_access_code WHERE room=$1 RETURNING code`,
+        [map.room_id]
+      )
+      const key = "map_cache:" + map.room_id
+      await model.redis.staticMap.del(key)
+      const data = await map.getMetadata()
+      emit.room(data)
+      const deleted_code = rows[0]?.code
+      return { ok: true, deleted_code }
+    } catch (e) {
+      req.log.error(e)
+      return { ok: false, error: "DB error" }
+    }
+  })
+
+  fastify.patch<any>(
+    "/maps/:roomId/access_code/:accessCode",
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+      if (!map) {
+        await res.status(404).send("Not found")
+        return
+      }
+      const active = req.body.active as boolean
+      const rows = await model.db.query(
+        `UPDATE room_access_code SET active=$1 WHERE room=$2`,
+        [active, map.room_id]
+      )
+      const key = "map_cache:" + map.room_id
+      await model.redis.staticMap.del(key)
+      const data = await map.getMetadata()
+      emit.room(data)
+
+      return { ok: true }
+    }
+  )
+
+  fastify.post<any>("/maps/:roomId/access_code/renew", async (req, res) => {
+    const map = model.maps[req.params.roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const rows = await model.db.query(
+      `SELECT room_owner FROM room WHERE id=$1`,
+      [map.room_id]
+    )
+    const owner: UserId | undefined = rows[0]?.room_owner
+    if (owner != req["requester"] && req["requester_type"] != "admin") {
+      return res.status(403).send("Not an owner or admin")
+    }
+    try {
+      const code = random_str(10)
+      await model.db.query(`BEGIN`)
+      const r1 = await model.db.query(
+        `SELECT active FROM room_access_code WHERE room=$1`,
+        [map.room_id]
+      )
+      const active = r1[0] ? !!r1[0]?.active : true
+      await model.db.query(`DELETE FROM room_access_code WHERE room=$1`, [
+        map.room_id,
+      ])
+      await model.db.query(
+        `INSERT INTO room_access_code (code,room,granted_right,timestamp,active) VALUES ($1,$2,$3,$4,$5)`,
+        [code, map.room_id, "user", Date.now(), active]
+      )
+      const key = "map_cache:" + map.room_id
+      await model.redis.staticMap.del(key)
+      await model.db.query(`COMMIT`)
+      const data = await map.getMetadata()
+      emit.room(data)
+      return { ok: true, code, active }
+    } catch (e) {
+      await model.db.query(`ROLLBACK`)
+      req.log.error(e)
+      return { ok: false, error: "DB error" }
+    }
   })
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
@@ -222,7 +384,7 @@ async function maps_api_routes(
     //   if (cluster?.worker?.id) {
     //     log.debug(req.path + " Worker #", cluster.worker.id)
     //   }
-    const roomId = req.params.roomId
+    const roomId = req.params.roomId as string
     const map = model.maps[roomId]
     if (!map) {
       throw { statusCode: 404, message: "Room not found" }
@@ -247,6 +409,13 @@ async function maps_api_routes(
         [req["requester"]]
       )
       r2.public_key = rows[0]?.public_key
+      if (r.num_people_joined) {
+        const d: RoomUpdateSocketData = {
+          id: roomId,
+          num_people_joined: r.num_people_joined,
+        }
+        emit.channels([roomId, "::admin", "::index", "::mypage"]).room(d)
+      }
     }
     return r2
   })
@@ -258,6 +427,35 @@ async function maps_api_routes(
       throw { statusCode: 404, message: "Room not found" }
     }
     const r = await map.leaveRoom(req["requester"])
+    return r
+  })
+
+  fastify.delete<any>("/maps/:roomId/people/:userId", async (req, res) => {
+    const requester = req["requester"]
+    const userId = req.params.userId as string
+    const roomId = req.params.roomId as string
+    const m = model.maps[roomId || ""]
+    if (!m) {
+      throw { statusCode: 404 }
+    }
+    const owner = await m.getOwner()
+    if (
+      req["requester_type"] != "admin" &&
+      requester != userId &&
+      requester != owner
+    ) {
+      throw { statusCode: 403, message: "Unauthorized" }
+    }
+    const r = await m.removeUser({ user_id: userId })
+    if (r.ok) {
+      const d: RoomUpdateSocketData = {
+        id: roomId,
+        num_people_joined: r.num_people_joined,
+        num_people_with_access: r.num_people_with_access,
+        num_people_active: r.num_people_active,
+      }
+      emit.room(d)
+    }
     return r
   })
 }

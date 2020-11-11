@@ -11,10 +11,15 @@
           <th>Y座標</th>
           <th>発表者</th>
           <th>タイトル</th>
+          <th>画像</th>
+          <th>足あと記録</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
+        <tr v-if="postersSorted.length == 0">
+          <td colspan="6">ポスターはありません</td>
+        </tr>
         <tr v-for="poster in postersSorted" :key="poster.id" class="poster_row">
           <td>{{ poster.poster_number }}</td>
           <td>{{ poster.x }}</td>
@@ -25,7 +30,21 @@
           <td>
             {{ poster.title }}
           </td>
-          <td><button @click="clickMove(poster.id)">移動</button></td>
+          <td style="color: #0c0; font-size: 18px;">
+            {{ poster.file_url ? "&#x2714;" : "" }}
+          </td>
+          <td>
+            <span
+              v-if="poster.access_log"
+              style="color: orange; font-weight: bold"
+              >記録あり</span
+            >
+          </td>
+          <td>
+            <button class="button is-small" @click="clickMove(poster.id)">
+              移動
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -48,8 +67,6 @@ import {
 import axios from "axios"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
-const client = api(axiosClient(axios))
-import jsSHA from "jssha"
 
 import { keyBy, sortBy } from "../common/util"
 import io from "socket.io-client"
@@ -150,9 +167,7 @@ export default defineComponent({
         })
     }
     onMounted(() => {
-      const name = localStorage["virtual-poster:name"]
       const user_id = localStorage["virtual-poster:user_id"]
-      const email = localStorage["virtual-poster:email"]
 
       client.socket_url
         .$get()
@@ -233,10 +248,6 @@ tr:nth-child(even) {
 }
 tr:nth-child(odd) {
   background: #fff;
-}
-
-tr.poster_row {
-  cursor: pointer;
 }
 
 th {

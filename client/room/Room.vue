@@ -438,6 +438,7 @@ import {
   ChatCommentDecrypted,
   UserId,
   Poster as PosterTyp,
+  PosterId,
   TypingSocketSendData,
   HttpMethod,
   CommentId,
@@ -460,9 +461,9 @@ import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
 import jsSHA from "jssha"
 import io from "socket.io-client"
-import * as firebase from "firebase/app"
-import "firebase/auth"
 import { initPeopleService } from "./room_people_service"
+
+const RELOAD_DELAY_MEAN = 2000
 
 import {
   sendComment,
@@ -496,13 +497,10 @@ import {
 import { addLatencyLog } from "./room_log_service"
 import { MySocketObject } from "../socket"
 
-import { deleteUserInfoOnLogout } from "../util"
-import { PosterId } from "@/api/@types"
-
 const setupSocketHandlers = (
   props: RoomAppProps,
   state: RoomAppState,
-  socket: SocketIO.Socket | MySocketObject
+  socket: SocketIOClient.Socket | MySocketObject
 ) => {
   console.log("Setting up socket handlers for", socket)
   socket.on("disconnect", () => {
@@ -531,7 +529,7 @@ const setupSocketHandlers = (
 
   socket.on("Greeting", d => {
     console.log("Greeting received.", d?.worker)
-    socket.emit("Active", { room: props.room_id, user: props.myUserId })
+    // socket.emit("Active", { room: props.room_id, user: props.myUserId })
   })
 
   socket.on("Announce", d => {
@@ -543,15 +541,23 @@ const setupSocketHandlers = (
     console.log("map.reset not implemented")
     // reloadData()
   })
-  socket.on("AppReload", () => {
-    if (
-      confirm("アプリケーションが更新されました。リロードしても良いですか？")
-    ) {
-      location.reload()
+  socket.on("AppReload", (force: boolean) => {
+    if (state.reloadWaiting) {
+      return
     }
-  })
-  socket.on("AppReloadSilent", () => {
-    location.reload()
+    state.reloadWaiting = true
+    window.setTimeout(() => {
+      if (
+        force ||
+        confirm("アプリケーションが更新されました。リロードしても良いですか？")
+      ) {
+        state.reloadWaiting = false
+
+        location.reload()
+      } else {
+        state.reloadWaiting = false
+      }
+    }, Math.random() * RELOAD_DELAY_MEAN * 2)
   })
 }
 
@@ -651,7 +657,7 @@ export default defineComponent({
     }
 
     const state = reactive<RoomAppState>({
-      socket: null as SocketIO.Socket | null,
+      socket: null as SocketIOClient.Socket | null,
       peer: null,
       skywayRoom: null,
       enableEncryption: false,
@@ -666,6 +672,7 @@ export default defineComponent({
       hallMap: [] as Cell[][],
       cols: 0,
       rows: 0,
+      allow_poster_assignment: false,
       keyQueue: null as { key: ArrowKey; timestamp: number } | null,
 
       center: { x: 5, y: 5 },
@@ -718,8 +725,11 @@ export default defineComponent({
       publicKeyString: null as string | null,
       publicKey: null as CryptoKey | null,
 
+      reloadWaiting: false,
+
       mobilePane: "map",
     })
+
     props.axios.interceptors.request.use(config => {
       if (props.debug_as) {
         config.params = config.params || {}
@@ -730,34 +740,6 @@ export default defineComponent({
         return config
       }
     })
-    props.axios.interceptors.response.use(
-      response => {
-        return response
-      },
-      error => {
-        if (403 === error.response.status) {
-          ;(async () => {
-            const user = firebase.auth().currentUser
-            if (user) {
-              const token = await user.getIdToken(true)
-              const data = await client.id_token.$post({ body: { token } })
-
-              if (data.updated) {
-                console.log("/id_token result", data)
-                const shaObj = new jsSHA("SHA-256", "TEXT", {
-                  encoding: "UTF8",
-                })
-                shaObj.update(token)
-                const jwt_hash = shaObj.getHash("HEX")
-                localStorage["virtual-poster:jwt_hash"] = jwt_hash
-              }
-            }
-          })().catch(err => {
-            console.log(err)
-          })
-        }
-      }
-    )
 
     // state.peer?.on("connection", d => {
     //   console.log("Skyway peer connection", d)
@@ -1040,7 +1022,7 @@ export default defineComponent({
         setupSocketHandlers(
           props,
           state,
-          state.socket as MySocketObject | SocketIO.Socket
+          state.socket as MySocketObject | SocketIOClient.Socket
         )
         // We have to get public keys of users first.
         await initPeopleService(props.axios, state.socket, props, state)

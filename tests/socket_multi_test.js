@@ -17,6 +17,7 @@ const debug_token = process.env.DEBUG_TOKEN || config.debug_token || ""
 const room = process.env.ROOM || ""
 const API_USER = process.env.API_USER || ""
 const exclude = (process.env.EXCLUDE_USERS || "").split(",")
+const regex = new RegExp(process.argv[5] || ".+")
 
 const API_URL = process.env.API_URL || "http://localhost:3000/api"
 
@@ -45,9 +46,12 @@ axios
   })
   .then(({ data: data1 }) => {
     const people = keyBy(data1, "id")
-    let uids = _.difference(Object.keys(people), exclude)
+    let uids = _.filter(_.difference(Object.keys(people), exclude), u => {
+      return u.match(regex)
+    })
     uids = _.shuffle(uids).slice(0, NUM_USERS)
     console.log(`${uids.length} users`)
+    console.log(uids)
     for (const user_id of uids) {
       setTimeout(() => {
         procs[user_id] = child_process.spawn(

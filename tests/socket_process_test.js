@@ -1,6 +1,6 @@
 const performance = require("perf_hooks").performance
 
-const EMIT_TIMEOUT = 2000
+const EMIT_TIMEOUT = 1000 * 3
 
 const _ = require("lodash")
 const axios = require("axios")
@@ -169,7 +169,9 @@ function runForSocketIO(uid) {
   })
 
   socket.on("MoveError", d => {
-    positions[d.user_id] = d.pos
+    if (typeof d.pos.x == "number" && typeof d.pos.y == "number") {
+      positions[d.user_id] = d.pos
+    }
     console.log(
       "MoveError",
       [d.user_id, ":", d.pos.x, ".", d.pos.y, ":", d.error].join("")

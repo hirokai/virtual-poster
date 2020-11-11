@@ -11,6 +11,7 @@ import fs from "fs"
 import path from "path"
 import AWS from "aws-sdk"
 import { config } from "../config"
+import { TIMEOUT } from "dns"
 
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
@@ -64,23 +65,47 @@ async function routes(
     return { ok: !!posters, posters: posters || undefined }
   })
 
-  fastify.post<any>("/maps/:roomId/poster_slots/:posterNumber", async req => {
-    const { roomId, posterNumber } = req.params as Record<string, string>
-    const num = parseInt(posterNumber)
-    if (isNaN(num)) {
-      return { ok: false }
-    } else {
+  fastify.post<any>(
+    "/maps/:roomId/poster_slots/:posterNumber",
+    async (req, reply) => {
+      const { roomId, posterNumber } = req.params as Record<string, string>
+      const user_id = (req.body.user_id || req["requester"]) as string
+      const title = req.body.title as string | undefined
+      const num = parseInt(posterNumber)
+      if (isNaN(num)) {
+        return { ok: false }
+      }
+      if (req["requester_type"] != "admin") {
+        const allowed = !!(
+          await model.db.oneOrNone(
+            `SELECT allow_poster_assignment FROM room WHERE id=$1`,
+            [roomId]
+          )
+        )?.allow_poster_assignment
+        if (user_id != req["requester"] || !allowed)
+          return await reply.code(403).send("Unauthorized")
+      }
       const r = await model.maps[roomId].assignPosterLocation(
         num,
-        req["requester"],
+        user_id || req["requester"],
         false
       )
+      if (!r.poster) {
+        return { ok: false, error: r.error }
+      }
+      if (title) {
+        r.poster.title = title
+        await model.posters.set(r.poster)
+      }
       if (r.ok && r.poster) {
-        emit.channels([roomId, req["requester"]]).poster(r.poster)
+        emit.channels([roomId, user_id]).poster(r.poster)
+        emit
+          .channels([roomId, "::index"])
+          .room({ id: roomId, poster_count: r.poster_count })
       }
       return r
     }
-  })
+  )
 
   fastify.delete<any>("/maps/:roomId/poster_slots/:posterNumber", async req => {
     const { roomId, posterNumber } = req.params as Record<string, string>
@@ -106,6 +131,9 @@ async function routes(
             return { id: pid, last_updated, poster_viewing: null }
           })
         )
+        emit
+          .channels([roomId, "::index"])
+          .room({ id: roomId, poster_count: r.poster_count })
       }
       return r
     }
@@ -119,23 +147,27 @@ async function routes(
       | boolean
       | undefined
     const p = await model.posters.get(poster_id)
-    if (p) {
-      if (title) {
-        p.title = title
-      }
-      if (access_log != undefined) {
-        p.access_log = access_log
-      }
-      if (author_online_only != undefined) {
-        p.author_online_only = author_online_only
-      }
-      p.last_updated = Date.now()
-      const r = await model.posters.set(p)
-      emit.channels([p.room, req["requester"]]).poster(p)
-      return { ok: r }
-    } else {
-      return { ok: false }
+    if (!p) {
+      throw { statusCode: 404 }
     }
+    const permitted =
+      req["requester_type"] == "admin" || req["requester"] == p.author
+    if (!permitted) {
+      throw { statusCode: 403 }
+    }
+    if (title) {
+      p.title = title
+    }
+    if (access_log != undefined) {
+      p.access_log = access_log
+    }
+    if (author_online_only != undefined) {
+      p.author_online_only = author_online_only
+    }
+    p.last_updated = Date.now()
+    const r = await model.posters.set(p)
+    emit.channels([p.room, req["requester"], p.author]).poster(p)
+    return { ok: r }
   })
 
   fastify.post<any>(
@@ -253,6 +285,11 @@ async function routes(
         } else {
           await deleteFile("db/posters/" + poster.id + ".png")
         }
+        await model.db.query(
+          `UPDATE poster SET file_uploaded='f' WHERE id=$1`,
+          [posterId]
+        )
+        poster.file_url = undefined
         emit.channels([poster.author, poster.room]).poster(poster)
         return { ok: true, poster }
       }
@@ -435,6 +472,34 @@ async function routes(
     const room = req.params.roomId
     return await model.posters.getAll(room)
   })
+
+  const sleepAsync = (delay_millisec: number) => {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve()
+      }, delay_millisec)
+    })
+  }
+
+  fastify.post<any>(
+    "/maps/:roomId/posters/refresh_files",
+    async (req, reply) => {
+      const roomId = req.params.roomId
+      const owner = model.maps[roomId]?.getOwner()
+      if (
+        req["requester_type"] != "admin" &&
+        (!owner || req["requester"] != owner)
+      ) {
+        return await reply.code(403).send("Not admin")
+      }
+      // await sleepAsync(1000) // For testing UI
+      const r = await model.posters.refreshFiles(roomId)
+      for (const p of r.updated || []) {
+        emit.channel(roomId).poster(p)
+      }
+      return r
+    }
+  )
 
   fastify.get<any>("/maps/:roomId/posters/:posterId/history", async req => {
     const roomId: PosterId = req.params.roomId

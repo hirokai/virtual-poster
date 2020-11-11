@@ -85,7 +85,12 @@ async function routes(
     if (!mm) {
       return { ok: false, error: "Import failed" }
     }
-    await model.maps[mm.room_id].addUser(req["requester"], true)
+    await model.maps[mm.room_id].addUser(
+      req["requester_email"],
+      true,
+      "admin",
+      req["requester"]
+    )
     return { ok: true, room: { id: mm.room_id, name: data["name"] } }
   })
 
@@ -239,6 +244,43 @@ async function routes(
       return { ok: !!poster_assigned, poster_assigned }
     }
   )
+
+  fastify.post<any>("/maps/:roomId/poster_slots_multi", async req => {
+    const { roomId } = req.params
+    const posters = req.body.posters as {
+      poster_number: number
+      user: UserId
+      title?: string
+    }[]
+    const added: number[] = []
+    const error_entries: number[] = []
+    for (const p of posters) {
+      const r = await model.maps[roomId].assignPosterLocation(
+        p.poster_number,
+        p.user,
+        true,
+        p.title
+      )
+      if (r.ok && r.poster) {
+        added.push(p.poster_number)
+        emit.channels([roomId, r.poster.author]).poster(r.poster)
+        emit
+          .channels([roomId, "::index", "::admin"])
+          .room({ id: roomId, poster_count: r.poster_count })
+      } else {
+        error_entries.push(p.poster_number)
+      }
+    }
+    if (error_entries.length > 0) {
+      return {
+        ok: false,
+        error: "Errors on poster numbers: [" + error_entries.join(",") + "]",
+        error_entries,
+        added,
+      }
+    }
+    return { ok: true, added }
+  })
 }
 
 export default routes

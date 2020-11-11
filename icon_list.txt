@@ -11,3 +11,4 @@ map.png    https://www.flaticon.com/free-icon/map_879686?term=map&page=1&positio
 new-poster.png    https://www.flaticon.com/free-icon/new-poster_3065260?term=poster&page=1&position=3
 chat.png    https://www.flaticon.com/free-icon/chat_561180?term=chat&page=1&position=4
 feedback.png    https://www.flaticon.com/free-icon/feedback_2139020?term=comment&page=1&position=66
+settings.png    https://www.flaticon.com/free-icon/settings_561196?term=configuration&page=1&position=7

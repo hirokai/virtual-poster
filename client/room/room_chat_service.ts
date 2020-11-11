@@ -23,7 +23,6 @@ import { keyBy, compact, sortTree } from "@/common/util"
 import * as encryption from "../encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
 import { MeshRoom, SfuRoom } from "skyway-js"
-import { SocketIO } from "socket.io-client"
 import Peer from "skyway-js"
 
 import axiosClient from "@aspida/axios"
@@ -430,7 +429,7 @@ export const kickFromChat = async (
 
 export const initChatService = async (
   axios: AxiosStatic | AxiosInstance,
-  socket: SocketIO.Socket | MySocketObject,
+  socket: SocketIOClient.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,
   activePoster: ComputedRef<Poster | undefined>,

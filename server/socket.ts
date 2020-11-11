@@ -30,6 +30,7 @@ import {
   ActiveUsersSocketData,
   SocketMessageFromUser,
   PosterCommentDecrypted,
+  RoomUpdateSocketData,
 } from "../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -128,6 +129,10 @@ export class Emit {
   moveError(d: MoveErrorSocketData, socket: Emitter): void {
     socket.emit("MoveError", d)
   }
+
+  room(d: RoomUpdateSocketData, socket: Emitter = this.emitter) {
+    socket.emit("Room", d)
+  }
   peopleNew(d: PersonInMap[], socket: Emitter = this.emitter): void {
     this.log.debug("PersonNew", d)
     socket.emit("PersonNew", d)
@@ -155,8 +160,8 @@ export class Emit {
   announce(d: Announcement, socket: Emitter = this.emitter): void {
     socket.emit("Announce", d)
   }
-  appReload(socket: Emitter = this.emitter): void {
-    socket.emit("AppReload")
+  appReload(force?: boolean, socket: Emitter = this.emitter): void {
+    socket.emit("AppReload", force || false)
   }
   posterComment(
     d: PosterCommentDecrypted,
@@ -332,7 +337,13 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         "cookie:uid:" + cookie_session_id
       )
       await model.redis.sockets.setex("auth:" + socket.id, ttl, user_id)
-      socket.emit("AuthComplete")
+      socket.emit("AuthComplete", { socket_id: socket.id })
+      log.debug(
+        "AuthComplete, ttl for " + ("cookie:uid:" + cookie_session_id),
+        ttl
+      )
+    } else {
+      log.warn("User ID not found from cookie")
     }
 
     addHandler(socket, "Move", d => onMoveSocket(d, socket, log))
@@ -365,7 +376,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
     addHandler(socket, "Subscribe", ({ channel }: { channel: string }) => {
       socket.join(channel)
     })
-    addHandler(socket, "Active", ({ room, user, token }) => {
+    addHandler(socket, "Active", ({ room, user, token, observe_only }) => {
       ;(async () => {
         const verified = await model.people.authSocket(
           { user, token },
@@ -386,29 +397,9 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
           return
         }
 
-        log.debug("User Active", room, user)
-        userLog({
-          userId: user,
-          operation: "active",
-          data: { room, user },
-        })
-        await model.redis.sockets.set(socket.id, room + ":" + user)
-        await model.redis.sockets.sadd("room:" + room + ":" + user, socket.id)
-        await model.redis.accounts.hincrby(
-          "connected_users:room:" + "__any__",
-          user,
-          1
-        )
-        await model.redis.accounts.sadd(
-          "connected_users:room:" + room + ":__all__",
-          user
-        )
         socket.join(room)
         socket.join(user)
         socket.join(room + ":" + user)
-
-        const ds: ActiveUsersSocketData = [{ room, user, active: true }]
-        io.to(room).emit("ActiveUsers", ds)
 
         const rows = await model.db.query<
           {
@@ -426,6 +417,44 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
             period: rows[0].period || 0,
           }
           emit.channel(room).announce(d, socket)
+        }
+
+        if (!observe_only) {
+          log.debug("User Active", room, user)
+          userLog({
+            userId: user,
+            operation: "active",
+            data: { room, user },
+          })
+          await model.redis.sockets.set(socket.id, room + ":" + user)
+          await model.redis.sockets.sadd("room:" + room + ":" + user, socket.id)
+          await model.redis.accounts.hincrby(
+            "connected_users:room:" + "__any__",
+            user,
+            1
+          )
+          await model.redis.accounts.sadd(
+            "connected_users:room:" + room + ":__all__",
+            user
+          )
+          const users_count = await model.redis.accounts.scard(
+            "connected_users:room:" + room + ":__all__"
+          )
+          const countObj = {}
+          countObj[room] = users_count
+          const ds: ActiveUsersSocketData = {
+            users: [{ room, user, active: true }],
+            count: countObj,
+          }
+          io.to(room).emit("ActiveUsers", ds)
+          const d2: RoomUpdateSocketData = {
+            id: room,
+            num_people_active: users_count,
+          }
+          io.to("::index")
+            .to("::admin")
+            .to("::mypage")
+            .emit("Room", d2)
         }
       })().catch(err => {
         log.error(err)
@@ -467,8 +496,25 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
               "connected_users:room:" + room + ":__all__",
               user
             )
+            const users_count = await model.redis.accounts.scard(
+              "connected_users:room:" + room + ":__all__"
+            )
             const msg: AppNotification = "ActiveUsers"
-            io.to(room).emit(msg, [{ room, user, active: false }])
+            const countObj = {}
+            countObj[room] = users_count
+            const d: ActiveUsersSocketData = {
+              users: [{ room, user, active: false }],
+              count: countObj,
+            }
+            io.to(room).emit(msg, d)
+            const d2: RoomUpdateSocketData = {
+              id: room,
+              num_people_active: users_count,
+            }
+            io.to("::index")
+              .to("::mypage")
+              .to("::admin")
+              .emit("Room", d2)
             const r: TypingSocketData = {
               room,
               user,
@@ -482,7 +528,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         log.error(err)
       })
     })
-    socket.on("AskReload", async (room_id: RoomId) => {
+    socket.on("AskReload", async (d: { room_id: RoomId; force: boolean }) => {
       const verified_user = await model.people.authSocket(
         { user: "NA" },
         socket.id
@@ -497,7 +543,7 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
         socket.emit("AuthError", "User not admin")
         return
       }
-      emit.channel(room_id).appReload()
+      emit.channels([d.room_id, "::mypage", "::admin"]).appReload(d.force)
     })
     socket.on("make_announcement", async (d: Announcement) => {
       userLog({

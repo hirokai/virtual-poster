@@ -2,6 +2,7 @@ import { admin } from "firebase-admin/lib/auth"
 import Peer, { SfuRoom } from "skyway-js"
 import { MeshRoom } from "skyway-js"
 import { BatchMove } from "@/client/room/room_map_service"
+import SocketIOClient from "socket.io-client"
 export type Point = { x: number; y: number }
 
 export type Direction = "none" | "up" | "left" | "right" | "down"
@@ -31,6 +32,28 @@ export type PersonInMap = Person & {
   direction: Direction
   moving: boolean
   poster_viewing?: PosterId
+  email?: string
+}
+
+// Used for map administration. This can be just reference to a future user stub with only email.
+export type PersonWithMapAccess = {
+  email: string
+  registered?: {
+    id: string
+    avatar: string
+    connected: boolean
+    stats: PersonStat
+    public_key?: string
+    last_updated: number
+    name: string
+  }
+  in_room?: {
+    x: number
+    y: number
+    direction: Direction
+    moving: boolean
+    poster_viewing?: PosterId
+  }
 }
 
 export type PersonUpdate = {
@@ -58,8 +81,8 @@ export type PersonRDB = {
   role: "user" | "admin"
 }
 
-export type PersonWithEmail = Person & { email?: string }
-export type PersonWithEmailRooms = Person & { email?: string; rooms: RoomId[] }
+export type PersonWithEmail = Person & { email: string }
+export type PersonWithEmailRooms = Person & { email: string; rooms: RoomId[] }
 
 export type PersonStat = {
   walking_steps: number
@@ -101,7 +124,7 @@ type Tree<T> = {
 }
 
 type RoomAppState = {
-  socket: SocketIO.Socket | MySocketObject | null
+  socket: SocketIOClient.Socket | MySocketObject | null
   peer: Peer | null
   skywayRoom: MeshRoom | SfuRoom | null
   people: { [index: string]: PersonInMap }
@@ -114,6 +137,7 @@ type RoomAppState = {
   hallMap: Cell[][]
   cols: number
   rows: number
+  allow_poster_assignment: boolean
   keyQueue: { key: ArrowKey; timestamp: number } | null
 
   center: { x: number; y: number }
@@ -167,6 +191,8 @@ type RoomAppState = {
   publicKeyString: string | null
   publicKey: CryptoKey | null
 
+  reloadWaiting: boolean
+
   mobilePane: string
 }
 
@@ -178,6 +204,20 @@ type Room = {
   poster_location_count: number
   poster_count: number
   owner?: UserId
+  access_code?: {
+    code: string
+    active: boolean
+  }
+  allow_poster_assignment?: boolean
+  num_people_joined?: number
+  num_people_with_access?: number
+  num_people_active?: number
+}
+
+type AccessRule = {
+  email: string
+  resource?: string
+  allow: boolean
 }
 
 type CellType = "grass" | "wall" | "water" | "poster" | "poster_seat" | "mud"
@@ -331,7 +371,7 @@ export type Poster = {
   author: UserId
   room: RoomId
   location: MapCellId
-  file_url: string
+  file_url?: string
   poster_number: number
   x: number
   y: number
@@ -471,6 +511,15 @@ type AuthSocket = {
   user: UserId
 }
 
+type RoomUpdateSocketData = {
+  id: RoomId
+  allow_poster_assignment?: boolean
+  poster_count?: number
+  num_people_joined?: number
+  num_people_active?: number
+  num_people_with_access?: number
+}
+
 type GroupSocketData = {
   id: UserId
   room: RoomId
@@ -502,10 +551,13 @@ type TypingSocketData = {
 }
 
 type ActiveUsersSocketData = {
-  room: RoomId
-  user: UserId
-  active: boolean
-}[]
+  users: {
+    room: RoomId
+    user: UserId
+    active: boolean
+  }[]
+  count: { [room_id: string]: number }
+}
 
 export type ChatEventSocketData = {
   group_id: ChatGroupId
@@ -524,6 +576,7 @@ export type ChatEventSocketData = {
 
 export type AppNotification =
   | "Announce"
+  | "Room"
   | "Person"
   | "PersonNew"
   | "PersonUpdate"

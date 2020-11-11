@@ -38,8 +38,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/PersonInMap"
       operationId: get-maps-roomId-people
-      parameters: []
-      description: Get all people in the room
+      parameters:
+        - schema:
+            type: boolean
+          in: query
+          name: email
+          description: Return email address of each user. Only valid for app admin and room owner.
+      description: Get all people in the room. Only returns who entered the room already.
   "/people/{userId}":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -144,6 +149,26 @@ paths:
         - debugAs: []
         - debugToken: []
       description: "Update person info  "
+    delete:
+      summary: ""
+      operationId: delete-people-userId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: Delete the user account
+      tags:
+        - people
   /people:
     get:
       summary: List all users
@@ -291,6 +316,22 @@ paths:
                       minimum: 0
                     owner:
                       $ref: "#/components/schemas/UserId"
+                    num_people_joined:
+                      type: integer
+                    num_people_with_access:
+                      type: integer
+                    access_code:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                        active:
+                          type: boolean
+                      required:
+                        - code
+                        - active
+                    allow_poster_assignment:
+                      type: boolean
                   required:
                     - numCols
                     - numRows
@@ -298,6 +339,8 @@ paths:
                     - name
                     - poster_location_count
                     - poster_count
+                    - owner
+                    - allow_poster_assignment
       operationId: get-maps
       description: Get a list of rooms
     post:
@@ -326,6 +369,8 @@ paths:
                   type: string
                 template:
                   type: string
+                allow_poster_assignment:
+                  type: boolean
               required:
                 - name
                 - template
@@ -365,10 +410,13 @@ paths:
                       type: array
                       items:
                         $ref: "#/components/schemas/Cell"
+                  allow_poster_assignment:
+                    type: boolean
                 required:
                   - numCols
                   - numRows
                   - cells
+                  - allow_poster_assignment
       operationId: get-maps-roomId
       description: Get room information
     delete:
@@ -387,6 +435,61 @@ paths:
                 required:
                   - ok
       description: Delete an owned map
+      tags:
+        - map
+    patch:
+      summary: Update room settings.
+      operationId: patch-maps-roomId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: Update room settings.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allow_poster_assignment:
+                  type: boolean
+                access_rules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                        description: "This can be regular expression  "
+                      resource:
+                        type: string
+                      allow:
+                        type: boolean
+                    required:
+                      - email
+                      - allow
+                access_rules_active:
+                  type: boolean
+            examples:
+              example-1:
+                value:
+                  publicly_visible: true
+                  requires_access_code: true
+          application/xml:
+            schema:
+              type: object
+              properties: {}
+        description: ""
       tags:
         - map
   "/maps/{roomId}/enter":
@@ -1046,6 +1149,12 @@ paths:
                 properties: {}
       operationId: get-posters-posterId-file
       description: Get a poster file
+      parameters:
+        - schema:
+            type: integer
+          in: query
+          name: timestamp
+          description: ""
     post:
       summary: Upload a poster file
       operationId: post-posters-posterId-file
@@ -1418,7 +1527,17 @@ paths:
                   ok:
                     type: boolean
       operationId: post-maps-roomId-take_slot-posterLocation
-      description: Take a poster slot
+      description: Take a poster slot. The poster title and user ID can be optionally passed.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                user_id:
+                  type: string
     delete:
       summary: ""
       operationId: delete-maps-roomId-poster_slot-posterNumber
@@ -1439,6 +1558,63 @@ paths:
       security:
         - debugAs: []
         - debugToken: []
+  "/maps/{roomId}/poster_slots_multi":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Assign posters in bulk
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  added:
+                    type: array
+                    items:
+                      type: number
+                  error_entries:
+                    type: array
+                    items:
+                      type: number
+                required:
+                  - ok
+      operationId: post-maps-roomId-posters_multi
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                posters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      poster_number:
+                        type: integer
+                      user:
+                        $ref: "#/components/schemas/UserId"
+                      title:
+                        type: string
+                    required:
+                      - poster_number
+                      - user
+              required:
+                - posters
+      description: Assign poster locations in bulk
   /latency_report:
     post:
       summary: Submit a latency report
@@ -2079,6 +2255,315 @@ paths:
         - debugAs: []
         - debugToken: []
       description: "Get a signed URL of   a poster image. This is only allowed when the user is viewing poster.  "
+  "/maps/{roomId}/access_code/renew":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Renew access code
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  active:
+                    type: boolean
+                required:
+                  - ok
+      operationId: post-maps-roomId-access_code-renew
+      description: Renew access code. Only callable by the owner
+  "/maps/{roomId}/people/{userId}":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    delete:
+      summary: Delete user access from room
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: delete-maps-roomId-people-userId
+      description: Delete person's room access
+  "/maps/{roomId}/access_code":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    delete:
+      summary: Delete the access code
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted_code:
+                    type: string
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: delete-maps-roomId-access_code
+      description: Delete the (default) access code. Currently only one access code is created for each room.
+  "/maps/{roomId}/access_code/{accessCode}":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: accessCode
+        in: path
+        required: true
+    patch:
+      summary: Update access code property
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+      operationId: patch-maps-roomId-access_code-accessCode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active:
+                  type: boolean
+              required:
+                - active
+  "/maps/{roomId}/posters/refresh_files":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Refresh files
+      tags:
+        - poster
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: post-maps-roomId-posters-refresh_files
+      description: "Refresh file_uploaded flags by actual exitence of files  "
+  "/maps/{roomId}/people_multi":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Add users to a map
+      tags:
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  added:
+                    type: array
+                    items:
+                      type: string
+                  error_entries:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - ok
+      operationId: post-maps-roomId-people_multi
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                people:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      assign_position:
+                        type: boolean
+                    required:
+                      - email
+      description: Add users to a map.
+  "/maps/{roomId}/people_allowed":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    get:
+      summary: Get people that have access to room
+      tags:
+        - map
+        - people
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  people:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email:
+                          type: string
+                      required:
+                        - email
+                required:
+                  - ok
+                  - people
+      operationId: get-maps-roomId-people_allowed
+      description: Get the list of people who have access. They don't necessarily have to be registered (with user ID).
+    post:
+      summary: Give a person access to room
+      operationId: post-maps-roomId-people_allowed
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+              required:
+                - email
+      description: "Give the user, which is specified by email, access to the room."
+      tags:
+        - map
+        - people
+  "/maps/{roomId}/people_allowed/{email}":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: email
+        in: path
+        required: true
+    delete:
+      summary: Delete user access by email
+      tags:
+        - people
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: delete-maps-roomId-people_allowed-email
+      description: "Delete user access by email. The user can be just email stub who are not registered, and does not necessarily have an user ID."
 components:
   parameters:
     debug_token:
@@ -2167,6 +2652,10 @@ components:
             - mud
         open:
           type: boolean
+        poster_number:
+          type: integer
+        custom_image:
+          type: string
       required:
         - id
         - x
@@ -2460,6 +2949,8 @@ components:
           $ref: "#/components/schemas/PersonStat"
         poster_viewing:
           $ref: "#/components/schemas/PosterId"
+        email:
+          type: string
       required:
         - id
         - room

@@ -8,6 +8,7 @@ import {
   PersonUpdate,
   ChatComment,
   ChatEvent,
+  RoomUpdateSocketData,
 } from "../../@types/types"
 import { emit } from "../socket"
 import * as admin from "firebase-admin"
@@ -62,13 +63,126 @@ async function routes(
     return r
   })
 
-  fastify.get<any>("/maps/:roomId/people", async req => {
-    const with_email = req["requester_type"] == "admin" && !!req.query.email
+  fastify.get<any>("/maps/:roomId/people", async (req, res) => {
+    const roomId = req.params.roomId as string
+    const map = model.maps[roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const room_owner = await map.getOwner()
+    const with_email =
+      (req["requester_type"] == "admin" || req["requester"] == room_owner) &&
+      !!req.query.email
     const rs = await model.people.getAllPeopleList(
       req.params.roomId,
       with_email
     )
     return rs
+  })
+
+  fastify.get<any>("/maps/:roomId/people_allowed", async (req, res) => {
+    const roomId = req.params.roomId as string
+    const map = model.maps[roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const owner = await map.getOwner()
+    const allowed =
+      req["requester_type"] == "admin" || owner == req["requester"]
+    if (!allowed) {
+      await res.status(403).send("Unauthorized")
+      return
+    }
+    const people = await map.getPeopleWithAccess()
+    return { ok: true, people }
+  })
+
+  fastify.post<any>("/maps/:roomId/people_allowed", async (req, res) => {
+    const roomId = req.params.roomId as string
+    const map = model.maps[roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const owner = await map.getOwner()
+    const allowed =
+      req["requester_type"] == "admin" || owner == req["requester"]
+    if (!allowed) {
+      await res.status(403).send("Unauthorized")
+      return
+    }
+    const email = req.body.email as string
+    const r = await map.addUser(email, false, "user", req["requester"])
+    if (r.ok) {
+      const d: RoomUpdateSocketData = {
+        id: roomId,
+        num_people_joined: r.num_people_joined,
+        num_people_with_access: r.num_people_with_access,
+      }
+      emit.channels(["::admin", "::index"]).room(d)
+    }
+    return r
+  })
+
+  fastify.delete<any>(
+    "/maps/:roomId/people_allowed/:email",
+    async (req, res) => {
+      const roomId = req.params.roomId as string
+      const email = req.params.email as string
+      const map = model.maps[roomId]
+      if (!map) {
+        await res.status(404).send("Not found")
+        return
+      }
+      const owner = await map.getOwner()
+      const allowed =
+        req["requester_type"] == "admin" || owner == req["requester"]
+      if (!allowed) {
+        await res.status(403).send("Unauthorized")
+        return
+      }
+      const r = await map.removeUser({ email })
+      if (r.ok) {
+        const d: RoomUpdateSocketData = {
+          id: roomId,
+          num_people_joined: r.num_people_joined,
+          num_people_with_access: r.num_people_with_access,
+        }
+        emit.channels(["::admin", "::index"]).room(d)
+      }
+      return r
+    }
+  )
+
+  fastify.post<any>("/maps/:roomId/people_multi", async (req, res) => {
+    const roomId = req.params.roomId as string
+    const map = model.maps[roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const owner = await map.getOwner()
+    if (owner != req["requester"] && req["requester_type"] != "admin") {
+      return res.status(403).send("Not an owner or admin")
+    }
+    const people = req.body.people as {
+      email: string
+      assign_position?: boolean
+    }[]
+    for (const p of people) {
+      const r = await map.addUser(
+        p.email,
+        !!p.assign_position,
+        "user",
+        req["requester"]
+      )
+      if (!r.ok) {
+        return { ok: false }
+      }
+    }
+    return { ok: true }
   })
 
   fastify.get<any>("/people/:userId", async req => {
@@ -227,9 +341,10 @@ async function routes(
             continue
           }
           const r = await model.maps[rid].addUser(
-            req["requester"],
+            req["requester_email"],
             true,
-            "user"
+            "user",
+            req["requester"] + ":code:" + access_code
           )
           if (!r.ok) {
             req.log.debug(r)

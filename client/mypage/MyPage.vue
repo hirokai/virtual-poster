@@ -66,38 +66,47 @@
             </div>
           </section>
         </div>
-        <div class="tab-content" id="tab-map" v-if="tab == 'map'">
+        <ManageRooms
+          v-if="tab == 'rooms'"
+          :myUserId="myUserId"
+          :axios="axios"
+          :socket="socket"
+          :people="people"
+          :rooms="rooms"
+          :room="tab_sub ? rooms[tab_sub] : undefined"
+          :room_subpage="tab_sub_sub"
+          :new_room="tab_sub == 'new'"
+          @reload-rooms="reloadRooms"
+          @delete-room="deleteRoom"
+          @change-room="changeRoom"
+          @make-announcement="doSubmitAnnouncement"
+          @ask-reload="askReload"
+          @renew-access-code="renewAccessCode"
+          @delete-access-code="deleteAccessCode"
+        />
+        <div
+          class="tab-content"
+          id="tab-map"
+          v-if="tab == 'rooms' && tab_sub == undefined"
+        >
           <section>
             <h5 class="title is-5">アクセスコード</h5>
             <label for="access_code">アクセスコード</label>
-            <input type="text" id="access_code" ref="AccessCodeInput" />
-            <button @click="submitAccessCode">送信</button>
-          </section>
-          <section>
-            <h5 class="title is-5">アクセス可能なマップ</h5>
-            <span v-if="Object.keys(rooms).length == 0"
-              >アクセス可能なマップはありません。</span
-            >
-            <div style="margin: 10px 0px">
-              <a href="/create_room" class="button is-primary">新規作成</a>
-            </div>
-            <div
-              class="room-entry"
-              v-for="room in Object.values(rooms)"
-              :key="room.id"
-            >
-              <a :href="'/room?room_id=' + room.id">{{ room.name }}</a> ({{
-                room.id
-              }})
-              <span v-if="room.owner == myUserId">[管理者]</span>
-              <button
-                v-if="room.owner == myUserId"
-                class="button is-small is-danger"
-                @click="deleteRoom(room.id)"
-              >
-                削除
-              </button>
-            </div>
+            <input
+              type="text"
+              id="access_code"
+              ref="AccessCodeInput"
+              style="width: 300px; margin-right: 10px;"
+            />
+            <button @click="submitAccessCode" class="button is-primary">
+              送信
+            </button>
+            <h3>注意</h3>
+            <ul>
+              <li>
+                会場に参加すると，会場のオーナーにメールアドレスが開示されます。
+              </li>
+            </ul>
           </section>
         </div>
         <MypagePoster
@@ -314,8 +323,8 @@ import {
   PosterId,
   UserId,
   Room,
-  RoomId,
-  PersonWithEmail,
+  Announcement,
+  RoomUpdateSocketData,
 } from "@/@types/types"
 import { keyBy, difference, range, chunk } from "@/common/util"
 import io from "socket.io-client"
@@ -325,28 +334,20 @@ import jsbn from "jsbn"
 import { deleteUserInfoOnLogout, formatTime } from "../util"
 import { decryptIfNeeded } from "../room/room_chat_service"
 import MypagePoster from "./MypagePoster.vue"
+import ManageRooms from "../admin/ManageRooms.vue"
+import { RoomId } from "@/api/@types"
 
 const BigInteger = jsbn.BigInteger
 
 const API_ROOT = "/api"
-const axios = axiosDefault.create()
-axios.defaults.baseURL = API_ROOT
-const client = api(axiosClient(axios))
 
-axios.interceptors.response.use(
-  response => {
-    return response
-  },
-  error => {
-    if (403 === error.response.status) {
-      deleteUserInfoOnLogout()
-      location.href = "/login"
-    }
-  }
-)
+const RELOAD_DELAY_MEAN = 2000
 
 const url = new URL(location.href)
-const tab = url.hash.slice(1) || "account"
+const hash_path = url.hash.slice(1).split("/")
+const tab = hash_path[0] || "account"
+const tab_sub = hash_path[1]
+const tab_sub_sub = hash_path[2]
 
 const page_from: string | undefined = url.searchParams.get("room") || undefined
 
@@ -355,9 +356,10 @@ const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
 console.log({ debug_as, debug_token })
-location.hash = "#" + tab
+const hash = url.hash.slice(1) || "account"
+location.hash = "#" + hash
 
-let socket: SocketIO.Socket | null = null
+let socket: SocketIOClient.Socket | null = null
 
 const bgPositions: string[] = ["down", "left", "up", "right"]
 
@@ -380,12 +382,27 @@ function download(filename, text) {
 export default defineComponent({
   components: {
     MypagePoster,
+    ManageRooms,
   },
   setup: () => {
-    const myUserId = ""
+    const axios = axiosDefault.create({ baseURL: API_ROOT })
+    const client = api(axiosClient(axios))
+    axios.interceptors.response.use(
+      response => {
+        return response
+      },
+      error => {
+        if (403 === error.response.status) {
+          deleteUserInfoOnLogout()
+          location.href = "/login"
+        }
+      }
+    )
+
     const name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
     const email = localStorage["virtual-poster:email"]
+    const myUserId = debug_as || user_id
     if (!(name && user_id && email)) {
       location.href = "/login"
     }
@@ -399,7 +416,11 @@ export default defineComponent({
           debug_token
         : "")
     const state = reactive({
-      tab,
+      axios,
+      socket: undefined as SocketIOClient.Socket | undefined,
+      tab: tab as string,
+      tab_sub: undefined as string | undefined,
+      tab_sub_sub: tab_sub_sub as string | undefined,
       user: { name, user_id, email } as {
         name: string
         email: string
@@ -411,7 +432,7 @@ export default defineComponent({
       jwt_hash: localStorage["virtual-poster:jwt_hash"] as string | undefined,
 
       rooms: {} as { [index: string]: Room },
-      people: {} as { [index: string]: PersonWithEmail },
+      people: {} as { [index: string]: Person },
       posters: {} as { [index: string]: Poster },
       files: {} as { [index: string]: File },
       lastLoaded: -1,
@@ -428,7 +449,7 @@ export default defineComponent({
       tabs: [
         { id: "account", name: "アカウント" },
         { id: "avatar", name: "アバター" },
-        { id: "map", name: "マップ" },
+        { id: "rooms", name: "会場" },
         { id: "poster", name: "ポスター" },
         { id: "vote", name: "投票" },
         { id: "help", name: "使い方" },
@@ -474,6 +495,7 @@ export default defineComponent({
       allowedMaps: [] as Room[],
       ownedMaps: [] as Room[],
       displayNameBold: false,
+      reloadWaiting: false,
     })
 
     const name_colors = [
@@ -597,40 +619,48 @@ export default defineComponent({
       return true
     }
 
-    const reload = () => {
+    const reload = async () => {
       state.lastUpdated = Date.now()
-      ;(async () => {
-        const [
-          data_p,
-          data_poster,
-          { public_key: pub_str_from_server },
-          data_r,
-        ] = await Promise.all([
-          client.people.$get(),
-          client.people._userId(state.myUserId).posters.$get(),
-          client.public_key.$get(),
-          client.maps.$get(),
-        ])
-        state.people = keyBy(data_p, "id")
-        state.posters = keyBy(data_poster.posters || [], "id")
-        state.rooms = keyBy(data_r, "id")
-        state.ownedMaps = data_r.filter(r => r.owner == state.myUserId)
-        state.privateKey =
-          localStorage[
-            "virtual-poster:" + state.myUserId + ":private_key_jwk"
-          ] || localStorage["virtual-poster:private_key:" + state.myUserId]
-        await setupEncryption(pub_str_from_server || null)
-        for (const p of data_poster.posters || []) {
-          const h = await client.maps
-            ._roomId(p.room)
-            .posters._posterId(p.id)
-            .history.$get()
-          state.view_history[p.id] = h
-        }
-      })().catch(err => {
-        console.error(err)
-      })
+      const [
+        data_p,
+        data_poster,
+        { public_key: pub_str_from_server },
+        data_r,
+      ] = await Promise.all([
+        client.people.$get(),
+        client.people._userId(state.myUserId).posters.$get(),
+        client.public_key.$get(),
+        client.maps.$get(),
+      ])
+      state.people = keyBy(data_p, "id") as { [user_id: string]: Person }
+      state.posters = keyBy(data_poster.posters || [], "id")
+      state.rooms = keyBy(data_r, "id")
+      const jwt_hash: string | undefined =
+        localStorage["virtual-poster:jwt_hash"]
+      for (const room of data_r) {
+        if (room.owner == state.myUserId)
+          state.socket?.emit("Active", {
+            user: state.myUserId,
+            room: room.id,
+            token: jwt_hash,
+            observe_only: true,
+          })
+      }
+
+      state.ownedMaps = data_r.filter(r => r.owner == state.myUserId)
+      state.privateKey =
+        localStorage["virtual-poster:" + state.myUserId + ":private_key_jwk"] ||
+        localStorage["virtual-poster:private_key:" + state.myUserId]
+      await setupEncryption(pub_str_from_server || null)
+      for (const p of data_poster.posters || []) {
+        const h = await client.maps
+          ._roomId(p.room)
+          .posters._posterId(p.id)
+          .history.$get()
+        state.view_history[p.id] = h
+      }
     }
+
     const postersSorted = computed(() => {
       return Object.values(state.posters).sort((a, b) => {
         return (
@@ -653,7 +683,7 @@ export default defineComponent({
       const icon = n
       const color = ts[1] || "black"
       const bold = ts[2] || ""
-      const new_avatar = `${n}:${color}:${bold}`
+      const new_avatar = `${icon}:${color}:${bold}`
       const data = await client.people
         ._userId(state.myUserId)
         .$patch({ body: { avatar: new_avatar } })
@@ -766,46 +796,92 @@ export default defineComponent({
       }
     }
 
-    onMounted(() => {
-      client.socket_url
-        .$get()
-        .then(data => {
-          const url = data.socket_url as string
-          socket = io(url, { transports: ["websocket"] })
-          if (!socket) {
-            console.error("Socket connection failed.")
-            return
-          }
-          socket.on("connect", () => {
-            socket?.emit("Active", {
-              room: "::mypage",
-              user: state.myUserId,
-              token: state.jwt_hash,
-            })
-            console.log("Connected")
-          })
-          socket.on("person", d => {
-            setPerson(d)
-          })
-          socket.on("person_multi", ds => {
-            console.log("socket people", ds.length)
-            for (const d of ds) {
-              setPerson(d)
-            }
-          })
-          socket.on("Poster", (p: Poster) => {
-            //Vue.set
-            state.posters[p.id] = p
-          })
-          socket.on("PosterRemove", (pid: PosterId) => {
-            //Vue.delete
-            delete state.posters[pid]
-          })
-        })
-        .catch(err => {
-          console.error(err)
-        })
+    watch(
+      () => state.tab_sub,
+      (v: string | undefined) => {
+        console.log("tab_sub changed", v)
+      }
+    )
 
+    onMounted(async () => {
+      state.tab_sub = tab_sub
+
+      window.onhashchange = () => {
+        console.log("onhashchange()")
+        const hash = location.hash.slice(1)
+        state.tab = hash.split("/")[0]
+        state.tab_sub = hash.split("/")[1]
+        state.tab_sub_sub = hash.split("/")[2]
+      }
+      const data = await client.socket_url.$get()
+      const url = data.socket_url as string
+      socket = io(url, { transports: ["websocket"] })
+      state.socket = socket
+      if (!socket) {
+        console.error("Socket connection failed.")
+        return
+      }
+      socket.on("connect", () => {
+        socket?.emit("Active", {
+          room: "::mypage",
+          user: state.myUserId,
+          token: state.jwt_hash,
+          observe_only: true,
+        })
+        console.log("Connected")
+      })
+
+      socket.on("Room", async (d: RoomUpdateSocketData) => {
+        const room = state.rooms[d.id]
+        if (!room) {
+          return
+        }
+        if (d.allow_poster_assignment != undefined) {
+          room.allow_poster_assignment = d.allow_poster_assignment
+        }
+        if (d.poster_count != undefined) {
+          room.poster_count = d.poster_count
+        }
+        if (d.num_people_joined != undefined) {
+          room.num_people_joined = d.num_people_joined
+        }
+        if (d.num_people_active != undefined) {
+          room.num_people_active = d.num_people_active
+        }
+      })
+
+      socket.on("Poster", (p: Poster) => {
+        //Vue.set
+        state.posters[p.id] = p
+      })
+      socket.on("PosterRemove", (pid: PosterId) => {
+        //Vue.delete
+        delete state.posters[pid]
+      })
+      socket.on("Poster", (p: Poster) => {
+        //Vue.set
+        state.posters[p.id] = p
+      })
+      socket.on("AppReload", (force: boolean) => {
+        if (state.reloadWaiting) {
+          return
+        }
+        state.reloadWaiting = true
+        window.setTimeout(() => {
+          if (
+            force ||
+            confirm(
+              "アプリケーションが更新されました。リロードしても良いですか？"
+            )
+          ) {
+            state.reloadWaiting = false
+
+            location.reload()
+          } else {
+            state.reloadWaiting = false
+          }
+        }, Math.random() * RELOAD_DELAY_MEAN * 2)
+      })
       axios.interceptors.request.use(config => {
         if (debug_as && debug_token) {
           config.params = config.params || {}
@@ -816,63 +892,60 @@ export default defineComponent({
           return config
         }
       })
-      axiosDefault
-        .get("/img/avatars_base64.json")
-        .then(({ data }) => {
-          console.log(data)
-          state.avatarImages = data
-        })
-        .catch(console.error)
-      ;(async () => {
-        // console.log("User:", user, state.debug_as)
-        if (state.debug_as && state.debug_token) {
-          console.log("Initializing debug mode...", state.debug_as)
-          state.myUserId = state.debug_as
-          state.privateKey =
-            localStorage[
-              "virtual-poster:" + state.myUserId + ":private_key_jwk"
-            ] || null
-          state.enableEncryption =
-            localStorage[
-              "virtual-poster:" + state.myUserId + ":config:encryption"
-            ] != "0"
-              ? localStorage[
-                  "virtual-poster:" + state.myUserId + "config:encryption"
-                ] == "1"
-              : false
-          reload()
-          return
-        }
-        if (!state.user) {
-          // location.href = "/login?page=index"
-          // state.loggedIn = "No"
-          location.href = "/"
-        } else {
-          // state.loggedIn = "Yes"
+      const { data: data2 } = await axiosDefault.get("/img/avatars_base64.json")
+      console.log(data2)
+      state.avatarImages = data2
 
-          state.myUserId = user_id
-          // console.log("Already registered:", user_id)
+      // console.log("User:", user, state.debug_as)
+      if (state.debug_as && state.debug_token) {
+        console.log("Initializing debug mode...", state.debug_as)
+        state.myUserId = state.debug_as
+        state.privateKey =
+          localStorage[
+            "virtual-poster:" + state.myUserId + ":private_key_jwk"
+          ] || null
+        state.enableEncryption =
+          localStorage[
+            "virtual-poster:" + state.myUserId + ":config:encryption"
+          ] != "0"
+            ? localStorage[
+                "virtual-poster:" + state.myUserId + "config:encryption"
+              ] == "1"
+            : false
+        await reload()
+        return
+      }
+      if (!state.user) {
+        // location.href = "/login?page=index"
+        // state.loggedIn = "No"
+        location.href = "/"
+      } else {
+        // state.loggedIn = "Yes"
 
-          state.privateKey =
-            localStorage[
-              "virtual-poster:" + state.myUserId + ":private_key_jwk"
-            ] || null
+        state.myUserId = user_id
+        // console.log("Already registered:", user_id)
 
-          state.enableEncryption =
-            localStorage[
-              "virtual-poster:" + state.myUserId + ":config:encryption"
-            ] != "0"
+        state.privateKey =
+          localStorage[
+            "virtual-poster:" + state.myUserId + ":private_key_jwk"
+          ] || null
 
-          reload()
-        }
-      })().catch(console.error)
+        state.enableEncryption =
+          localStorage[
+            "virtual-poster:" + state.myUserId + ":config:encryption"
+          ] != "0"
+
+        await reload()
+      }
 
       window.setInterval(() => {
-        state.count += 1
-        if (state.count >= bgPositions.length) {
-          state.count = 0
+        if (state.tab == "avatar") {
+          state.count += 1
+          if (state.count >= bgPositions.length) {
+            state.count = 0
+          }
+          state.bgPosition = bgPositions[state.count]
         }
-        state.bgPosition = bgPositions[state.count]
       }, 500)
     })
 
@@ -888,13 +961,14 @@ export default defineComponent({
     watch(
       () => state.tab,
       (newTab: string) => {
-        location.replace("#" + newTab)
+        console.log(newTab)
+        location.hash = "#" + newTab
       }
     )
     const setPoster = (pid: PosterId, poster: Poster) => {
       state.posters[pid] = poster
     }
-    const deletePoster = (pid: PosterId, poster: Poster) => {
+    const deletePoster = (pid: PosterId) => {
       delete state.posters[pid]
     }
     const onMouseOverAvatar = (n: string, b: boolean) => {
@@ -1135,17 +1209,7 @@ export default defineComponent({
     }
 
     const deleteRoom = async room_id => {
-      const room_id_entered = prompt(
-        "本当に削除しますか？　この部屋の中のすべての書き込み，ポスターが削除されます。一旦削除すると取り消せません。削除する場合は部屋のIDを下記に入力してください。"
-      )
-      if (room_id_entered == room_id) {
-        const r = await client.maps._roomId(room_id).$delete()
-        if (r.ok) {
-          alert("マップが削除されました。")
-        } else {
-          alert("マップが削除できませんでした。")
-        }
-      }
+      delete state.rooms[room_id]
     }
 
     const exportLog = async () => {
@@ -1184,6 +1248,61 @@ export default defineComponent({
       }
     }
 
+    const reloadRooms = async () => {
+      state.rooms = keyBy(await client.maps.$get(), "id")
+    }
+
+    const changeRoom = (room_id: RoomId | null) => {
+      if (!room_id) {
+        location.href = "#rooms"
+        state.tab_sub = undefined
+      } else {
+        location.href = "#rooms/" + room_id
+        state.tab_sub = room_id
+      }
+    }
+
+    const renewAccessCode = async (room_id: RoomId) => {
+      if (
+        state.rooms[room_id].access_code &&
+        !confirm(
+          "アクセスコードを更新しますか？ 古いコードは使えなくなります。"
+        )
+      ) {
+        return
+      }
+      const r = await client.maps._roomId(room_id).access_code.renew.$post()
+      if (r.code && r.active != undefined) {
+        state.rooms[room_id].access_code = { code: r.code, active: r.active }
+      }
+    }
+
+    const deleteAccessCode = async (room_id: RoomId) => {
+      if (
+        !confirm(
+          "アクセスコードを削除しますか？ 削除するとコードは使えなくなります。"
+        )
+      ) {
+        return
+      }
+      const r = await client.maps._roomId(room_id).access_code.$delete()
+      if (r.ok) {
+        state.rooms[room_id].access_code = undefined
+        alert("アクセスコードを削除しました")
+      } else {
+        console.error(r.error)
+        alert("アクセスコードの削除に失敗しました")
+      }
+    }
+
+    const doSubmitAnnouncement = (d: Announcement) => {
+      state.socket?.emit("make_announcement", d)
+    }
+
+    const askReload = (d: { room_id: RoomId; force: boolean }) => {
+      state.socket?.emit("AskReload", d)
+    }
+
     return {
       ...toRefs(state),
       name_colors,
@@ -1213,9 +1332,15 @@ export default defineComponent({
       page_from,
       myself,
       submitAccessCode,
-      deleteRoom,
       exportLog,
       AccessCodeInput,
+      reloadRooms,
+      deleteRoom,
+      changeRoom,
+      doSubmitAnnouncement,
+      askReload,
+      renewAccessCode,
+      deleteAccessCode,
     }
   },
 })

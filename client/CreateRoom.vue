@@ -6,7 +6,7 @@
 
         <h1>会場を作成する</h1>
         <div>
-          <h2>会場の管理者</h2>
+          <h2>会場のオーナー</h2>
           {{ user.name }} ({{ user.email }})
           <div>
             <h2>会場の種類を選択</h2>
@@ -24,12 +24,37 @@
           </div>
           <div>
             <h2>会場の名前</h2>
-            <input type="text" v-model="roomName" />
+            <input type="text" ref="roomName" />
           </div>
           <div>
+            <h2>設定</h2>
+            <input
+              type="checkbox"
+              name=""
+              id="new-room-config-allow-self-assign-poster"
+              v-model="allowPosterAssignment"
+            />
+            <label for="new-room-config-allow-self-assign-poster"
+              >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
+            >
+          </div>
+          <div>
+            <h3>注意</h3>
+            <ul>
+              <li>
+                部屋の作成者のメールアドレスは，部屋の参加者に対して表示されます。
+              </li>
+              <li>
+                作成した会場の削除はマイページの「マップ」タブから可能です。
+              </li>
+            </ul>
             <button class="btn" id="submit" @click="submit">作成する</button>
             <p>
-              作成した会場の削除はマイページの「マップ」タブから可能です。
+              {{ result?.message }}
+              <br />
+              <a v-if="result?.ok != undefined" href="/mypage#rooms"
+                >マイページに戻る</a
+              >
             </p>
           </div>
         </div>
@@ -55,7 +80,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, reactive, onMounted, toRefs } from "vue"
+import { defineComponent, reactive, onMounted, toRefs, ref } from "vue"
 
 import { Room, UserId } from "../@types/types"
 
@@ -126,6 +151,8 @@ export default defineComponent({
       ] as RoomTemplate[],
       roomName: "",
       roomKind: "small",
+      allowPosterAssignment: true,
+      result: { ok: undefined as boolean | undefined, message: "" },
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
@@ -208,20 +235,33 @@ export default defineComponent({
       state.roomKind = kind
     }
 
+    const roomName = ref<HTMLInputElement>()
     const submit = async () => {
       const client = api(axiosClient(axios))
+      const name = roomName.value?.value
+      if (!name) {
+        state.result.ok = false
+        state.result.message = "部屋の名前を入力してください"
+        return
+      }
       const r = await client.maps.$post({
-        body: { name: state.roomName, template: state.roomKind },
+        body: {
+          name,
+          template: state.roomKind,
+          allow_poster_assignment: state.allowPosterAssignment,
+        },
       })
       if (r.ok) {
-        alert("部屋が作成されました。")
-        location.href = "/mypage#map"
+        state.result.message = "部屋が作成されました。"
+        state.result.ok = true
+        // location.href = "/mypage#rooms"
       } else {
+        state.result.ok = false
         const detail =
           r.error == "Room name already exists"
             ? "すでに同じ名前の部屋が存在します。"
             : ""
-        alert("部屋が作成できませんでした。" + detail)
+        state.result.message = "部屋が作成できませんでした。" + detail
       }
     }
 
@@ -249,6 +289,7 @@ export default defineComponent({
       isMobile,
       submit,
       selectKind,
+      roomName,
     }
   },
 })
@@ -316,7 +357,7 @@ body {
   border: 2px solid blue;
 }
 
-input {
+input[type="text"] {
   width: 300px;
   height: 24px;
   font-size: 21px;

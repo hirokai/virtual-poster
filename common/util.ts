@@ -21,14 +21,14 @@ import * as bunyan from "bunyan"
 const log = bunyan.createLogger({ name: "util", src: true, level: 1 })
 
 // Native
-function sortByHelper<T>(keyFunc: (T) => number) {
+function sortByHelper<T>(keyFunc: (T) => string | number) {
   return (a: T, b: T) =>
     keyFunc(a) > keyFunc(b) ? 1 : keyFunc(b) > keyFunc(a) ? -1 : 0
 }
 
 // The native sort modifies the array in place. `_.orderBy` and `_.sortBy` do not, so we use `.concat()` to
 // copy the array, then sort.
-export function sortBy<T>(vs: T[], keyFunc: (T) => number): T[] {
+export function sortBy<T>(vs: T[], keyFunc: (T) => string | number): T[] {
   return vs.concat().sort(sortByHelper(keyFunc))
 }
 
@@ -571,6 +571,17 @@ export function allPointsConnected(points: Point[]): boolean {
 
 export function keyBy<T>(array: T[], key: string): { [index: string]: T } {
   return (array || []).reduce((r, x) => ({ ...r, [key ? x[key] : x]: x }), {})
+}
+
+export function keyByFunc<T>(
+  array: T[],
+  keyFunc: (arg: T) => string
+): { [index: string]: T } {
+  const obj: { [index: string]: T } = {}
+  for (const v of array) {
+    obj[keyFunc(v)] = v
+  }
+  return obj
 }
 
 export function difference<T>(a: T[], b: T[]): T[] {

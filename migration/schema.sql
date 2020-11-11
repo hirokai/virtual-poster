@@ -76,7 +76,17 @@ CREATE TABLE person (
 CREATE TABLE room (
     id text PRIMARY KEY,
     "name" text NOT NULL,
-    room_owner text REFERENCES person (id)
+    room_owner text REFERENCES person (id),
+    allow_poster_assignment boolean NOT NULL
+);
+
+CREATE TABLE room_access_code (
+    code text NOT NULL,
+    room text REFERENCES room (id) NOT NULL,
+    active boolean NOT NULL,
+    granted_right text NOT NULL,
+    timestamp bigint NOT NULL,
+    expires bigint
 );
 
 CREATE TABLE announce (
@@ -123,9 +133,9 @@ CREATE TABLE stat_encountered (
 
 CREATE TABLE person_room_access (
     room text REFERENCES room (id) NOT NULL,
-    person text REFERENCES person (id) NOT NULL,
+    email text person (id) NOT NULL,
     "role" user_role NOT NULL,
-    PRIMARY KEY (room, person)
+    PRIMARY KEY (room, email)
 );
 
 CREATE TABLE comment (
@@ -156,7 +166,8 @@ CREATE TABLE poster (
     title text,
     author text REFERENCES person (id),
     access_log boolean,
-    author_online_only boolean
+    author_online_only boolean,
+    file_uploaded boolean NOT NULL
 );
 
 CREATE TABLE comment_to_poster (

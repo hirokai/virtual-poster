@@ -14,7 +14,6 @@ import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
 
 import { moveOneStep } from "./room_map_service"
-import { SocketIO } from "socket.io-client"
 
 const updatePerson = (
   axios: AxiosStatic | AxiosInstance,
@@ -73,7 +72,7 @@ const updatePerson = (
 
 export const initPeopleService = async (
   axios: AxiosStatic | AxiosInstance,
-  socket: SocketIO.Socket | MySocketObject,
+  socket: SocketIOClient.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
@@ -105,7 +104,7 @@ export const initPeopleService = async (
   })
   socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
     console.log("ActiveUsers socket", ds)
-    for (const d of ds) {
+    for (const d of ds.users) {
       const p = state.people[d.user]
       if (p) {
         const person: PersonInMap = {

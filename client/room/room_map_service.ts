@@ -3,7 +3,6 @@ import {
   calcDirection,
   inRange,
   findRoute,
-  lookingAt,
   decodeMoved,
   personAt,
   posterAt,
@@ -18,10 +17,6 @@ import {
 } from "./room_chat_service"
 import { adjacentPoster } from "./room_poster_service"
 import { addLatencyLog } from "./room_log_service"
-import { SocketIO } from "socket.io-client"
-import * as firebase from "firebase/app"
-import "firebase/auth"
-import jsSHA from "jssha"
 
 import {
   UserId,
@@ -30,8 +25,8 @@ import {
   PersonInMap,
   RoomAppProps,
   RoomAppState,
+  RoomUpdateSocketData,
   MoveSocketData,
-  AuthSocket,
   Poster,
   ChatGroup,
   DirectionSendSocket,
@@ -50,7 +45,6 @@ const BATCH_MOVE_INTERVAL = 100
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
-import { posters } from "@/server/model"
 
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
   return (msg: string, timeout = 5000): void => {
@@ -668,6 +662,9 @@ export const dblClickHandler = (
         }
       } else if (person && chat_members.indexOf(person.id) != -1) {
         const r = await kickFromChat(axios, props, state, person)
+        if (!r.ok) {
+          console.error("Kick user failed")
+        }
       } else {
         showMessage(
           props,
@@ -690,6 +687,10 @@ export const dblClickHandler = (
     }
 
     if (!poster && poster_location != undefined) {
+      if (!state.allow_poster_assignment) {
+        alert("この会場では参加者によるポスターの確保はできません。")
+        return
+      }
       const r = confirm("このポスター板を確保しますか？")
       if (!r) {
         return
@@ -697,7 +698,7 @@ export const dblClickHandler = (
       const data = await client.maps
         ._roomId(props.room_id)
         .poster_slots._posterNumber(poster_location)
-        .$post()
+        .$post({ body: {} })
       console.log("take poster result", data)
     }
 
@@ -763,52 +764,22 @@ export const dblClickHandler = (
   }
 }
 
-function optimizeCells(cells: Cell[][]): Cell[][] {
-  function f(c: Cell): Cell {
-    const c2 = {}
-    Object.defineProperties(c2, {
-      id: {
-        configurable: false,
-        value: c.id,
-      },
-      x: {
-        configurable: false,
-        value: c.x,
-      },
-      y: {
-        configurable: false,
-        value: c.y,
-      },
-      kind: {
-        configurable: false,
-        value: c.kind,
-      },
-      name: {
-        configurable: false,
-        value: c.name,
-      },
-      poster_number: {
-        configurable: false,
-        value: c.poster_number,
-      },
-      custom_image: {
-        configurable: false,
-        value: c.custom_image,
-      },
-    })
-    return c2 as Cell
-  }
-  return cells.map(row => row.map(f))
-}
-
 export const initMapService = async (
   axios: AxiosStatic | AxiosInstance,
-  socket: SocketIO.Socket | MySocketObject,
+  socket: SocketIOClient.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
   console.log("initMapService", socket)
   const client = api(axiosClient(axios))
+  socket.on("Room", (data: RoomUpdateSocketData) => {
+    if (data.id != props.room_id) {
+      return
+    }
+    if (data.allow_poster_assignment != undefined) {
+      state.allow_poster_assignment = data.allow_poster_assignment
+    }
+  })
   socket.on("Moved", data => {
     const ss = data.split(";")
     for (const s of ss) {
@@ -817,31 +788,6 @@ export const initMapService = async (
   })
   socket.on("MoveError", (msg: MoveErrorSocketData) => {
     console.log("MoveError socket", msg)
-    if (msg.error.indexOf("Access denied") == 0) {
-      ;(async () => {
-        const user = firebase.auth().currentUser
-        if (user) {
-          const token = await user.getIdToken(true)
-          const data = await client.id_token.$post({ body: { token } })
-          console.log("/id_token result", data)
-          if (data.token_actual && data.user_id) {
-            const shaObj = new jsSHA("SHA-256", "TEXT", {
-              encoding: "UTF8",
-            })
-            shaObj.update(data.token_actual)
-            const jwt_hash = shaObj.getHash("HEX")
-            localStorage["virtual-poster:jwt_hash"] = jwt_hash
-            const d: AuthSocket = {
-              user: data.user_id,
-              jwt_hash,
-            }
-            socket.emit("Auth", d)
-          }
-        }
-      })().catch(() => {
-        //
-      })
-    }
     if (msg.user_id && msg.pos != undefined) {
       moveOneStep(
         axios,
@@ -862,10 +808,10 @@ export const initMapService = async (
     await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
   })
   const data = await client.maps._roomId(props.room_id).$get()
-  // state.hallMap = optimizeCells(data.cells)
   state.hallMap = data.cells
   state.cols = data.numCols
   state.rows = data.numRows
+  state.allow_poster_assignment = data.allow_poster_assignment
 
   return true
 }

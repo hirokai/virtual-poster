@@ -13,7 +13,6 @@ import { keyBy } from "@/common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
-import { SocketIO } from "socket.io-client"
 
 export const adjacentPosters = (
   props: RoomAppProps,
@@ -147,7 +146,7 @@ export const doUploadPoster = async (
 
 export const initPosterService = async (
   axios: AxiosStatic | AxiosInstance,
-  socket: SocketIO.Socket | MySocketObject,
+  socket: SocketIOClient.Socket | MySocketObject,
   props: RoomAppProps,
   state: RoomAppState,
   activePoster: ComputedRef<Poster | undefined>

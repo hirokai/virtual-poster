@@ -17,6 +17,21 @@
           >
             <h2 :class="{ small: room.name.length >= 13 }">{{ room.name }}</h2>
             <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
+            <div style="margin-left: 30px;">
+              参加
+              {{
+                room.num_people_joined == undefined
+                  ? "N/A"
+                  : room.num_people_joined
+              }}人，アクティブ {{ room.num_people_active }}人<br />ポスター
+              {{ room.poster_count == undefined ? "N/A" : room.poster_count }}枚
+              /
+              {{
+                room.poster_location_count == undefined
+                  ? "N/A"
+                  : room.poster_location_count
+              }}枠
+            </div>
           </a>
         </div>
         <div style="clear:both"></div>
@@ -50,7 +65,7 @@
 <script lang="ts">
 import { defineComponent, reactive, onMounted, toRefs } from "vue"
 
-import { Room, UserId } from "../@types/types"
+import { Room, RoomUpdateSocketData, UserId } from "../@types/types"
 
 import axios from "axios"
 import * as encryption from "./encryption"
@@ -58,6 +73,7 @@ import { deleteUserInfoOnLogout } from "./util"
 
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
+import io from "socket.io-client"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -94,6 +110,8 @@ export default defineComponent({
       rooms: [] as Room[],
       required_action: undefined as undefined | "register" | "verify",
       logged_in: false,
+      socket: undefined as SocketIOClient.Socket | undefined,
+      socket_active: false,
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
@@ -137,6 +155,40 @@ export default defineComponent({
           state.loggedIn = "No"
           location.href = "/login"
         } else {
+          state.socket = io("/", {
+            transports: ["websocket"],
+          })
+          state.socket.on("Room", (d: RoomUpdateSocketData) => {
+            const room = state.rooms.find(r => r.id == d.id)
+            if (room) {
+              if (d.allow_poster_assignment != undefined) {
+                room.allow_poster_assignment = d.allow_poster_assignment
+              }
+              if (d.poster_count != undefined) {
+                room.poster_count = d.poster_count
+              }
+              if (d.num_people_joined != undefined) {
+                room.num_people_joined = d.num_people_joined
+              }
+              if (d.num_people_active != undefined) {
+                room.num_people_active = d.num_people_active
+              }
+            }
+          })
+          const onConnected = () => {
+            const socket = state.socket!
+            console.log("Socket connected")
+            state.socket_active = true
+            socket.emit("Active", {
+              room: "::index",
+              user: state.myUserId,
+            })
+            // socket.emit("Subscribe", {
+            //   channel: "::index",
+            // })
+          }
+          state.socket.on("connection", onConnected)
+          state.socket.on("connect", onConnected)
           state.loggedIn = "Yes"
           console.log("Already registered", state.user)
           state.myUserId = state.user.user_id
@@ -289,7 +341,7 @@ h1 {
 
 .room img {
   max-width: 300px;
-  max-height: 140px;
+  max-height: 120px;
   margin: auto;
   display: block;
 }

@@ -49,18 +49,11 @@ module.exports = {
       chunks: ["chunk-vendors", "chunk-common", "poster_list"],
     },
     admin: {
-      entry: "client/admin.ts",
+      entry: "client/admin/admin.ts",
       template: "public/admin.html",
       filename: "admin.html",
       title: "Admin Page",
       chunks: ["chunk-vendors", "chunk-common", "admin"],
-    },
-    loadtesting: {
-      entry: "client/loadtesting.ts",
-      template: "public/loadtesting.html",
-      filename: "loadtesting.html",
-      title: "Load testing by Vue",
-      chunks: ["chunk-vendors", "chunk-common", "loadtesting"],
     },
     mypage: {
       entry: "client/mypage/mypage.ts",
@@ -74,7 +67,7 @@ module.exports = {
     plugins: [
       new webpack.IgnorePlugin(/^\.\/wordlists\/(?!english)/, /bip39\/src$/),
     ].concat(
-      process.env.NODE_ENV === "production"
+      process.env.ANALYZE_BUNDLE
         ? new BundleAnalyzerPlugin({
             analyzerMode: "static",
             reportFilename: path.join(__dirname, "./stats_app.html"),
@@ -93,6 +86,7 @@ module.exports = {
         "@": path.resolve(__dirname),
       },
     },
+    externals: ["dtrace-provider"],
   },
   devServer: {
     proxy: {

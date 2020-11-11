@@ -118,7 +118,7 @@ export async function get(
             string_agg(ra.room, '::::') AS rooms
         FROM
             person
-            LEFT JOIN person_room_access AS ra ON person.id = ra.person
+            LEFT JOIN person_room_access AS ra ON person.email = ra.email
             LEFT JOIN public_key AS k ON person.id = k.person
         WHERE
             person.id = $1
@@ -272,9 +272,7 @@ export async function create(
       await redis.accounts.set("uid:" + uid_actual + ":admin", email)
     }
     if (merge_strategy == "replace") {
-      await db.query(`DELETE FROM person_room_access WHERE person=$1;`, [
-        uid_actual,
-      ])
+      await db.query(`DELETE FROM person_room_access WHERE email=$1;`, [email])
     }
     const rooms: { room_id: string; pos?: PosDir }[] = []
     for (const room of allowed_rooms) {
@@ -283,8 +281,8 @@ export async function create(
         continue
       }
       await db.query(
-        `INSERT INTO person_room_access (room,person,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING;`,
-        [room, uid_actual, typ]
+        `INSERT INTO person_room_access (room,email,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING;`,
+        [room, email, typ]
       )
       const pos = await maps[room].assignRandomOpenPos(uid_actual)
       rooms.push({ room_id: room, pos: pos || undefined })
@@ -363,7 +361,7 @@ export async function getAllPeopleList(
                 k.public_key
             FROM
                 person
-                LEFT JOIN person_room_access AS ra ON person.id = ra.person
+                LEFT JOIN person_room_access AS ra ON person.email = ra.email
                 LEFT JOIN public_key AS k ON person.id = k.person
             GROUP BY
                 person.id,
@@ -715,7 +713,7 @@ export async function get_multi(
   user_ids: string[],
   with_email = false,
   with_room_access = true
-): Promise<PersonWithEmail[]> {
+): Promise<(Person & { email?: string })[]> {
   const ps = await getAllPeopleList(null, with_email, with_room_access)
   const dict = _.fromPairs(user_ids.map(u => [u, 1]))
   return ps.filter(p => dict[p.id])
@@ -826,11 +824,13 @@ export async function authSocket(
   },
   socket_id?: string
 ): Promise<UserId | null> {
-  log.debug({ user, token, debug_as })
+  log.debug("authSocket", { user, token, debug_as, socket_id })
   if (socket_id) {
     const r = await redis.sockets.get("auth:" + socket_id)
     if (r) {
       return r
+    } else {
+      log.debug("Socket ID not found in Redis.")
     }
   }
   if (debug_as) {
@@ -842,7 +842,7 @@ export async function authSocket(
     }
   } else if (token) {
     const sender_id = await getUserIdFromJWTHash(token)
-    console.log({ sender_id, user, token })
+    log.info({ sender_id, user, token })
     if (!sender_id) {
       log.debug("Sender not found")
       return null
@@ -962,14 +962,14 @@ export async function removePerson(
     if (!row) {
       return { ok: false, error: "User not found" }
     }
-    const email = row.email
+    const email: string = row.email
     await db.query(`BEGIN`)
     await db.query(`DELETE FROM chat_event_recipient WHERE person=$1`, [
       user_id,
     ])
     await db.query(`DELETE FROM poster_viewer WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_stats WHERE person=$1`, [user_id])
-    await db.query(`DELETE FROM person_room_access WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person_room_access WHERE email=$1`, [email])
     await db.query(`DELETE FROM person_position WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_in_chat_group WHERE person=$1`, [
       user_id,

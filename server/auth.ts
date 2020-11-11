@@ -114,7 +114,7 @@ export async function protectedRoute(
   const user_id = await model.redis.sessions.get(
     "cookie:uid:" + cookie_session_id
   )
-  console.log("protectedRoute():", req.url, cookie_session_id, user_id)
+  req.log.info("protectedRoute():", req.url, cookie_session_id, user_id)
   if (req.url.indexOf("/api/register") == 0) {
     const user_email = await model.redis.sessions.get(
       "cookie:email:" + cookie_session_id
@@ -126,7 +126,9 @@ export async function protectedRoute(
     }
     return
   } else if (user_id) {
+    const user_email = await model.redis.accounts.get("uid:" + user_id)
     req["requester"] = user_id
+    req["requester_email"] = user_email
     const typ = await model.people.getUserType(user_id)
     if (typ) {
       req["requester_type"] = typ

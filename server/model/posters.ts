@@ -1,4 +1,5 @@
 import _ from "lodash"
+import axios from "axios"
 import AWS from "aws-sdk"
 import fs from "fs"
 import shortid from "shortid"
@@ -11,7 +12,7 @@ const readFileAsync = promisify(fs.readFile)
 import { spawn } from "child_process"
 const writeFileAsync = promisify(fs.writeFile)
 const deleteFile = promisify(fs.unlink)
-const existsAsync = promisify(fs.exists)
+const statAsync = promisify(fs.stat)
 import path from "path"
 
 const CLOUDFRONT_ID = config.aws.cloud_front.id
@@ -49,9 +50,11 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
     return null
   }
   d.last_updated = parseInt(d.last_updated)
-  const file_url = config.aws.s3.upload
-    ? "not_disclosed"
-    : "/api/posters/" + d["id"] + "/file"
+  const file_url = d.file_uploaded
+    ? config.aws.s3.upload
+      ? "not_disclosed"
+      : "/api/posters/" + d["id"] + "/file"
+    : undefined
   return {
     id: d.id,
     title: d.title,
@@ -84,19 +87,38 @@ export async function getByNumber(
   return rows.length > 0 ? await get(rows[0].id) : null
 }
 
-export async function set(poster: Poster): Promise<boolean> {
-  await db.query(
-    `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6 where id=$7;`,
-    [
-      poster.location,
-      poster.title,
-      poster.author,
-      poster.last_updated,
-      poster.access_log,
-      poster.author_online_only,
-      poster.id,
-    ]
-  )
+export async function set(
+  poster: Poster,
+  file_uploaded?: boolean
+): Promise<boolean> {
+  if (file_uploaded != undefined) {
+    await db.query(
+      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_uploaded=$8 where id=$7;`,
+      [
+        poster.location,
+        poster.title,
+        poster.author,
+        poster.last_updated,
+        poster.access_log,
+        poster.author_online_only,
+        poster.id,
+        file_uploaded,
+      ]
+    )
+  } else {
+    await db.query(
+      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6 where id=$7;`,
+      [
+        poster.location,
+        poster.title,
+        poster.author,
+        poster.last_updated,
+        poster.access_log,
+        poster.author_online_only,
+        poster.id,
+      ]
+    )
+  }
   return true
 }
 
@@ -115,9 +137,11 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
         `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
       ))
   return rows.map(d => {
-    const file_url = config.aws.s3.upload
-      ? "not_disclosed"
-      : "/api/posters/" + d["id"] + "/file"
+    const file_url = d.file_uploaded
+      ? config.aws.s3.upload
+        ? "not_disclosed"
+        : "/api/posters/" + d["id"] + "/file"
+      : undefined
     return {
       id: d.id,
       title: d.title,
@@ -408,7 +432,7 @@ export async function updatePosterFile(
   if (file.mimetype == "image/png") {
     const out_path = "db/posters/" + poster.id + ".png"
     await writeFileAsync(out_path, data)
-    await set(poster)
+    await set(poster, true)
     if (config.aws.s3.upload && config.aws.s3.bucket) {
       const _s3_url = await uploadFileToS3(out_path)
       await deleteFile(out_path)
@@ -429,7 +453,7 @@ export async function updatePosterFile(
       out_path,
       filename,
     ])
-    await set(poster)
+    await set(poster, true)
     const r = await new Promise<{ ok: boolean; error?: string }>(resolve => {
       // use child.stdout.setEncoding('utf8'); if you want text chunks
       child.stdout.on("data", (chunk: Buffer) => {
@@ -450,18 +474,87 @@ export async function updatePosterFile(
                   })
                   .catch(err => {
                     log.error(err)
+                    set(poster, false)
+                      .then(() => {
+                        //
+                      })
+                      .catch(() => {
+                        //
+                      })
                   })
               })
               .catch(err => {
                 log.error(err)
+                set(poster, false)
+                  .then(() => {
+                    //
+                  })
+                  .catch(() => {
+                    //
+                  })
               })
           }
           resolve({ ok: true })
         } else {
           resolve({ ok: false, error: "PDF conversion error" })
+          set(poster, false)
+            .then(() => {
+              //
+            })
+            .catch(() => {
+              //
+            })
         }
       })
     })
     return r
+  }
+}
+
+async function exists(path: string, remote: boolean) {
+  if (remote) {
+    const r = await axios.head(path)
+    return r.status == 200
+  } else {
+    const r = await statAsync(path).catch(err => err.code as string)
+    return r != "ENOENT"
+  }
+}
+
+export async function refreshFiles(
+  room_id: RoomId
+): Promise<{ ok: boolean; updated?: Poster[] }> {
+  const poster_ids = (await getAll(room_id)).map(p => p.id)
+  try {
+    const updated: Poster[] = []
+    for (const poster_id of poster_ids) {
+      let e: boolean
+      if (config.aws.s3.upload) {
+        const url = await get_signed_url(poster_id)
+        e = !!url
+      } else {
+        const path = `db/posters/${poster_id}.png`
+        e = await exists(path, config.aws.s3.upload)
+      }
+      const e_old = !!(
+        await db.query(`SELECT file_uploaded FROM poster WHERE id=$1`, [
+          poster_id,
+        ])
+      )[0]?.file_uploaded
+      await db.query(`UPDATE poster SET file_uploaded=$1 WHERE id=$2`, [
+        e,
+        poster_id,
+      ])
+      if (e_old != e) {
+        const p = await get(poster_id)
+        if (p) {
+          updated.push(p)
+        }
+      }
+    }
+    return { ok: true, updated }
+  } catch (err) {
+    log.error(err)
+    return { ok: false }
   }
 }

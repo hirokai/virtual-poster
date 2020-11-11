@@ -1,5 +1,6 @@
 <template>
   <div class="tab-content">
+    <h1>自分のポスター一覧</h1>
     <div v-if="!posters">
       ポスターがありません。
     </div>
@@ -16,11 +17,21 @@
             @dragleave="dragover[poster.id] = false"
           >
             <figure class="image is-3x5">
-              <img :src="dataURI[poster.id]" alt="Image" />
+              <img
+                v-if="poster.file_url"
+                :src="dataURI[poster.id]"
+                alt="Image"
+              />
+              <span v-else>画像なし</span>
             </figure>
           </div>
-          <small class="poster-image-note"
+          <small
+            class="poster-image-note"
+            v-if="rooms[poster.room].allow_poster_assignment"
             >枠内にドラッグ＆ドロップでポスターを掲載（10 MB以内）</small
+          >
+          <small class="poster-image-note" v-else
+            >会場のオーナーの設定により，画像やタイトルの変更はできません</small
           >
         </div>
         <div class="column is-two-thirds">
@@ -44,7 +55,10 @@
             </div>
             <div>
               <button
-                v-if="editingTitle != poster.id"
+                v-if="
+                  editingTitle != poster.id &&
+                    rooms[poster.room].allow_poster_assignment
+                "
                 @click="onClickEditTitle(poster)"
                 class="button is-primary is-small"
               >
@@ -113,10 +127,13 @@
           <button
             class="remove-poster button is-danger"
             @click="removePosterFile(poster.id)"
+            :disabled="!poster.file_url"
+            v-if="rooms[poster.room].allow_poster_assignment"
           >
             画像を削除
           </button>
           <button
+            v-if="rooms[poster.room].allow_poster_assignment"
             class="release-poster-slot button is-danger"
             @click="releasePosterSlot(poster)"
           >
@@ -241,18 +258,8 @@ export default defineComponent({
       }
     }
 
-    const removePosterFile = async (poster_id: PosterId) => {
-      const data = await client.posters._posterId(poster_id).file.$delete()
-      console.log(data)
-      if (data.ok && data.poster) {
-        context.emit("set-poster", data.poster.id, data.poster)
-        state.dataURI[data.poster.id] = ""
-      }
-    }
-
     const loadPosterImages = async () => {
       for (const poster of Object.values(props.posters)) {
-        console.log("get poster ", poster.id)
         if (props.lastLoaded > poster.last_updated) {
           continue
         }
@@ -260,6 +267,11 @@ export default defineComponent({
         if (url == "not_disclosed") {
           url = (await client.posters._posterId(poster.id).file_url.$get()).url
         }
+        if (!url) {
+          url = "/api/posters/" + poster.id + "/file"
+        }
+        console.log("get poster ", poster.id, url)
+        /*
         const { data } = await axiosDefault({
           method: "GET",
           responseType: "arraybuffer",
@@ -271,8 +283,9 @@ export default defineComponent({
             ""
           )
         )
-        //Vue.set
         state.dataURI[poster.id] = "data:image/png;base64," + image
+        */
+        state.dataURI[poster.id] = url
       }
       context.emit("update-last-loaded", Date.now())
     }
@@ -282,6 +295,15 @@ export default defineComponent({
     })
 
     watch(() => props.posters, loadPosterImages)
+
+    const removePosterFile = async (poster_id: PosterId) => {
+      const data = await client.posters._posterId(poster_id).file.$delete()
+      console.log(data)
+      if (data.ok && data.poster) {
+        context.emit("set-poster", data.poster.id, data.poster)
+        state.dataURI[data.poster.id] = ""
+      }
+    }
 
     const releasePosterSlot = async (poster: Poster) => {
       if (

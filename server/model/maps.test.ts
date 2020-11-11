@@ -20,7 +20,11 @@ describe("Add a map and person", () => {
   const rows = 4
   test("Add a map", async done => {
     const map_data = mkMapData(rows, cols)
-    const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data)
+    const { map: mm } = await model.MapModel.mkNewRoom(
+      "Room 1",
+      map_data,
+      false
+    )
     expect(mm).toBeDefined()
     const { cells, numRows, numCols } = await mm!.getStaticMap()
     expect(_.flatten(cells).length).toEqual(cols * rows)
@@ -35,7 +39,8 @@ describe("Add a map and person", () => {
       const map_data = mkWrongMapData(rows, cols)
       const { map: mm } = await model.MapModel.mkNewRoom(
         "Room " + random_str(3),
-        map_data
+        map_data,
+        false
       )
       expect(mm).toBeUndefined()
     }
@@ -43,7 +48,11 @@ describe("Add a map and person", () => {
   })
   test("Add people to a map, then delete a map", async done => {
     const map_data = mkMapData(rows, cols)
-    const { map: mm } = await model.MapModel.mkNewRoom("Room 2", map_data)
+    const { map: mm } = await model.MapModel.mkNewRoom(
+      "Room 2",
+      map_data,
+      false
+    )
     if (!mm) {
       throw "Initialization failed"
     }
@@ -83,7 +92,8 @@ describe("Enter a room", () => {
     const map_data = mkMapData(rows, cols)
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room " + random_str(5),
-      map_data
+      map_data,
+      false
     )
     if (!mm) {
       throw "Initialization failed"
@@ -103,7 +113,8 @@ describe("Move a person", () => {
     const map_data = mkMapData(rows, cols)
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room " + random_str(5),
-      map_data
+      map_data,
+      false
     )
     const person = await createUser(mm!.room_id)
     const { ok: ok1 } = await mm!.enterRoom(person.id)
@@ -141,7 +152,8 @@ describe("Move a person", () => {
     const map_data = mkMapData(rows, cols)
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room " + random_str(5),
-      map_data
+      map_data,
+      false
     )
     const person = await createUser(mm!.room_id)
     const { ok: ok1 } = await mm!.enterRoom(person.id)
@@ -175,7 +187,7 @@ test("Cannot move during a chat", async () => {
   const rows = 10
   const cols = 10
   const map_data = mkMapData(rows, cols)
-  const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data)
+  const { map: mm } = await model.MapModel.mkNewRoom("Room 1", map_data, false)
   expect(mm).toBeDefined()
   if (!mm) {
     throw "MapModel failed to init"
@@ -202,7 +214,8 @@ describe("Posters", () => {
     const map_data = "....\n....\n..P."
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room " + random_str(3),
-      map_data
+      map_data,
+      false
     )
     if (!mm) {
       throw "Undefined MapModel"

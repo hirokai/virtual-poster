@@ -1,4 +1,4 @@
-import { UserId } from "../@types/types"
+import { UserId, PersonWithEmail } from "../@types/types"
 
 //https://stackoverflow.com/questions/28905965/textarea-how-to-count-wrapped-lines-rows
 /** @type {HTMLTextAreaElement} */
@@ -98,4 +98,46 @@ export function truncateComment(c: string): string {
   } else {
     return c.slice(0, 80) + "..."
   }
+}
+
+export const findUser = (
+  people: { [user_id: string]: PersonWithEmail },
+  txt: string
+): UserId | undefined => {
+  let user: PersonWithEmail | undefined = undefined
+  user = people[txt]
+  if (user) {
+    return user.id
+  }
+  user = Object.values(people).find(p => p.email == txt)
+  if (user) {
+    return user.id
+  }
+  user = Object.values(people).find(p => p.name == txt)
+  if (user) {
+    return user.id
+  }
+  return undefined
+}
+
+export const findUser2 = (
+  people: { id?: UserId; email: string; name?: string }[],
+  txt: string
+): string | undefined => {
+  let user:
+    | { id?: UserId; email: string; name?: string }
+    | undefined = undefined
+  user = people[txt]
+  if (user) {
+    return user.email
+  }
+  user = Object.values(people).find(p => p.email == txt)
+  if (user) {
+    return user.email
+  }
+  user = Object.values(people).find(p => p.name == txt)
+  if (user) {
+    return user.email
+  }
+  return undefined
 }

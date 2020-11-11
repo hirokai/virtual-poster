@@ -16,6 +16,7 @@ default_rooms:
   - hoge
 certificate_folder: /etc/letsencrypt/live/YOUR_DOMAIN.com
 postgresql: postgres://postgres@localhost/virtual_poster
+redis: redis://localhost:6379
 aws:
   access_key_id: BUCKET_NAME
   secret_access_key: xxxxx
@@ -27,6 +28,8 @@ aws:
   cloud_front:
     id: DISTRIBUTION_ID
     domain: cdn.example.com
+    key_pair_id: XXXXX
+    private_key: ./cloud_front_priv.pem
 firebase_auth_credential: xxxxx.json
 user_registration: true
 cookie_expires: 1440

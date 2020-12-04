@@ -5,6 +5,7 @@
       :style="{
         opacity: hidden ? 0 : 1,
       }"
+      :class="{ monochrome: monochromeStyle }"
     >
     </canvas>
     <svg
@@ -29,6 +30,7 @@
           (cells[0] ? cells[0].length : 0) * size +
           'px 0px)',
       }"
+      :class="{ monochrome: monochromeStyle }"
     >
       <g>
         <g
@@ -39,7 +41,7 @@
           "
         >
           <image
-            v-if="size >= 5"
+            v-if="size >= 5 && pictureStyle"
             :xlink:href="
               avatarImages[
                 person.avatar.split(':')[0] +
@@ -62,8 +64,55 @@
             :width="'' + size + 'px'"
             :height="'' + size + 'px'"
           />
+          <circle
+            v-if="size >= 5 && abstractStyle"
+            :style="{ opacity: person.connected ? 1 : 0.5 }"
+            :fill="abstractColorOfAvatar(person.avatar)"
+            :cx="size / 2"
+            :cy="size / 2"
+            :r="'' + size / 2 + 'px'"
+            :stroke="monochromeStyle ? 'black' : ''"
+            :stroke-width="monochromeStyle ? '1px' : ''"
+            :stroke-dasharray="
+              monochromeStyle ? (person.connected ? '' : '2') : ''
+            "
+          />
+          <path
+            v-if="size >= 5 && abstractStyle && person.direction != 'none'"
+            :style="{ opacity: 0.3 }"
+            :d="
+              'M0,0 L0,-' +
+              size / 2 +
+              ' A' +
+              size / 2 +
+              ',' +
+              size / 2 +
+              ' 0 0,1 0,' +
+              size / 2 +
+              'z'
+            "
+            fill="#000"
+            class="person-abstract-front"
+            :transform="
+              'translate(' +
+              size / 2 +
+              ', ' +
+              size / 2 +
+              ') rotate(' +
+              (person.direction == 'up'
+                ? 90
+                : person.direction == 'left'
+                ? 0
+                : person.direction == 'down'
+                ? -90
+                : person.direction == 'right'
+                ? 180
+                : 0) +
+              ')'
+            "
+          />
           <rect
-            v-else
+            v-if="size < 5"
             :width="'' + size + 'px'"
             :height="'' + size + 'px'"
             :fill="person.connected ? 'red' : 'gray'"
@@ -109,13 +158,19 @@ import {
   onMounted,
   nextTick,
   onUpdated,
+  computed,
 } from "vue"
-import { Cell, Point, ChatGroup, Person, Direction } from "@/@types/types"
+import {
+  Cell,
+  Point,
+  ChatGroup,
+  Person,
+  Direction,
+  VisualStyle,
+} from "@/@types/types"
+import { abstractColorOfAvatar } from "./util"
 
 export default defineComponent({
-  components: {
-    // MiniMapCell,
-  },
   props: {
     people_typing: {
       type: Object as PropType<{ [index: string]: boolean }>,
@@ -158,6 +213,10 @@ export default defineComponent({
     },
     isMobile: {
       type: Boolean,
+      required: true,
+    },
+    visualStyle: {
+      type: String as PropType<VisualStyle>,
       required: true,
     },
   },
@@ -271,6 +330,18 @@ export default defineComponent({
       context.emit("dbl-click", p)
       ev.stopPropagation()
     }
+
+    const abstractStyle = computed(() => {
+      return (
+        props.visualStyle == "abstract" ||
+        props.visualStyle == "abstract_monochrome"
+      )
+    })
+
+    const pictureStyle = computed(() => {
+      return props.visualStyle == "monochrome" || props.visualStyle == "default"
+    })
+
     const drawMap = async () => {
       const ti = performance.now()
       const canvas = document.getElementById(
@@ -282,57 +353,78 @@ export default defineComponent({
       canvas.width = s * (props.cells[0] || []).length
 
       // const s = 3.5
-      console.log("Minimap cell size", s, props.cells.length)
-      // Draw a image.
-      const loadImage = (url: string, size: number) => {
-        const img = new Image()
-        return new Promise<HTMLCanvasElement>(resolve => {
-          img.onload = () => {
-            const offscreenCanvas = document.createElement("canvas")
-            // document.body.appendChild(offscreenCanvas)
-            offscreenCanvas.width = Math.ceil(size)
-            offscreenCanvas.height = Math.ceil(size)
-            const ctx = offscreenCanvas.getContext("2d")!
-            ctx.drawImage(img, 0, 0, size, size)
-            resolve(offscreenCanvas)
+      // console.log("Minimap cell size", s, props.cells.length)
+      if (pictureStyle.value) {
+        // Draw a image.
+        const loadImage = (url: string, size: number) => {
+          const img = new Image()
+          return new Promise<HTMLCanvasElement>(resolve => {
+            img.onload = () => {
+              const offscreenCanvas = document.createElement("canvas")
+              // document.body.appendChild(offscreenCanvas)
+              offscreenCanvas.width = Math.ceil(size)
+              offscreenCanvas.height = Math.ceil(size)
+              const ctx = offscreenCanvas.getContext("2d")!
+              ctx.drawImage(img, 0, 0, size, size)
+              resolve(offscreenCanvas)
+            }
+            img.src = url
+          })
+        }
+        const ps = [
+          "/img/map/kusa.png",
+          "/img/map/yama.png",
+          "/img/map/water.png",
+          "/img/map/kusa_red.png",
+          "/img/map/mud.png",
+          "/img/map/post.png",
+        ].map(u => loadImage(u, s))
+        const imgs = await Promise.all(ps)
+        // console.log("Map size", props.cells[0]?.length, props.cells.length)
+        const ctx = canvas.getContext("2d")!
+        for (const y in props.cells) {
+          for (const x in props.cells[y]) {
+            // console.log(+x, +y)
+            const sx = s
+            const sy = s
+            if (props.cells[y][x].kind == "grass") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "wall") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+              ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "water") {
+              ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "poster_seat") {
+              ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "mud") {
+              ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
+            } else if (props.cells[y][x].kind == "poster") {
+              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
+              ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
+            }
           }
-          img.src = url
-        })
-      }
-      const ps = [
-        "/img/map/kusa.png",
-        "/img/map/yama.png",
-        "/img/map/water.png",
-        "/img/map/kusa_red.png",
-        "/img/map/mud.png",
-        "/img/map/post.png",
-      ].map(u => loadImage(u, s))
-      const imgs = await Promise.all(ps)
-
-      console.log("Map size", props.cells[0]?.length, props.cells.length)
-      const ctx = canvas.getContext("2d")!
-      for (const y in props.cells) {
-        for (const x in props.cells[y]) {
-          // console.log(+x, +y)
-          const sx = s
-          const sy = s
-          if (props.cells[y][x].kind == "grass") {
-            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-          } else if (props.cells[y][x].kind == "wall") {
-            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-            ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
-          } else if (props.cells[y][x].kind == "water") {
-            ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
-          } else if (props.cells[y][x].kind == "poster_seat") {
-            ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
-          } else if (props.cells[y][x].kind == "mud") {
-            ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
-          } else if (props.cells[y][x].kind == "poster") {
-            ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-            ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
+        }
+      } else {
+        const ctx = canvas.getContext("2d")!
+        const colors = {
+          grass: "#8DAC4B",
+          wall: "#959174",
+          water: "#6D8793",
+          mud: "#8D894E",
+          poster_seat: "#A8A735",
+          poster: "#7E7353",
+        }
+        for (const y in props.cells) {
+          for (const x in props.cells[y]) {
+            // console.log(+x, +y)
+            const sx = s
+            const sy = s
+            ctx.fillStyle = colors[props.cells[y][x].kind] || "rgba(0,0,0,0)"
+            ctx.fillRect(+x * sx, +y * sy, s, s)
           }
         }
       }
+
       const tf = performance.now()
       console.log(
         "%c" + "Drawing done " + (tf - ti).toFixed(2) + "ms",
@@ -341,16 +433,22 @@ export default defineComponent({
     }
 
     watch(
-      () => [state.size, props.cells],
-      async (newValues, oldValues) => {
+      () => [state.size, props.cells, props.visualStyle],
+      async () => {
         if (state.size > 0) {
-          console.log("watch", state.size, props.cells)
           await drawMap()
         }
       }
     )
     onMounted(async () => {
-      // await drawMap()
+      await drawMap()
+    })
+
+    const monochromeStyle = computed(() => {
+      return (
+        props.visualStyle == "monochrome" ||
+        props.visualStyle == "abstract_monochrome"
+      )
     })
 
     return {
@@ -360,6 +458,10 @@ export default defineComponent({
       select,
       personImgOffset,
       personImgClipPath,
+      abstractStyle,
+      pictureStyle,
+      abstractColorOfAvatar,
+      monochromeStyle,
     }
   },
 })
@@ -372,6 +474,18 @@ svg#minimap {
   left: 8px;
   user-select: none;
   transition: opacity 0.5s linear;
+}
+
+.dark svg#minimap:not(.monochrome) {
+  filter: brightness(0.6) contrast(1.2);
+}
+
+svg#minimap.monochrome {
+  filter: saturate(0);
+}
+
+.dark svg#minimap.monochrome {
+  filter: saturate(0) brightness(0.6) contrast(1.2);
 }
 
 .mobile svg#minimap {
@@ -389,6 +503,18 @@ canvas#minimap-canvas {
   left: 8px;
   transition: opacity 0.3s linear;
   /* border: 2px solid #ccc; */
+}
+
+canvas#minimap-canvas.monochrome {
+  filter: saturate(0);
+}
+
+.dark canvas#minimap-canvas.monochrome {
+  filter: saturate(0) brightness(0.6) contrast(1.2);
+}
+
+.dark canvas#minimap-canvas {
+  filter: brightness(0.6) contrast(1.2);
 }
 
 .mobile canvas#minimap-canvas {

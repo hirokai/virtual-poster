@@ -21,46 +21,69 @@
     @mouseenter="$emit('hover-cell', true, { x: cell.x, y: cell.y })"
     @mouseleave="$emit('hover-cell', false, { x: cell.x, y: cell.y })"
   >
-    <image xlink:href="/img/map/kusa.png" width="48px" height="48px" />
     <image
-      v-if="cell.kind == 'poster_seat'"
-      xlink:href="/img/map/kusa_red.png"
+      xlink:href="/img/map/kusa.png"
       width="48px"
       height="48px"
+      v-if="pictureStyle"
     />
     <rect
       class="poster-name"
-      v-if="cell.kind == 'poster' && !person && poster && poster.author"
+      v-if="cell.kind == 'poster' && abstractStyle"
       width="46px"
       y="28px"
       height="18px"
       opacity="0.4"
       fill="white"
     />
-    <text
+    <image
+      v-if="cell.kind == 'poster_seat' && pictureStyle"
+      xlink:href="/img/map/kusa_red.png"
+      width="48px"
+      height="48px"
+    />
+    <rect
+      v-if="cell.kind == 'poster_seat' && abstractStyle"
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#A8A735"
+    />
+    <rect
+      v-if="
+        cell.kind == 'poster' &&
+        !(poster && myself && poster.author == myself.id) &&
+        abstractStyle
+      "
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#7E7353"
+    />
+    <rect
       class="poster-name"
       v-if="
         cell.kind == 'poster' &&
-          !person &&
-          poster &&
-          poster.author &&
-          people[poster.author]
+        !person &&
+        poster &&
+        poster.author &&
+        pictureStyle
       "
-      x="24px"
-      y="44px"
-      :style="{
-        'font-size': 16,
-        'font-weight': 'bold',
-      }"
-      dominant-baseline="bottom"
-      text-anchor="middle"
-      >{{ poster.poster_number }}</text
-    >
+      width="46px"
+      y="28px"
+      height="18px"
+      opacity="0.4"
+      fill="white"
+    />
+
     <image
       class="poster"
       v-if="
         cell.kind == 'poster' &&
-          !(poster && myself && poster.author == myself.id)
+        !(poster && myself && poster.author == myself.id) &&
+        pictureStyle
       "
       :xlink:href="'/img/map/' + (cell.custom_image || 'post.png')"
       width="48px"
@@ -76,9 +99,10 @@
       stroke-width="2"
       fill="none"
     />
+
     <image
       :class="{ poster_self: true, drag_over: dragOver }"
-      v-if="poster && myself && poster.author == myself.id"
+      v-if="poster && myself && poster.author == myself.id && pictureStyle"
       xlink:href="/img/map/post.png"
       width="48px"
       height="48px"
@@ -86,38 +110,100 @@
       @dragleave.prevent="onDragLeaveMyPoster"
       @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
     />
+    <rect
+      :class="{ poster_self: true, drag_over: dragOver }"
+      v-if="poster && myself && poster.author == myself.id && abstractStyle"
+      width="48px"
+      height="48px"
+      fill="#7E7353"
+      @dragover.prevent="onDragOverMyPoster"
+      @dragleave.prevent="onDragLeaveMyPoster"
+      @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
+    />
 
-    <image
-      v-if="cell.kind == 'grass'"
+    <text
+      class="poster-name"
+      v-if="
+        cell.kind == 'poster' &&
+        !person &&
+        poster &&
+        poster.author &&
+        people[poster.author]
+      "
+      x="24px"
+      y="44px"
+      :style="{
+        'font-size': 16,
+        'font-weight': 'bold',
+      }"
+      dominant-baseline="bottom"
+      text-anchor="middle"
+      >{{ poster.poster_number }}</text
+    >
+
+    <!-- <image
+      v-if="cell.kind == 'grass' && pictureStyle"
       xlink:href="/img/map/kusa.png"
       width="48px"
       height="48px"
+    /> -->
+    <rect
+      v-if="cell.kind == 'grass' && abstractStyle"
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#8DAC4B"
     />
     <image
-      v-if="cell.kind == 'water'"
+      v-if="cell.kind == 'water' && pictureStyle"
       xlink:href="/img/map/water.png"
       width="48px"
       height="48px"
     />
+    <rect
+      v-if="cell.kind == 'water' && abstractStyle"
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#6D8793"
+    />
     <image
-      v-if="cell.kind == 'mud'"
+      v-if="cell.kind == 'mud' && pictureStyle"
       xlink:href="/img/map/mud.png"
       width="48px"
       height="48px"
     />
+    <rect
+      v-if="cell.kind == 'mud' && abstractStyle"
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#8D894E"
+    />
     <image
-      v-if="cell.kind == 'wall'"
+      v-if="cell.kind == 'wall' && pictureStyle"
       xlink:href="/img/map/yama.png"
       width="48px"
       height="48px"
+    />
+    <rect
+      v-if="cell.kind == 'wall' && abstractStyle"
+      x="0"
+      y="0"
+      width="48px"
+      height="48px"
+      fill="#959174"
     />
   </g>
 </template>
 
 <script lang="ts">
-import { Cell, Person, Poster } from "@/@types/types"
+import { Cell, Person, Poster, VisualStyle } from "@/@types/types"
 
-import { defineComponent, reactive, toRefs, PropType } from "vue"
+import { defineComponent, reactive, toRefs, PropType, computed } from "vue"
 
 export default defineComponent({
   // @Prop() public myself!: Person
@@ -152,10 +238,25 @@ export default defineComponent({
       type: Number,
       required: true,
     },
+    visualStyle: {
+      type: String as PropType<VisualStyle>,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({
       dragOver: false,
+    })
+
+    const abstractStyle = computed(() => {
+      return (
+        props.visualStyle == "abstract" ||
+        props.visualStyle == "abstract_monochrome"
+      )
+    })
+
+    const pictureStyle = computed(() => {
+      return props.visualStyle == "monochrome" || props.visualStyle == "default"
     })
 
     const onDragOverMyPoster = () => {
@@ -192,6 +293,8 @@ export default defineComponent({
       onDragOverMyPoster,
       onDragLeaveMyPoster,
       onDropMyPoster,
+      abstractStyle,
+      pictureStyle,
     }
   },
 })

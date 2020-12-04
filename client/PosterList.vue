@@ -30,8 +30,16 @@
           <td>
             {{ poster.title }}
           </td>
-          <td style="color: #0c0; font-size: 18px;">
-            {{ poster.file_url ? "&#x2714;" : "" }}
+          <td>
+            <span v-if="poster.file_url" style="color: #0c0; font-size: 18px"
+              >&#x2714;</span
+            >
+            <span
+              v-if="poster.file_url && poster.file_size != undefined"
+              style="float: right; font-size: 80%; vertical-align: 0px"
+            >
+              ({{ Math.round(poster.file_size / 1000).toLocaleString() }} kB)
+            </span>
           </td>
           <td>
             <span

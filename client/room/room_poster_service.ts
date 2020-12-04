@@ -130,6 +130,7 @@ export const doSubmitPosterComment = async (
 
 export const doUploadPoster = async (
   axios: AxiosStatic | AxiosInstance,
+  state: RoomAppState,
   file: File,
   poster_id: string
 ): Promise<void> => {
@@ -139,8 +140,27 @@ export const doUploadPoster = async (
   console.log(fd)
   const { data } = await axios.post<{ ok: boolean; poster?: Poster }>(
     "/posters/" + poster_id + "/file",
-    fd
+    fd,
+    {
+      onUploadProgress: progress => {
+        state.posterUploadProgress = {
+          file_type: file.type as "image/png" | "application/pdf",
+          loaded: progress.loaded,
+          total: progress.total,
+        }
+        console.log(
+          "onUploadProgress",
+          progress,
+          {
+            loaded: progress.loaded,
+            total: progress.total,
+          },
+          state.posterUploadProgress
+        )
+      },
+    }
   )
+  state.posterUploadProgress = undefined
   console.log(data)
 }
 
@@ -201,31 +221,28 @@ export const initPosterService = async (
 
   const pid = state.people[props.myUserId]?.poster_viewing
   if (pid) {
-    if (pid) {
-      const r1 = await client.posters._posterId(pid).file_url.$get()
-      if (r1.ok && r1.url) {
-        state.posters[pid].file_url = r1.url
-      }
-      console.log("poster comment loading")
-      const data = await client.posters._posterId(pid).comments.$get()
-      watch(
-        () => state.people[props.myUserId]?.poster_viewing,
-        async () => {
-          console.log("poster_viewing changed")
-          const pid = state.people[props.myUserId]?.poster_viewing
-          if (pid) {
-            const data = await client.posters._posterId(pid).comments.$get()
-            state.posterComments = keyBy(data, "id")
-          } else {
-            state.posterComments = {}
-          }
-        }
-      )
-      state.posterComments = keyBy(data, "id")
-    } else {
-      state.posterComments = {}
+    const r1 = await client.posters._posterId(pid).file_url.$get()
+    if (r1.ok && r1.url) {
+      state.posters[pid].file_url = r1.url
     }
+    console.log("poster comment loading")
+    const data = await client.posters._posterId(pid).comments.$get()
+    state.posterComments = keyBy(data, "id")
+    watch(
+      () => state.people[props.myUserId]?.poster_viewing,
+      async () => {
+        console.log("poster_viewing changed")
+        const pid = state.people[props.myUserId]?.poster_viewing
+        if (pid) {
+          const data = await client.posters._posterId(pid).comments.$get()
+          state.posterComments = keyBy(data, "id")
+        } else {
+          state.posterComments = {}
+        }
+      }
+    )
   } else {
+    state.posterComments = {}
     watch(
       () => state.people[props.myUserId]?.poster_viewing,
       async () => {

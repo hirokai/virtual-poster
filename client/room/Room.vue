@@ -86,12 +86,14 @@
       :avatarImages="avatarImages"
       :people_typing="people_typing"
       :selectedPos="selectedPos"
+      :visualStyle="visualStyle"
       @select="updateSelectedPos"
       @dbl-click="dblClick"
     />
     <ChatLocal
       ref="chatLocal"
       v-if="mobilePane == 'chat'"
+      :axios="axios"
       :isMobile="isMobile"
       :myself="myself"
       :contentHidden="hidden"
@@ -106,6 +108,8 @@
       :people_typing="people_typing"
       :enableEncryption="enableEncryption"
       :encryptionPossibleInChat="encryption_possible_in_chat"
+      :darkMode="darkMode"
+      :highlightUnread="highlightUnread"
       @leave-chat="leaveChat"
       @submit-comment="submitComment"
       @update-comment="sendOrUpdateComment"
@@ -115,6 +119,7 @@
       @on-focus-input="onFocusInput"
       @set-encryption="setEncryption"
       @add-emoji-reaction="addEmojiReaction"
+      @read-comment="readComment"
     />
     <Poster
       v-show="
@@ -124,12 +129,15 @@
       :isMobile="isMobile"
       :mobilePane="mobilePane"
       :myself="myself"
-      :poster="posterLooking ? adjacentPoster : undefined"
+      :poster="adjacentPoster"
+      :uploadProgress="posterUploadProgress"
       :comments="posterComments"
       :commentTree="posterCommentTree"
       :people="people"
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
+      :darkMode="darkMode"
+      :highlightUnread="highlightUnreadPoster[posterLooking?.id] || {}"
       @submit-poster-comment="submitPosterComment"
       @update-poster-comment="updatePosterComment"
       @delete-comment="deletePosterComment"
@@ -137,6 +145,7 @@
       @on-focus-input="onFocusInput"
       @upload-poster="uploadPoster"
       @add-emoji-reaction="addEmojiReaction"
+      @read-comment="readPosterComment"
     />
     <div id="tools-on-map" v-if="mobilePane == 'map'">
       <button
@@ -148,7 +157,7 @@
         ポスターを閲覧
       </button>
       <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
-        <span style="font-weight: bold;"
+        <span style="font-weight: bold"
           >{{ adjacentPoster.poster_number }}:
           {{
             people[adjacentPoster.author]
@@ -185,7 +194,8 @@
   <div
     id="app-main"
     v-if="!isMobile"
-    :class="{ poster_active: posterLooking, mobile: isMobile }"
+    :class="{ poster_active: posterLooking, mobile: isMobile, dark: darkMode }"
+    @click="visibleNotification = false"
     v-cloak
   >
     <div
@@ -195,21 +205,75 @@
         top: isMobile ? '0px' : undefined,
       }"
     >
-      <span v-if="!!myself">
-        {{ myself ? myself.name : "" }}さん
-        <span id="login-info">({{ myUserId }}) {{ posterLooking }}</span>
+      <div
+        style="
+          display: inline-block;
+          width: 350px;
+          height: 30px;
+          overflow: hidden;
+        "
+      >
+        <span>{{ roomName }}</span
+        >：
+        <span v-if="!!myself">
+          {{ myself ? myself.name : "" }}さん
+          <span id="login-info">({{ myUserId }}) </span>
+        </span>
+      </div>
+
+      <span
+        class="icon-link with-tool-tip"
+        @mouseenter="setHoverWithDelay('leaveRoom')"
+        @mouseleave="cancelHover"
+        :class="{ hover: hoverElement == 'leaveRoom' }"
+      >
+        <img
+          @click="leaveRoom"
+          src="/img/icon/logout.png"
+          width="25"
+          height="25"
+        />
+        <div class="tooltip">部屋を退出</div>
       </span>
 
-      <img
-        class="toolbar-icon"
-        @click="leaveRoom"
-        src="/img/icon/logout.png"
-        width="25"
-        height="25"
-      />
+      <span
+        class="icon-link with-tool-tip"
+        @mouseenter="setHoverWithDelay('toggleNotification')"
+        @mouseleave="cancelHover"
+        :class="{ hover: hoverElement == 'toggleNotification' }"
+      >
+        <img
+          id="toggle-notification"
+          @click.stop="visibleNotification = !visibleNotification"
+          :class="{ enabled: visibleNotification }"
+          src="/img/icon/notification.png"
+          width="25"
+          height="25"
+        />
+        <div
+          v-if="notifications.length > 0"
+          class="badge"
+          @click.stop="visibleNotification = !visibleNotification"
+        >
+          {{ notifications.length }}
+        </div>
+
+        <div class="tooltip">通知</div>
+        <Notification
+          v-if="visibleNotification && myself"
+          :myself="myself"
+          :visualStyle="visualStyle"
+          :notifications="notifications"
+          :posters="posters"
+          @approach-poster="approachPoster"
+          @highlight-unread-comments="highlightUnreadComments"
+          @close="visibleNotification = false"
+        />
+      </span>
 
       <a
-        class="icon-link"
+        class="icon-link with-tool-tip"
+        :class="{ hover: hoverElement == 'mypage' }"
         :href="
           '/mypage?room=' +
             room_id +
@@ -218,13 +282,19 @@
               : '')
         "
         target="_blank"
+        @mouseenter="setHoverWithDelay('mypage')"
+        @mouseleave="cancelHover"
       >
         <img width="25" height="25" src="/img/icon/user.png" alt="マイページ" />
+        <div class="tooltip">マイページ</div>
       </a>
       <a
-        class="icon-link"
+        class="icon-link with-tool-tip"
+        :class="{ hover: hoverElement == 'posterList' }"
         :href="'/poster_list?room_id=' + room_id"
         target="_blank"
+        @mouseenter="setHoverWithDelay('posterList')"
+        @mouseleave="cancelHover"
       >
         <img
           width="25"
@@ -232,16 +302,24 @@
           src="/img/icon/promotion.png"
           alt="ポスターリスト"
         />
+        <div class="tooltip">ポスター一覧</div>
       </a>
-      <img
-        class="toolbar-icon"
-        :class="{ disabled: !enableMiniMap }"
-        @click="enableMiniMap = !enableMiniMap"
-        src="/img/icon/globe.png"
-        alt="マップのON/OFF"
-        width="25"
-        height="25"
-      />
+      <span
+        class="icon-link with-tool-tip"
+        :class="{ hover: hoverElement == 'music', active: !!playingBGM }"
+        @click="!playingBGM ? playBGM() : stopBGM()"
+        @mouseenter="setHoverWithDelay('music')"
+        @mouseleave="cancelHover"
+      >
+        <img
+          id="music-icon"
+          width="25"
+          height="25"
+          src="/img/icon/music.png"
+          alt="BGM"
+        />
+        <div class="tooltip">BGM {{ playingBGM ? "ON" : "OFF" }}</div>
+      </span>
       <img
         v-if="bot_mode"
         class="toolbar-icon"
@@ -251,7 +329,7 @@
         width="25"
         height="25"
       />
-      <div style="clear:both;"></div>
+      <div style="clear: both"></div>
     </div>
     <div id="all-connection-status" v-if="!hidden">
       <span
@@ -305,8 +383,9 @@
       :selectedUsers="selectedUsers"
       :people_typing="people_typing"
       :avatarImages="avatarImages"
+      :visualStyle="visualStyle"
       @select="updateSelectedPos"
-      @hover="hoverOnCell"
+      @hover-on-cell="hoverOnCell"
       @dbl-click="dblClick"
       @upload-poster="uploadPoster"
       @input-arrow-key="inputArrowKey"
@@ -325,6 +404,7 @@
       :avatarImages="avatarImages"
       :people_typing="people_typing"
       :selectedPos="selectedPos"
+      :visualStyle="visualStyle"
       @select="updateSelectedPos"
       @dbl-click="dblClick"
     />
@@ -332,6 +412,7 @@
       ref="chatLocal"
       v-show="isMobile ? !enableMiniMap && !posterLooking : true"
       :isMobile="isMobile"
+      :axios="axios"
       :myself="myself"
       :contentHidden="hidden"
       :comments="comments"
@@ -345,15 +426,20 @@
       :people_typing="people_typing"
       :enableEncryption="enableEncryption"
       :encryptionPossibleInChat="encryption_possible_in_chat"
+      :hoverElement="hoverElement"
+      :highlightUnread="highlightUnread"
       @leave-chat="leaveChat"
       @submit-comment="submitComment"
       @update-comment="sendOrUpdateComment"
       @delete-comment="deleteComment"
       @set-editing-old="setEditingOld"
-      @onInputTextChange="onInputTextChange"
+      @on-input-text-change="onInputTextChange"
       @on-focus-input="onFocusInput"
       @set-encryption="setEncryption"
       @add-emoji-reaction="addEmojiReaction"
+      @set-hover-with-delay="setHoverWithDelay"
+      @cancel-hover="cancelHover"
+      @read-comment="readComment"
     />
     <Poster
       v-if="!botActive"
@@ -367,6 +453,9 @@
       :people="people"
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
+      :darkMode="darkMode"
+      :uploadProgress="posterUploadProgress"
+      :highlightUnread="highlightUnreadPoster[posterLooking?.id] || {}"
       @submit-poster-comment="submitPosterComment"
       @update-poster-comment="updatePosterComment"
       @delete-comment="deletePosterComment"
@@ -374,41 +463,48 @@
       @on-focus-input="onFocusInput"
       @upload-poster="uploadPoster"
       @add-emoji-reaction="addEmojiReaction"
+      @read-comment="readPosterComment"
       v-show="posterLooking"
     />
-    <button
-      id="enter-poster-on-map"
-      @click="enterPoster"
-      v-if="adjacentPoster && !posterLooking"
-    >
-      ポスターを閲覧
-    </button>
-    <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
-      <span style="font-weight: bold;"
-        >{{ adjacentPoster.poster_number }}:
-        {{
-          people[adjacentPoster.author]
-            ? people[adjacentPoster.author].name
-            : ""
-        }}</span
+    <div id="tools-on-map">
+      <button
+        id="enter-poster-on-map"
+        @click="enterPoster"
+        v-if="adjacentPoster && !posterLooking"
       >
+        ポスターを閲覧
+      </button>
+      <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
+        <span style="font-weight: bold"
+          >{{ adjacentPoster.poster_number }}:
+          {{
+            people[adjacentPoster.author]
+              ? people[adjacentPoster.author].name
+              : ""
+          }}</span
+        >
 
-      <br />
-      {{ adjacentPoster.title }}
-      <span id="access-log-notice" v-if="adjacentPoster.access_log">
-        このポスターを閲覧すると<br />足あとが記録されます
-      </span>
-    </div>
-    <button id="leave-poster-on-map" @click="leavePoster" v-if="posterLooking">
-      ポスターから離脱
-    </button>
+        <br />
+        {{ adjacentPoster.title }}
+        <span id="access-log-notice" v-if="adjacentPoster.access_log">
+          このポスターを閲覧すると<br />足あとが記録されます
+        </span>
+      </div>
+      <button
+        id="leave-poster-on-map"
+        @click="leavePoster"
+        v-if="posterLooking"
+      >
+        ポスターから離脱
+      </button>
 
-    <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
-      会話から離脱
-    </button>
-    <div id="message" :class="{ hide: message.hide }">
-      <div id="message-close" @click="hideMessage">&times;</div>
-      {{ message.text }}
+      <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
+        会話から離脱
+      </button>
+      <div id="message" :class="{ hide: message.hide }">
+        <div id="message-close" @click="hideMessage">&times;</div>
+        {{ message.text }}
+      </div>
     </div>
   </div>
 </template>
@@ -420,11 +516,11 @@ import {
   onMounted,
   watch,
   ref,
+  nextTick,
   toRefs,
   computed,
   PropType,
   ComputedRef,
-  nextTick,
 } from "vue"
 
 import {
@@ -444,6 +540,9 @@ import {
   CommentId,
   CommentEvent,
   PosterCommentDecrypted,
+  VisualStyle,
+  NewCommentNotification,
+  PosterCommentNotification,
 } from "@/@types/types"
 
 import Map from "./Map.vue"
@@ -451,17 +550,18 @@ import MiniMap from "./MiniMap.vue"
 import Poster from "./Poster.vue"
 import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
+import Notification from "./Notification.vue"
 import MyPage from "../mypage/MyPage.vue"
 
-import { inRange, keyBy } from "@/common/util"
+import { inRange, keyBy, sortBy } from "@/common/util"
 import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
-import jsSHA from "jssha"
 import io from "socket.io-client"
 import { initPeopleService } from "./room_people_service"
+import { getVisualStyle } from "../util"
 
 const RELOAD_DELAY_MEAN = 2000
 
@@ -483,6 +583,9 @@ import {
   initMapService,
   dblClickHandler,
   enterPoster,
+  playBGM as _playBGM,
+  stopBGM as _stopBGM,
+  posterLooking as _posterLooking,
 } from "./room_map_service"
 
 import {
@@ -502,7 +605,7 @@ const setupSocketHandlers = (
   state: RoomAppState,
   socket: SocketIOClient.Socket | MySocketObject
 ) => {
-  console.log("Setting up socket handlers for", socket)
+  // console.log("Setting up socket handlers for", socket)
   socket.on("disconnect", () => {
     state.socket_active = false
   })
@@ -533,7 +636,7 @@ const setupSocketHandlers = (
   })
 
   socket.on("Announce", d => {
-    console.log("socket announce", d)
+    // console.log("socket announce", d)
     state.announcement = d
   })
 
@@ -571,6 +674,7 @@ export default defineComponent({
     CellInfo,
     ChatLocal,
     MyPage,
+    Notification,
   },
 
   props: {
@@ -647,14 +751,12 @@ export default defineComponent({
       return response
     })
 
-    console.log(props)
-    // props.axios.defaults.headers.common = {
-    //   Authorization: `Bearer ${props.idToken}`,
-    // }
-
     if (!process.env.VUE_APP_SKYWAY_API_KEY) {
       console.warn("Skyway API key not set.")
     }
+
+    const dark_local_storage =
+      localStorage["virtual-poster:" + props.myUserId + ":config:dark_mode"]
 
     const state = reactive<RoomAppState>({
       socket: null as SocketIOClient.Socket | null,
@@ -669,6 +771,7 @@ export default defineComponent({
       posters: {} as { [index: string]: PosterTyp },
       posterComments: {} as { [comment_id: string]: PosterCommentDecrypted },
       posterInputComment: "" as string | undefined,
+      roomName: "",
       hallMap: [] as Cell[][],
       cols: 0,
       rows: 0,
@@ -728,6 +831,28 @@ export default defineComponent({
       reloadWaiting: false,
 
       mobilePane: "map",
+      visualStyle: getVisualStyle(
+        new URL(location.href).searchParams.get("style") ||
+          localStorage[
+            "virtual-poster:" + props.myUserId + ":config:map_visual_style"
+          ] ||
+          ""
+      ),
+      darkMode:
+        dark_local_storage == "1"
+          ? true
+          : dark_local_storage == "0"
+          ? false
+          : window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches,
+      hoverElementTimer: undefined,
+      hoverElement: undefined,
+      posterUploadProgress: undefined,
+      visibleNotification: false,
+      notifications: [],
+      highlightUnread: {},
+      highlightUnreadPoster: {},
+      playingBGM: undefined,
     })
 
     props.axios.interceptors.request.use(config => {
@@ -757,10 +882,6 @@ export default defineComponent({
 
     const adjacentPoster = _adjacentPoster(props, state)
 
-    const posterLooking: ComputedRef<PosterId | undefined> = computed(() => {
-      return state.people[props.myUserId]?.poster_viewing
-    })
-
     const showMessage = showMessage_(props, state)
 
     const posterComponent = ref<typeof Poster>()
@@ -769,6 +890,9 @@ export default defineComponent({
       console.log("clearInput")
       context.emit("clear-chat-input")
     }
+
+    const playBGM = _playBGM(props, state)
+    const stopBGM = _stopBGM(state)
 
     const leavePoster = async () => {
       const poster_id = adjacentPoster.value!.id
@@ -785,6 +909,12 @@ export default defineComponent({
         if (props.isMobile) {
           state.mobilePane = "map"
         }
+        state.highlightUnreadPoster = {}
+        await nextTick(() => {
+          if (state.playingBGM) {
+            playBGM()
+          }
+        })
       } else {
         console.error("Leave poster failed")
       }
@@ -934,12 +1064,55 @@ export default defineComponent({
     }
 
     onMounted(() => {
+      window.addEventListener("storage", ev => {
+        if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:dark_mode"
+        ) {
+          state.darkMode =
+            ev.newValue == "1"
+              ? true
+              : ev.newValue == "0"
+              ? false
+              : window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+        } else if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:map_visual_style"
+        ) {
+          state.visualStyle = getVisualStyle(
+            new URL(location.href).searchParams.get("style") ||
+              ev.newValue ||
+              ""
+          )
+        } else if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:show_minimap"
+        ) {
+          state.enableMiniMap = ev.newValue != "0"
+        }
+      })
+      const mm = window.matchMedia("(prefers-color-scheme: dark)")
+      const f = e => {
+        const v =
+          localStorage["virtual-poster:" + props.myUserId + ":config:dark_mode"]
+        if (!v) {
+          state.darkMode = e.matches
+        }
+      }
+      if (mm.addEventListener) {
+        mm.addEventListener("change", f)
+      } else if (mm.addListener) {
+        mm.addListener(f)
+      }
+
       window.addEventListener("keydown", ev => {
         const r = handleGlobalKeyDown(ev)
         if (r) {
           ev.preventDefault()
         }
       })
+
       const k = "virtual-poster:" + props.myUserId + ":report_latency"
       REPORT_LATENCY = localStorage[k] == "1"
       if (REPORT_LATENCY) {
@@ -984,7 +1157,7 @@ export default defineComponent({
           location.href = "/"
           return
         }
-        console.log("Socket URL: " + socket_url)
+        // console.log("Socket URL: " + socket_url)
         if (data.socket_protocol == "Socket.IO") {
           state.socket = io(socket_url, {
             transports: ["websocket"],
@@ -1013,7 +1186,7 @@ export default defineComponent({
           console.error("Socket protocol not supported")
         }
         if (state.socket) {
-          console.log("Socket created:", state.socket)
+          // console.log("Socket created:", state.socket)
         } else {
           console.error("Failed to make a socket.")
           return
@@ -1261,7 +1434,7 @@ export default defineComponent({
     }
 
     const uploadPoster = async (file: File, poster_id: string) => {
-      await doUploadPoster(props.axios, file, poster_id)
+      await doUploadPoster(props.axios, state, file, poster_id)
     }
 
     const onFocusInput = (focused: boolean) => {
@@ -1334,6 +1507,8 @@ export default defineComponent({
       }
     }
 
+    const posterLooking = _posterLooking(props, state)
+
     const moveToPane = (pane: string) => {
       if ((pane == "poster" || pane == "poster_chat") && !posterLooking.value) {
         return
@@ -1357,6 +1532,204 @@ export default defineComponent({
       }
     }
 
+    const setHoverWithDelay = (item: string) => {
+      state.hoverElementTimer = window.setTimeout(() => {
+        state.hoverElement = item
+      }, 400)
+    }
+
+    const cancelHover = () => {
+      window.clearTimeout(state.hoverElementTimer)
+      state.hoverElement = undefined
+    }
+
+    const readComment = (comment_id: CommentId, immediate?: boolean) => {
+      if (!state.comments[comment_id]) {
+        return
+      }
+      state.comments[comment_id].read = true
+      setTimeout(
+        () => {
+          delete state.highlightUnread[comment_id]
+          const count = Object.values(state.highlightUnread).filter(h => h)
+            .length
+          if (count == 0) {
+            state.notifications = state.notifications.filter(
+              n => n.kind != "new_comments"
+            )
+          } else {
+            for (const n of state.notifications) {
+              if (n.kind == "new_comments") {
+                ;(n as NewCommentNotification).data.count = count
+              }
+            }
+          }
+        },
+        immediate ? 0 : 2000
+      )
+      client.comments
+        ._commentId(comment_id)
+        .read.$post({ body: { read: true } })
+        .then(() => {
+          //
+        })
+        .catch(() => {
+          //
+        })
+    }
+
+    const readPosterComment = (
+      poster_id: PosterId,
+      comment_id: CommentId,
+      immediate?: boolean
+    ) => {
+      if (!state.posterComments[comment_id]) {
+        console.warn("readPosterComment() not found comment", comment_id)
+        return
+      }
+      state.posterComments[comment_id].read = true
+      setTimeout(
+        () => {
+          if (!state.highlightUnreadPoster[poster_id]) {
+            console.error("highlightUnreadPoster undefined")
+            return
+          }
+          delete state.highlightUnreadPoster[poster_id][comment_id]
+          const count = Object.values(
+            state.highlightUnreadPoster[poster_id]
+          ).filter(h => h).length
+          if (count == 0) {
+            state.notifications = state.notifications.filter(
+              n => !(n.kind == "poster_comments" && n.data.poster == poster_id)
+            )
+          } else {
+            for (const n of state.notifications) {
+              if (n.kind == "poster_comments" && n.data.poster == poster_id) {
+                ;(n as PosterCommentNotification).data.count = count
+              }
+            }
+          }
+        },
+        immediate ? 0 : 2000
+      )
+      client.comments
+        ._commentId(comment_id)
+        .read.$post({ body: { read: true } })
+        .then(() => {
+          //
+        })
+        .catch(() => {
+          //
+        })
+    }
+
+    const highlightUnreadComments = (scroll: boolean) => {
+      const comments = sortBy(
+        Object.values(state.comments).filter(
+          c =>
+            !c.read &&
+            c.person != props.myUserId &&
+            c.text_decrypted.indexOf("\\reaction ") != 0
+        ),
+        c => c.timestamp
+      )
+      if (comments.length == 0) {
+        return
+      }
+      state.highlightUnread = {}
+      for (const c of comments) {
+        state.highlightUnread[c.id] = true
+      }
+      if (scroll) {
+        // Scroll to a certain element
+        const el = document.querySelector("#comment-entry-" + comments[0].id)
+        const parent = document.querySelector("#chat-local-history")
+        if (el && parent) {
+          const br = el.getBoundingClientRect()
+          const br2 = parent.getBoundingClientRect()
+          console.log(el, br)
+          parent.scrollBy({
+            top: br.top - 100,
+            left: 0,
+            behavior: "smooth",
+          })
+        }
+      }
+    }
+
+    const highlightUnreadPosterComments = (
+      poster_id: PosterId,
+      scroll: boolean
+    ) => {
+      const comments = sortBy(
+        Object.values(state.posterComments).filter(
+          c =>
+            !c.read &&
+            c.person != props.myUserId &&
+            c.text_decrypted.indexOf("\\reaction ") != 0
+        ),
+        c => c.timestamp
+      )
+      if (comments.length == 0) {
+        console.warn("No comment to highlight", state.posterComments)
+        return
+      }
+      state.highlightUnreadPoster = {}
+      state.highlightUnreadPoster[poster_id] = {}
+      for (const c of comments) {
+        state.highlightUnreadPoster[poster_id][c.id] = true
+      }
+      if (scroll) {
+        // Scroll to a certain element
+        const el = document.querySelector(
+          "#poster-comment-entry-" + comments[0].id
+        )
+        const parent = document.querySelector("#poster-comments-container")
+
+        if (el && parent) {
+          const br = el.getBoundingClientRect()
+          const br2 = parent.getBoundingClientRect()
+          console.log(el, br)
+          parent.scrollBy({
+            top: br.top - 100,
+            left: 0,
+            behavior: "smooth",
+          })
+        }
+      }
+    }
+
+    const sleepAsync = (delay_millisec: number) => {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve()
+        }, delay_millisec)
+      })
+    }
+
+    const approachPoster = async (poster_id: PosterId) => {
+      console.log("approachPoster", poster_id)
+      if (posterLooking.value && posterLooking.value != poster_id) {
+        await leavePoster()
+        await sleepAsync(500)
+        await dblClick(state.posters[poster_id])
+      } else if (posterLooking.value && posterLooking.value == poster_id) {
+        //
+      } else {
+        await dblClick(state.posters[poster_id])
+      }
+
+      highlightUnreadPosterComments(poster_id, true)
+    }
+
+    watch(
+      () => state.comments,
+      async (nv, ov) => {
+        if (Object.values(ov).length == 0) {
+          highlightUnreadComments(false)
+        }
+      }
+    )
     return {
       ...toRefs(state),
       formatTime,
@@ -1388,7 +1761,7 @@ export default defineComponent({
       inputArrowKey,
       myChatGroup,
       adjacentPoster,
-      posterLooking,
+      posterLooking: posterLooking,
       myself,
       updatePosterComment,
       chatGroupOfUser: chatGroupOfUser(state),
@@ -1398,12 +1771,20 @@ export default defineComponent({
       leavePoster,
       moveToPane,
       moveToMypage,
+      setHoverWithDelay,
+      cancelHover,
+      readComment,
+      readPosterComment,
+      highlightUnreadComments,
+      playBGM: playBGM,
+      stopBGM: stopBGM,
+      approachPoster,
     }
   },
 })
 </script>
 
-<style>
+<style lang="css">
 *,
 *:before,
 *:after {
@@ -1446,6 +1827,15 @@ body {
   margin: 0px !important;
 }
 
+#app-main {
+  height: 100vh;
+}
+
+#app-main.dark {
+  background: black;
+  color: #eee;
+}
+
 #header {
   background: white;
   z-index: 100;
@@ -1453,6 +1843,10 @@ body {
   height: 38px;
   margin: 0px;
   /* background: #ccc; */
+}
+
+.dark #header {
+  background: black;
 }
 
 #help {
@@ -1482,6 +1876,10 @@ h2 {
   /* padding: 3px 0px 0px 3px; */
   overflow: hidden;
   /* transition: top 0.5s; */
+}
+
+.dark #announce {
+  background: #222;
 }
 
 #announce.poster_active {
@@ -1680,8 +2078,18 @@ button#leave-poster-on-map {
 }
 
 .icon-link {
+  cursor: pointer;
   float: right;
   margin: 4px 5px 0px 5px;
+}
+
+.dark .icon-link img {
+  filter: invert(80%);
+}
+
+.active #music-icon {
+  filter: invert(35%) sepia(26%) saturate(3910%) hue-rotate(222deg)
+    brightness(108%) contrast(100%);
 }
 
 .toolbar-icon {
@@ -1743,7 +2151,41 @@ button#leave-poster-on-map {
   position: absolute;
   top: 0px;
   left: 0px;
-  width: calc(100vh - 30px);
   height: calc(200px);
+  z-index: 10;
+}
+
+.with-tool-tip .tooltip {
+  position: absolute;
+  display: none;
+  background: black;
+  border-radius: 5px;
+  padding: 5px;
+  color: white;
+  z-index: 100;
+}
+
+.with-tool-tip.hover .tooltip {
+  display: block;
+}
+
+#toggle-notification.enabled {
+  filter: invert(35%) sepia(26%) saturate(3910%) hue-rotate(222deg)
+    brightness(108%) contrast(100%);
+}
+
+.badge {
+  position: relative;
+  top: -20px;
+  left: 10px;
+  font-size: 12px;
+  background: rgb(255, 76, 63);
+  color: white;
+  width: 18px;
+  height: 18px;
+  text-align: center;
+  line-height: 18px;
+  border-radius: 50%;
+  box-shadow: 0 0 1px #333;
 }
 </style>

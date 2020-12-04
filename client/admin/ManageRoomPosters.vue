@@ -146,6 +146,9 @@
               {{
                 poster.poster ? (poster.poster?.file_url ? "あり" : "なし") : ""
               }}
+              <span v-if="poster.poster?.file_size">
+              ({{ Math.round(poster.poster?.file_size / 1000).toLocaleString() }} kB)
+              </span>
               <div
                 v-if="poster.poster && !poster.poster?.file_url"
                 class="button is-primary is-small"

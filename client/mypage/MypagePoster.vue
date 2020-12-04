@@ -1,20 +1,46 @@
 <template>
   <div class="tab-content">
     <h1>自分のポスター一覧</h1>
-    <div v-if="!posters">
-      ポスターがありません。
-    </div>
+    <div v-if="!posters">ポスターがありません。</div>
     <div class="box" v-for="poster in posters" :key="poster.id">
-      <div class=" columns is-desktop">
+      <div class="columns is-desktop">
         <div class="column is-one-third">
           <div
-            v-if="!!poster"
+            v-if="!!poster && rooms[poster.room].allow_poster_assignment"
             class="poster-img"
             :class="{ 'drag-hover': dragover[poster.id] }"
             @dragover.prevent
             @drop.prevent="onDrop($event, poster.id)"
             @dragover="dragover[poster.id] = true"
             @dragleave="dragover[poster.id] = false"
+          >
+            <figure class="image is-3x5">
+              <img
+                v-if="poster.file_url"
+                :src="dataURI[poster.id]"
+                alt="Image"
+              />
+              <span
+                v-else-if="
+                  uploadProgress &&
+                  uploadProgress.file_type == 'application/pdf' &&
+                  uploadProgress.loaded == uploadProgress.total
+                "
+                >PDFからPNGへの変換処理中</span
+              >
+              <span v-else-if="uploadProgress"
+                >{{ uploadProgress.loaded }} / {{ uploadProgress.total }} ({{
+                  Math.floor(
+                    (uploadProgress.loaded / uploadProgress.total) * 100
+                  )
+                }}%)</span
+              >
+              <span v-else>画像なし</span>
+            </figure>
+          </div>
+          <div
+            v-if="!!poster && !rooms[poster.room].allow_poster_assignment"
+            class="poster-img"
           >
             <figure class="image is-3x5">
               <img
@@ -57,7 +83,7 @@
               <button
                 v-if="
                   editingTitle != poster.id &&
-                    rooms[poster.room].allow_poster_assignment
+                  rooms[poster.room].allow_poster_assignment
                 "
                 @click="onClickEditTitle(poster)"
                 class="button is-primary is-small"
@@ -109,7 +135,7 @@
           </div>
 
           <div class="poster-logs">
-            <h5 class="title is-5" style="margin-bottom: 3px;">
+            <h5 class="title is-5" style="margin-bottom: 3px">
               ポスターの閲覧履歴
             </h5>
             <div class="poster-logs-entries">
@@ -194,6 +220,13 @@ export default defineComponent({
       dragover: {} as { [poster_id: string]: boolean },
       dataURI: {} as { [poster_id: string]: string },
       editingTitle: null as PosterId | null,
+      uploadProgress: undefined as
+        | {
+            file_type: "application/pdf" | "image/png"
+            loaded: number
+            total: number
+          }
+        | undefined,
     })
 
     const inputTitle = ref<HTMLInputElement>()
@@ -252,9 +285,30 @@ export default defineComponent({
         fd.append("file", file)
         console.log(fd)
 
-        const { data } = await axios.post("/posters/" + poster_id + "/file", fd)
+        const poster = props.posters.find(p => p.id == poster_id)
+        context.emit("set-poster", poster_id, {
+          ...poster,
+          file_url: undefined,
+        })
+
+        const { data } = await axios.post(
+          "/posters/" + poster_id + "/file",
+          fd,
+          {
+            onUploadProgress: progress => {
+              state.uploadProgress = {
+                file_type: file.type as "image/png" | "application/pdf",
+                loaded: progress.loaded,
+                total: progress.total,
+              }
+              console.log("onUploadProgress", progress)
+            },
+          }
+        )
         console.log(data)
+        state.uploadProgress = undefined
         context.emit("set-poster", poster_id, data.poster)
+        alert("ポスターをアップロードしました。")
       }
     }
 

@@ -2,9 +2,18 @@
   <svg
     id="cells"
     :style="cssVars"
-    :class="{ small: !isMobile && !!activePoster, normal: goBackToNormal }"
+    :class="{
+      small: !isMobile && !!activePoster,
+      normal: goBackToNormal,
+      monochrome: monochromeStyle,
+    }"
     viewBox="0 0 528 528"
   >
+    <defs>
+      <filter id="monochrome-filter">
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+    </defs>
     <g v-for="(row, yi) in cells" :key="yi" :data-y="row[0].y">
       <MapCell
         v-for="(cell, xi) in row"
@@ -18,6 +27,7 @@
         "
         :left="(cell.x - center.x + mapRadiusX) * 48"
         :top="(cell.y - center.y + mapRadiusY) * 48"
+        :visualStyle="visualStyle"
         @select="select"
         @dbl-click="dblClick"
         @upload-poster="uploadPoster"
@@ -36,8 +46,8 @@
         :typing="!!people_typing[person.id]"
         :selected="
           !!selectedPos &&
-            person.x == selectedPos.x &&
-            person.y == selectedPos.y
+          person.x == selectedPos.x &&
+          person.y == selectedPos.y
         "
         :selectedUser="selectedUsers.has(person.id)"
         :chat_color="
@@ -46,6 +56,7 @@
             : undefined
         "
         :avatarImages="avatarImages"
+        :visualStyle="visualStyle"
         @select="select"
         @dbl-click="dblClick"
         @hover-cell="hoverCell"
@@ -111,6 +122,7 @@ import {
   PosterId,
   UserId,
   ArrowKey,
+  VisualStyle,
 } from "@/@types/types"
 import MapCell from "./MapCell.vue"
 import MapCellPerson from "./MapCellPerson.vue"
@@ -182,6 +194,10 @@ export default defineComponent({
     },
     activePoster: {
       type: Object as PropType<Poster>,
+    },
+    visualStyle: {
+      type: String as PropType<VisualStyle>,
+      required: true,
     },
   },
   setup(props, context) {
@@ -283,11 +299,19 @@ export default defineComponent({
     }
     const hoverCell = (active: boolean, p: Point) => {
       if (active) {
-        context.emit("hover", p)
+        context.emit("hover-on-cell", p)
       } else {
         // context.emit("hover", undefined)
       }
     }
+
+    const monochromeStyle = computed(() => {
+      return (
+        props.visualStyle == "monochrome" ||
+        props.visualStyle == "abstract_monochrome"
+      )
+    })
+
     return {
       ...toRefs(state),
       hoverCell,
@@ -301,6 +325,7 @@ export default defineComponent({
       select,
       personAt,
       cssVars,
+      monochromeStyle,
     }
   },
 })
@@ -321,7 +346,19 @@ svg#cells {
   user-select: none;
   /* transform: translate(0px, 0px) scale(0.8); */
   transition: opacity 0.3s linear;
-  z-index: -1;
+  z-index: 1;
+}
+
+.dark svg#cells {
+  filter: brightness(0.6) contrast(1.2);
+}
+
+svg#cells.monochrome {
+  filter: url(#monochrome-filter);
+}
+
+.dark svg#cells.monochrome {
+  filter: saturate(0) brightness(0.6) contrast(1.2);
 }
 
 .mobile svg#cells {

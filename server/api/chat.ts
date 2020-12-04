@@ -71,7 +71,7 @@ async function routes(
     if (r) {
       emit.comment(e)
     }
-    return { ok: true }
+    return { ok: r }
   })
 
   fastify.delete<any>("/posters/:posterId/comments/:commentId", async req => {
@@ -134,6 +134,7 @@ async function routes(
         poster: poster_id,
         text_decrypted: comment,
         reply_to: comment_actual.reply_to,
+        read: true, //FIXME
       }
       emit.channel(poster_id).posterComment(comment_not_encrypted)
     }
@@ -188,7 +189,7 @@ async function routes(
     if (r) {
       emit.comment(e)
     }
-    return { ok: true }
+    return { ok: r }
   })
 
   fastify.patch<any>("/comments/:commentId", async req => {
@@ -230,6 +231,18 @@ async function routes(
           .commentRemove(commentId, removed_to_users)
       }
     }
+    return { ok, error }
+  })
+
+  fastify.post<any>("/comments/:commentId/read", async req => {
+    const comment_id: string = req.params.commentId
+    const read: boolean = req.body.read
+    const { ok, error } = await model.chat.commentRead(
+      req["requester"],
+      comment_id,
+      read
+    )
+
     return { ok, error }
   })
 }

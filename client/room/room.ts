@@ -8,7 +8,6 @@ const url = new URL(location.href)
 const forceMobileOn = url.searchParams.get("mobile") == "true"
 const forceMobileOff = url.searchParams.get("mobile") == "false"
 const mobilePane = location.hash != "" ? location.hash : undefined
-
 const mobile_agent = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 let isMobile: boolean
 if (forceMobileOn) {

@@ -412,11 +412,14 @@ paths:
                         $ref: "#/components/schemas/Cell"
                   allow_poster_assignment:
                     type: boolean
+                  name:
+                    type: string
                 required:
                   - numCols
                   - numRows
                   - cells
                   - allow_poster_assignment
+                  - name
       operationId: get-maps-roomId
       description: Get room information
     delete:
@@ -2564,6 +2567,65 @@ paths:
                   - ok
       operationId: delete-maps-roomId-people_allowed-email
       description: "Delete user access by email. The user can be just email stub who are not registered, and does not necessarily have an user ID."
+  "/comments/{commentId}/read":
+    parameters:
+      - schema:
+          type: string
+        name: commentId
+        in: path
+        required: true
+    post:
+      summary: Tell the server that the message is read
+      tags:
+        - chat
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: post-comments-commentId-read
+      description: Tell the server that the message is read
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                read:
+                  type: boolean
+              required:
+                - read
+  "/maps/{roomId}/notifications":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    get:
+      summary: Get notifications
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+      operationId: get-maps-roomId-notifications
+      description: Get notifications to user from server
 components:
   parameters:
     debug_token:
@@ -2906,6 +2968,8 @@ components:
         author_online_only:
           type: boolean
           description: Allow access only when the author is online
+        file_size:
+          type: integer
       required:
         - id
         - last_updated
@@ -2983,6 +3047,33 @@ components:
     CommentId:
       title: CommentId
       type: string
+    Notification:
+      title: Notification
+      type: object
+      description: Notification sent from server
+      properties:
+        kind:
+          type: string
+          enum:
+            - poster_comments
+        data:
+          $ref: "#/components/schemas/NotificationPosterCommentsData"
+        timestamp:
+          type: integer
+      required:
+        - kind
+        - timestamp
+    NotificationPosterCommentsData:
+      title: NotificationPosterCommentsData
+      type: object
+      properties:
+        poster:
+          $ref: "#/components/schemas/PosterId"
+        count:
+          type: integer
+      required:
+        - poster
+        - count
   securitySchemes:
     debugAs:
       type: apiKey

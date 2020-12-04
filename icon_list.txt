@@ -12,3 +12,8 @@ new-poster.png    https://www.flaticon.com/free-icon/new-poster_3065260?term=pos
 chat.png    https://www.flaticon.com/free-icon/chat_561180?term=chat&page=1&position=4
 feedback.png    https://www.flaticon.com/free-icon/feedback_2139020?term=comment&page=1&position=66
 settings.png    https://www.flaticon.com/free-icon/settings_561196?term=configuration&page=1&position=7
+dustbin.png     https://www.flaticon.com/free-icon/dustbin_1570?term=dustbin&page=1&position=2
+notification.png    https://www.flaticon.com/free-icon/notification_633816?term=notification&page=1&position=2
+music.png   https://www.flaticon.com/free-icon/music_876817?term=music&page=1&position=2&related_item_id=876817
+harunouta.mp3   http://www.ne.jp/asahi/music/myuu/wave/wave.htm
+montagu.mp3   http://www.ne.jp/asahi/music/myuu/wave/wave.htm

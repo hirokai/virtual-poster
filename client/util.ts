@@ -1,4 +1,4 @@
-import { UserId, PersonWithEmail } from "../@types/types"
+import { UserId, PersonWithEmail, VisualStyle } from "../@types/types"
 
 //https://stackoverflow.com/questions/28905965/textarea-how-to-count-wrapped-lines-rows
 /** @type {HTMLTextAreaElement} */
@@ -140,4 +140,16 @@ export const findUser2 = (
     return user.email
   }
   return undefined
+}
+
+export const getVisualStyle = (style: string): VisualStyle => {
+  if (
+    ["default", "abstract", "monochrome", "abstract_monochrome"].indexOf(
+      style
+    ) != -1
+  ) {
+    return style as VisualStyle
+  } else {
+    return "default"
+  }
 }

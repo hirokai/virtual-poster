@@ -1,63 +1,72 @@
 <template>
-  <div id="app" v-cloak v-show="logged_in">
-    <div id="login-info" v-if="!!user">
-      {{ user.name }}({{ user.email }})としてログイン
-      <button class="btn" @click="location.href = '/mypage'">マイページ</button>
-      <button class="btn" @click="signOut">ログアウト</button>
-    </div>
-    <div v-if="registered">
-      <div v-if="loggedIn == 'Yes'">
-        <h1>会場の一覧</h1>
-        <div id="rooms">
-          <a
-            v-for="room in rooms"
-            :key="room.id"
-            class="room"
-            :href="'/room?room_id=' + room.id"
-          >
-            <h2 :class="{ small: room.name.length >= 13 }">{{ room.name }}</h2>
-            <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
-            <div style="margin-left: 30px;">
-              参加
-              {{
-                room.num_people_joined == undefined
-                  ? "N/A"
-                  : room.num_people_joined
-              }}人，アクティブ {{ room.num_people_active }}人<br />ポスター
-              {{ room.poster_count == undefined ? "N/A" : room.poster_count }}枚
-              /
-              {{
-                room.poster_location_count == undefined
-                  ? "N/A"
-                  : room.poster_location_count
-              }}枠
-            </div>
-          </a>
-        </div>
-        <div style="clear:both"></div>
-        <div style="margin-top: 30px" id="create-room">
-          <a v-if="user" href="/create_room">新しく会場を作成する</a>
-        </div>
-        <div style="margin-top: 30px">
-          <a v-if="user && user.admin" href="/admin">管理画面</a>
+  <div id="app" v-cloak v-show="logged_in" :class="{ dark: darkMode }">
+    <div style="margin: 15px">
+      <div id="login-info" v-if="!!user">
+        {{ user.name }}({{ user.email }})としてログイン
+        <button class="btn" @click="location.href = '/mypage'">
+          マイページ
+        </button>
+        <button class="btn" @click="signOut">ログアウト</button>
+      </div>
+      <div v-if="registered">
+        <div v-if="loggedIn == 'Yes'">
+          <h1>会場の一覧</h1>
+          <div id="rooms">
+            <a
+              v-for="room in rooms"
+              :key="room.id"
+              class="room"
+              :href="'/room?room_id=' + room.id"
+            >
+              <h2 :class="{ small: room.name.length >= 13 }">
+                {{ room.name }}
+              </h2>
+              <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
+              <div style="margin-left: 30px">
+                参加
+                {{
+                  room.num_people_joined == undefined
+                    ? "N/A"
+                    : room.num_people_joined
+                }}人，アクティブ {{ room.num_people_active }}人<br />ポスター
+                {{
+                  room.poster_count == undefined ? "N/A" : room.poster_count
+                }}枚 /
+                {{
+                  room.poster_location_count == undefined
+                    ? "N/A"
+                    : room.poster_location_count
+                }}枠
+              </div>
+            </a>
+          </div>
+          <div style="clear: both"></div>
+          <div style="margin-top: 30px" id="create-room">
+            <a v-if="user" href="/create_room" class="link"
+              >新しく会場を作成する</a
+            >
+          </div>
+          <div style="margin-top: 30px">
+            <a v-if="user && user.admin" href="/admin" class="link">管理画面</a>
+          </div>
         </div>
       </div>
-    </div>
-    <div v-else-if="required_action == 'register'">
-      <p>メールアドレス確認済みです。</p>
-      <a href="/register"> 登録へ進む</a>
-    </div>
-    <div v-else-if="required_action == 'verify'">
-      Emailアドレス（{{
-        user.email
-      }}）に確認のメールを送信しました。メールに記載されたリンクをクリックしてユーザー登録を完了してください。
-      <br />
-    </div>
-    <div v-else>
-      このEmailアドレス（{{ user.email }}）はユーザー登録されていません。
-      <br />
-      管理者に連絡してユーザー登録してください。
-      <a href="/"> ログイン画面に戻る</a>
+      <div v-else-if="required_action == 'register'">
+        <p>メールアドレス確認済みです。</p>
+        <a href="/register" class="link"> 登録へ進む</a>
+      </div>
+      <div v-else-if="required_action == 'verify'">
+        Emailアドレス（{{
+          user.email
+        }}）に確認のメールを送信しました。メールに記載されたリンクをクリックしてユーザー登録を完了してください。
+        <br />
+      </div>
+      <div v-else>
+        このEmailアドレス（{{ user.email }}）はユーザー登録されていません。
+        <br />
+        管理者に連絡してユーザー登録してください。
+        <a href="/" class="link"> ログイン画面に戻る</a>
+      </div>
     </div>
   </div>
 </template>
@@ -96,6 +105,8 @@ export default defineComponent({
       console.warn("Not logged in.", user_id, email, name)
       location.href = "/login"
     }
+    const dark_local_storage =
+      localStorage["virtual-poster:" + user_id + ":config:dark_mode"]
     const state = reactive({
       myUserId: null as string | null,
       user: { name, user_id, email, admin } as {
@@ -112,6 +123,13 @@ export default defineComponent({
       logged_in: false,
       socket: undefined as SocketIOClient.Socket | undefined,
       socket_active: false,
+      darkMode:
+        dark_local_storage == "1"
+          ? true
+          : dark_local_storage == "0"
+          ? false
+          : window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches,
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
@@ -239,6 +257,33 @@ export default defineComponent({
     const enterRoom = (room_id: string) => {
       location.href = "/room?room_id=" + room_id
     }
+
+    onMounted(() => {
+      window.addEventListener("storage", ev => {
+        if (ev.key == "virtual-poster:" + user_id + ":config:dark_mode") {
+          state.darkMode =
+            ev.newValue == "1"
+              ? true
+              : ev.newValue == "0"
+              ? false
+              : window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+        }
+      })
+      const mm = window.matchMedia("(prefers-color-scheme: dark)")
+      const f = e => {
+        const v =
+          localStorage["virtual-poster:" + user_id + ":config:dark_mode"]
+        if (!v) {
+          state.darkMode = e.matches
+        }
+      }
+      if (mm.addEventListener) {
+        mm.addEventListener("change", f)
+      } else if (mm.addListener) {
+        mm.addListener(f)
+      }
+    })
     return { ...toRefs(state), signOut, enterRoom, location, isMobile }
   },
 })
@@ -288,8 +333,21 @@ button.btn {
 
 body {
   font-family: Loto, "YuGothic", sans-serif;
-  margin: 15px;
   font-size: 14px;
+  margin: 0px;
+}
+
+#app {
+  position: absolute;
+  margin: 0px;
+  top: 0px;
+  padding: 0px;
+  height: 100vh;
+  width: 100vw;
+}
+
+#app.dark {
+  background: black;
 }
 
 h1 {
@@ -305,6 +363,10 @@ h1 {
   margin: 10px 0px;
 }
 
+.dark #login-info {
+  background: rgb(179, 94, 179);
+}
+
 .room {
   width: 260px;
   height: 200px;
@@ -315,6 +377,10 @@ h1 {
   margin: 10px 15px 10px 0px;
   padding: 10px;
   text-decoration: none;
+}
+
+.dark .room {
+  background: #ccc;
 }
 
 .room {
@@ -353,6 +419,10 @@ h1 {
 }
 
 #create-room {
+}
+
+a.link:visited {
+  color: rgb(218, 24, 218);
 }
 
 [v-cloak] {

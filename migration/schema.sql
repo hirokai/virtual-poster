@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS poster_comment_read;
+
 DROP TABLE IF EXISTS chat_event_recipient;
 
 DROP TABLE IF EXISTS chat_event;
@@ -156,6 +158,7 @@ CREATE TABLE comment_to_person (
     person text REFERENCES person (id) NOT NULL,
     comment_encrypted text NOT NULL,
     "encrypted" boolean NOT NULL,
+    read boolean NOT NULL,
     PRIMARY KEY (comment, person)
 );
 
@@ -167,7 +170,8 @@ CREATE TABLE poster (
     author text REFERENCES person (id),
     access_log boolean,
     author_online_only boolean,
-    file_uploaded boolean NOT NULL
+    file_uploaded boolean NOT NULL,
+    file_size integer
 );
 
 CREATE TABLE comment_to_poster (
@@ -243,5 +247,12 @@ CREATE TABLE chat_event_recipient (
     event text REFERENCES chat_event (id) NOT NULL,
     person text REFERENCES person (id) NOT NULL,
     PRIMARY KEY (event, person)
+);
+
+CREATE TABLE poster_comment_read (
+    comment text REFERENCES comment (id) NOT NULL,
+    person text REFERENCES person (id) NOT NULL,
+    read boolean NOT NULL,
+    PRIMARY KEY (comment, person)
 );
 

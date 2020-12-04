@@ -134,6 +134,7 @@ type RoomAppState = {
   posters: { [index: string]: Poster }
   posterComments: { [comment_id: string]: PosterCommentDecrypted }
   posterInputComment: string | undefined
+  roomName: string
   hallMap: Cell[][]
   cols: number
   rows: number
@@ -194,6 +195,54 @@ type RoomAppState = {
   reloadWaiting: boolean
 
   mobilePane: string
+
+  visualStyle: VisualStyle
+  darkMode: boolean
+
+  hoverElementTimer?: number
+  hoverElement?: string
+
+  posterUploadProgress?: {
+    file_type: "image/png" | "application/pdf"
+    loaded: number
+    total: number
+  }
+  visibleNotification: boolean
+  notifications: NotificationEntry[]
+  highlightUnread: { [comment_id: string]: boolean }
+  highlightUnreadPoster: {
+    [poster_id: string]: { [comment_id: string]: boolean }
+  }
+
+  playingBGM?: HTMLAudioElement
+}
+
+interface NotificationEntry {
+  kind: "reply" | "new_comments" | "poster_comments"
+  timestamp: number
+  data?: any
+}
+
+interface NewCommentNotification extends NotificationEntry {
+  kind: "new_comments"
+  data: {
+    count: number
+  }
+}
+
+interface ReplyNotification extends NotificationEntry {
+  kind: "reply"
+  data: {
+    user: UserId
+  }
+}
+
+interface PosterCommentNotification extends NotificationEntry {
+  kind: "poster_comments"
+  data: {
+    poster: PosterId
+    count: number
+  }
 }
 
 type Room = {
@@ -254,6 +303,16 @@ export interface CommentHistoryEntry {
 export interface ChatEventInComment extends CommentHistoryEntry {
   event: "event"
   person: UserId
+  event_type:
+    | "new"
+    | "join"
+    | "add"
+    | "leave"
+    | "kick"
+    | "dissolve"
+    | "start_overhear"
+    | "end_overhear"
+    | "set_private"
   event_data: Record<string, any>
 }
 
@@ -291,6 +350,7 @@ export type ChatComment = {
   person: UserId
   kind: "poster" | "person"
   reply_to?: CommentId
+  read?: boolean
 }
 
 type CommentEncryptedEntry = {
@@ -317,6 +377,7 @@ export type ChatCommentDecrypted = {
   reactions?: {
     [reaction: string]: { [user_id: string]: CommentId }
   }
+  read: boolean
 }
 
 export type PosterCommentDecrypted = {
@@ -333,6 +394,7 @@ export type PosterCommentDecrypted = {
   reactions?: {
     [reaction: string]: { [user_id: string]: CommentId }
   }
+  read?: boolean
 }
 
 export type ChatGroup = {
@@ -377,6 +439,7 @@ export type Poster = {
   y: number
   access_log: boolean
   author_online_only: boolean
+  file_size?: number
 }
 
 export type Announcement = {
@@ -594,6 +657,7 @@ export type AppNotification =
   | "PosterReset"
   | "Poster"
   | "PosterRemove"
+  | "Notification"
   | "MapReset"
   | "ActiveUsers"
   | "ChatTyping"
@@ -620,3 +684,5 @@ type HttpMethod =
   | "PATCH"
   | "LINK"
   | "UNLINK"
+
+type VisualStyle = "default" | "abstract" | "monochrome" | "abstract_monochrome"

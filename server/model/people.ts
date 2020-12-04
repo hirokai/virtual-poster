@@ -21,6 +21,8 @@ import {
   PosDir,
   TryToMoveResult,
   ChatGroup,
+  NotificationEntry,
+  PosterCommentNotification,
 } from "../../@types/types"
 import { redis, log, db, pgp, maps, chat } from "./index"
 
@@ -1048,4 +1050,42 @@ export async function removePerson(
     await db.query(`ROLLBACK`)
     return { ok: false, error: "DB error" }
   }
+}
+
+export async function getNotifications(
+  user_id: UserId,
+  room_id: RoomId
+): Promise<NotificationEntry[]> {
+  const rows = await db.query(
+    `SELECT
+          poster,
+          array_agg(comment) as comments,
+          max(timestamp) as max_timestamp
+      FROM
+          comment_to_poster AS cp
+          LEFT JOIN comment AS c ON cp.comment = c.id
+      WHERE
+          c.id IN (
+              SELECT
+                  comment
+              FROM
+                  poster_comment_read
+              WHERE
+                  person = $1
+                  AND read = 'f')
+          AND c.room = $2
+      GROUP BY poster;
+          `,
+    [user_id, room_id]
+  )
+  return rows.map(row => {
+    return {
+      kind: "poster_comments",
+      data: {
+        count: row.comments.length,
+        poster: row.poster,
+      },
+      timestamp: +row.max_timestamp,
+    } as PosterCommentNotification
+  })
 }

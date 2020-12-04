@@ -277,7 +277,8 @@ export async function getAllComments(
           c.kind,
           c.text,
           c.room,
-          c.reply_to
+          c.reply_to,
+          array_agg(cp.read) AS read
       FROM
           comment AS c
           LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
@@ -315,7 +316,8 @@ export async function getAllComments(
           c.kind,
           c.text,
           c.room,
-          c.reply_to
+          c.reply_to,
+          array_agg(cp.read) AS read
       FROM
           comment AS c
           LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
@@ -369,6 +371,8 @@ export async function getAllComments(
     const for_users: string[] = r["to_p"]
     const comments_for_users: string[] = r["to_c"]
     const encrypted_for_users: boolean[] = r["to_e"]
+    const user_idx = for_users.findIndex(u => u == user_id)
+
     const r2: ChatComment = {
       id: r.id,
       timestamp: parseInt(r["timestamp"]),
@@ -387,6 +391,7 @@ export async function getAllComments(
         }
       ),
       reply_to: r["reply_to"] || undefined,
+      read: user_idx != -1 ? r["read"][user_idx] : undefined,
     }
     return r2
   })
@@ -398,7 +403,36 @@ export async function getPosterComments(
   poster_id: PosterId
 ): Promise<PosterCommentDecrypted[]> {
   const rows = await db.query(
-    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c join comment_to_poster as cp on c.id=cp.comment where cp.poster=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          string_agg(cp.poster, '::::') AS to_poster,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to
+      FROM
+          comment AS c
+          JOIN comment_to_poster AS cp ON c.id = cp.comment
+      WHERE
+          cp.poster = $1
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp
+      `,
     poster_id
   )
   const ds: PosterCommentDecrypted[] = rows.map(r => {
@@ -421,6 +455,7 @@ export async function getPosterComments(
       text_decrypted: r.text,
       poster,
       reply_to: r["reply_to"] || undefined,
+      read: true, // FIXME: 'read' should be fetched from another table.
     }
     return r2
   })
@@ -431,11 +466,40 @@ export async function getPosterComment(
   comment_id: CommentId
 ): Promise<PosterCommentDecrypted | null> {
   const rows = await db.query(
-    `select c.id as id,c.person,c.x,c.y,string_agg(cp.poster,'::::') as to_poster,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c join comment_to_poster as cp on c.id=cp.comment where c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          array_agg(cp.poster) AS to_poster,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to
+      FROM
+          comment AS c
+          JOIN comment_to_poster AS cp ON c.id = cp.comment
+      WHERE
+          c.id = $1
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp
+      `,
     comment_id
   )
   const d: PosterCommentDecrypted | undefined = rows.map(r => {
-    const to_s: string[] = r["to_poster"].split("::::")
+    const to_s: string[] = r["to_poster"]
     if (to_s.length != 1) {
       console.log(
         "Comment is sent to multiple posters. This should be a bug. (DB schema should be fixed at some point.)"
@@ -454,6 +518,7 @@ export async function getPosterComment(
       poster,
       text_decrypted: r.text,
       reply_to: r["reply_to"] || undefined,
+      read: true, // FIXME: 'read' should be fetched from another table.
     }
     return r2
   })[0]
@@ -464,6 +529,11 @@ export async function addPosterComment(
   c: PosterCommentDecrypted
 ): Promise<boolean> {
   log.debug(c)
+  const poster = await model.posters.get(c.poster)
+  if (!poster) {
+    return false
+  }
+
   try {
     await db.query("BEGIN")
     const obj = {
@@ -485,6 +555,22 @@ export async function addPosterComment(
       "comment_to_poster"
     )
     await db.query(s)
+
+    const subscribers: UserId[] = await model.posters.getSubscribers(poster.id)
+
+    const values = subscribers
+      .filter(id => id != c.person)
+      .map(u => {
+        return { comment: c.id, person: u, read: false }
+      })
+    if (values.length > 0) {
+      const s2 = pgp.helpers.insert(
+        values,
+        ["comment", "person", "read"],
+        "poster_comment_read"
+      )
+      await db.query(s2)
+    }
 
     await db.query(
       `UPDATE poster_viewer SET last_active=$1 WHERE person=$2 AND poster=$3 AND left_time IS NULL;`,
@@ -509,6 +595,7 @@ export async function addPosterComment(
     return false
   }
 }
+
 export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
   log.debug(c)
   try {
@@ -539,9 +626,10 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
             person: t.to,
             comment_encrypted: t.text.replace(/::::/g, "：：：："),
             encrypted: t.encrypted,
+            read: false,
           }
         }),
-        ["comment", "person", "comment_encrypted", "encrypted"],
+        ["comment", "person", "comment_encrypted", "encrypted", "read"],
         "comment_to_person"
       )
       await db.query(s)
@@ -566,21 +654,95 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
 }
 
 export async function getComment(
-  comment_id: string
+  comment_id: CommentId,
+  user_id?: UserId // if 'read' field is needed
 ): Promise<ChatComment | null> {
   const from_me = await db.query(
-    `select 'from_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp.encrypted) as to_e,string_agg(cp.person,'::::') as to,string_agg(cp.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          'from_me' AS mode,
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          array_agg(cp.encrypted) AS to_e,
+          array_agg(cp.person) AS to_p,
+          array_agg(cp.comment_encrypted) AS to_c,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to,
+          array_agg(cp.read) AS read
+      FROM
+          comment AS c
+          LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
+      WHERE
+          c.id = $1
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp
+      `,
     [comment_id]
   )
   const to_me = await db.query(
-    `select 'to_me' as mode,c.id as id,c.person,c.x,c.y,array_agg(cp2.encrypted) as to_e,string_agg(cp2.person,'::::') as to,string_agg(cp2.comment_encrypted,'::::') as to_c,c.timestamp,c.last_updated,c.kind,c.text,c.room,c.reply_to from comment as c left join comment_to_person as cp on c.id=cp.comment left join comment_to_person as cp2 on c.id=cp2.comment WHERE c.id=$1 group by c.id, c.x, c.y,c.text,c.timestamp,c.last_updated,c.person,c.kind,c.text order by c.timestamp`,
+    `SELECT
+          'to_me' AS mode,
+          c.id AS id,
+          c.person,
+          c.x,
+          c.y,
+          array_agg(cp2.encrypted) AS to_e,
+          array_agg(cp2.person) AS to_p,
+          array_agg(cp2.comment_encrypted) AS to_c,
+          c.timestamp,
+          c.last_updated,
+          c.kind,
+          c.text,
+          c.room,
+          c.reply_to,
+          array_agg(cp.read) AS read
+      FROM
+          comment AS c
+          LEFT JOIN comment_to_person AS cp ON c.id = cp.comment
+          LEFT JOIN comment_to_person AS cp2 ON c.id = cp2.comment
+      WHERE
+          c.id = $1
+      GROUP BY
+          c.id,
+          c.x,
+          c.y,
+          c.text,
+          c.timestamp,
+          c.last_updated,
+          c.person,
+          c.kind,
+          c.text
+      ORDER BY
+          c.timestamp
+      `,
     [comment_id]
   )
 
   const ds: ChatComment[] = from_me.concat(to_me).map(r => {
-    const for_users: string[] = (r["to"] || "").split("::::")
-    const comments_for_users: string[] = (r["to_c"] || "").split("::::")
+    const for_users: string[] = r["to_p"]
+    const comments_for_users: string[] = r["to_c"]
     const encrypted_for_users: boolean[] = r["to_e"]
+    const read: boolean[] = r["read"]
+
+    let user_idx = -1
+    if (user_id) {
+      user_idx = for_users.findIndex(u => u == user_id)
+    }
     const r2: ChatComment = {
       id: r.id,
       timestamp: parseInt(r["timestamp"]),
@@ -599,6 +761,7 @@ export async function getComment(
         }
       ),
       reply_to: r["reply_to"] || undefined,
+      read: user_idx != -1 ? read[user_idx] : undefined,
     }
     return r2
   })
@@ -738,6 +901,9 @@ export async function removePosterComment(
   if (!v.viewing) {
     throw { statusCode: 400, message: "Not viewing a poster" }
   }
+  await db.query(`DELETE FROM poster_comment_read WHERE comment=$1`, [
+    comment_id,
+  ])
   const ok = await deleteComment(comment_id)
 
   return { ok }
@@ -1116,5 +1282,32 @@ export async function leaveChat(
       )
       return { ok: true, leftGroup: group, timestamp }
     }
+  }
+}
+
+export async function commentRead(
+  user_id: UserId,
+  comment_id: CommentId,
+  read: boolean
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await db.result(
+      `UPDATE comment_to_person SET read=$3 WHERE person=$1 AND comment=$2 AND read=$4;`,
+      [user_id, comment_id, read, !read]
+    )
+    const r2 = await db.result(
+      `UPDATE comment_to_person SET read=$3 WHERE person=$1 AND comment IN (SELECT id FROM comment WHERE reply_to=$2) AND comment_encrypted LIKE '\\\\reaction %' AND read=$4;`,
+      [user_id, comment_id, read, !read]
+    )
+    const r3 = await db.result(
+      `UPDATE poster_comment_read SET read=$3 WHERE person=$1 AND comment IN (SELECT id FROM comment WHERE id=$2 AND kind='poster') AND person=$5 AND read=$4;`,
+      [user_id, comment_id, read, !read, user_id]
+    )
+    log.debug(r.rowCount, r2.rowCount, r3.rowCount)
+
+    return { ok: true }
+  } catch (err) {
+    log.error(err)
+    return { ok: false, error: "DB error" }
   }
 }

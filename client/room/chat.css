@@ -6,10 +6,13 @@
   font-size: 18px;
 }
 
-
 .chat-history {
   overflow: scroll;
   border: 1px solid black;
+}
+
+.dark #chat-local-history {
+  scrollbar-base-color: black;
 }
 
 .chat-history > p {
@@ -20,6 +23,10 @@
   box-shadow: 1px 1px 2px #222;
   background: white;
   border: 1px solid #ccc;
+}
+
+.dark .chat-input-container {
+  background: black;
 }
 
 .chat-input-container.replying {
@@ -88,8 +95,13 @@ button#show_emoji_picker {
 .comment-entry {
   padding: 0px 10px;
 }
+
 .comment-entry:hover {
   background: #eee;
+}
+
+.dark .comment-entry:hover {
+  background: #333;
 }
 
 .comment-entry-tool {
@@ -166,6 +178,10 @@ div.comment-entry.hidden {
   text-align: center;
 }
 
+.dark .date_event span {
+  background: #222;
+}
+
 .date_event hr {
   margin: 10px 0px 0px 0px;
   background-color: #ccc;
@@ -184,14 +200,27 @@ div.comment-entry.hidden {
   font-weight: 900;
 }
 
+.dark .comment-name {
+  color: white;
+}
+
 .comment-time {
   font-size: 10px;
   color: #616061;
 }
 
+.dark .comment-time {
+  color: #ccc;
+}
+
 .comment-recipients {
   font-size: 11px;
   color: #1d1c1d;
+}
+
+.dark .comment-recipients {
+  font-size: 11px;
+  color: #eee;
 }
 
 .comment-content {
@@ -200,6 +229,24 @@ div.comment-entry.hidden {
   line-height: 1.3em;
 }
 
+.dark .comment-content {
+  color: white;
+}
+
 .mobile .comment-content {
   font-size: 18px;
+}
+
+.dark textarea {
+  background: #333;
+  color: white;
+}
+
+.comment-entry {
+  transition: background 0.5s linear;
+}
+
+.comment-entry.highlight {
+  background: rgba(255, 174, 22, 0.331);
+  margin-bottom: 0px;
 }

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :class="{ dark: darkMode }">
     <transition :name="isMobile ? '' : 'fade'">
       <div
         id="poster-container"
@@ -68,7 +68,10 @@
               マイページ（画面上部の人型のアイコン）→ポスター
               からアップロードしてください。
             </div>
-            <div class="note" v-if="poster.author == myself.id && !isMobile">
+            <div
+              class="note"
+              v-if="poster.author == myself.id && !isMobile && !uploadProgress"
+            >
               以下のいずれかの方法でファイル（PNGあるいはPDF）を<br />アップロードできます。
               <ul>
                 <li>この枠内にPNGまたはPDFをドラッグ＆ドロップする</li>
@@ -77,6 +80,35 @@
                   マイページ（画面上部の人型のアイコン）→ポスター で<br />ドラッグ＆ドロップする
                 </li>
               </ul>
+            </div>
+            <div
+              class="poster-upload-progress"
+              v-if="
+                poster.author == myself.id &&
+                !isMobile &&
+                uploadProgress &&
+                (uploadProgress.loaded != uploadProgress.total ||
+                  uploadProgress.file_type == 'image/png')
+              "
+            >
+              {{ uploadProgress.loaded }} /
+              {{ uploadProgress.total }} バイト（{{
+                Math.round(
+                  (uploadProgress.loaded / uploadProgress.total) * 100
+                )
+              }}%）
+            </div>
+            <div
+              class="poster-upload-progress"
+              v-if="
+                poster.author == myself.id &&
+                !isMobile &&
+                uploadProgress &&
+                uploadProgress.loaded == uploadProgress.total &&
+                uploadProgress.file_type == 'application/pdf'
+              "
+            >
+              PDFからPNGへの変換中...
             </div>
           </div>
           <div
@@ -133,15 +165,18 @@
         }"
         v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
       >
-        <div id="poster-comments">
+        <div id="poster-comments" @scroll="onScroll">
           <div
             v-for="c in posterCommentHistory"
             class="poster-comment-entry comment-entry"
             :class="{
               replying: replying && replying.id == c.id,
               editing: editingOld && c.id == editingOld,
+              highlight: !c.read,
             }"
             :key="c.timestamp + c.person + c.to + c.kind"
+            :id="'poster-comment-entry-' + c.id"
+            @mouseenter="$emit('read-comment', poster.id, c.id, true)"
           >
             <MyPicker
               v-if="showEmojiPicker && showEmojiPicker == c.id"
@@ -319,6 +354,17 @@ export default defineComponent({
       type: Function as PropType<AxiosInstance>,
       required: true,
     },
+    uploadProgress: {
+      type: Object as PropType<{ loaded: number; total: number }>,
+    },
+    darkMode: {
+      type: Boolean,
+      required: true,
+    },
+    highlightUnread: {
+      type: Object as PropType<{ [comment_id: string]: boolean }>,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({
@@ -344,6 +390,8 @@ export default defineComponent({
       showDateEvent: false,
       numInputRows: 1,
       posterDownloadProgress: undefined as number | undefined,
+      initialScrollDone: true, //Stub
+      visibleComments: {} as { [comment_id: string]: boolean },
     })
     const PosterCommentInput = ref<HTMLTextAreaElement>()
     const posterCommentHistory = computed((): CommentHistoryEntry[] => {
@@ -469,10 +517,10 @@ export default defineComponent({
       if (!PosterCommentInput.value) {
         console.error("Poster comment textarea ref not found")
         state.numInputRows = 1
-      } else if (ev.target.value == "") {
+      } else if (PosterCommentInput.value.value == "") {
         state.numInputRows = 1
       } else {
-        const c = countLines(ev.target)
+        const c = countLines(PosterCommentInput.value)
         state.numInputRows = Math.min(c, 15)
       }
     }
@@ -597,14 +645,22 @@ export default defineComponent({
         console.error("File not found")
       } else if (file.type != "image/png" && file.type != "application/pdf") {
         console.error("File type invalid")
+      } else if (file.size >= 10e6) {
+        console.error("File size loo large")
+        alert("ファイルサイズを10MB以下にしてください。")
       } else {
         context.emit("upload-poster", file, poster_id)
       }
     }
 
-    const clickSubmit = ev => {
-      context.emit("submit-poster-comment", ev.target.value, state.replying)
-      ev.target.value = ""
+    const clickSubmit = () => {
+      const text = PosterCommentInput.value?.value
+      if (!text) {
+        console.warn("Empty text")
+        return
+      }
+      context.emit("submit-poster-comment", text, state.replying)
+      PosterCommentInput.value!.value = ""
       state.numInputRows = 1
     }
 
@@ -614,7 +670,7 @@ export default defineComponent({
         if (state.composing) {
           state.composing = false
         } else {
-          clickSubmit(ev)
+          clickSubmit()
           ev.preventDefault()
           return true
         }
@@ -663,6 +719,62 @@ export default defineComponent({
       PosterCommentInput.value.focus()
     }
 
+    watch(
+      () => props.editingOld,
+      (comment_id: string | undefined) => {
+        if (comment_id && PosterCommentInput.value) {
+          const c = countLines(PosterCommentInput.value)
+          state.numInputRows = Math.min(c, 15)
+        }
+      }
+    )
+
+    const onScroll = async (ev: Event) => {
+      if (!state.initialScrollDone) {
+        return
+      }
+      //https://stackoverflow.com/a/21627295
+      const visibleY = (el1: Element) => {
+        let rect = el1.getBoundingClientRect()
+        const top = rect.top
+        const height = rect.height
+        let el = el1.parentNode
+        if (!el) {
+          return false
+        }
+        // Check if bottom of the element is off the page
+        if (rect.bottom < 0) return false
+        // Check its within the document viewport
+        if (top > document.documentElement.clientHeight) return false
+        do {
+          rect = (el as Element).getBoundingClientRect()
+          if (top <= rect.bottom === false) return false
+          // Check if the element is out of view due to a container scrolling
+          if (top + height <= rect.top) return false
+          el = el.parentNode
+        } while (el && el != document.body)
+        return true
+      }
+      for (const c of Object.values(props.comments)) {
+        const el = document.querySelector("#poster-comment-entry-" + c.id)
+        const parent = document.querySelector("#poster-comments-container")
+
+        if (el && parent) {
+          const visible = visibleY(el)
+          const old_visible = props.comments[c.id].read
+          if (visible != old_visible) {
+            state.visibleComments[c.id] = visible
+            if (visible) {
+              context.emit("read-comment", props.poster?.id, c.id)
+            }
+            // console.log(c.id, visible, c.text_decrypted)
+          }
+        } else {
+          // console.warn(`${c.id} element not found`) //Probably reaction icon
+        }
+      }
+    }
+
     return {
       ...toRefs(state),
       PosterCommentInput,
@@ -674,6 +786,7 @@ export default defineComponent({
       mouseWheelPoster,
       startUpdateComment,
       posterCommentHistory,
+      clickSubmit,
       clearInput,
       speechText,
       zoomIn,
@@ -688,6 +801,7 @@ export default defineComponent({
       startReply,
       inRange,
       onInput,
+      onScroll,
     }
   },
 })
@@ -742,6 +856,10 @@ div#poster-container {
   z-index: 200;
 }
 
+.dark div#poster-container {
+  background: black;
+}
+
 #app-main.mobile div#poster-container {
   left: 0px;
   top: 15vw;
@@ -771,6 +889,10 @@ div#poster-comments-container {
   background: white;
   border: 1px solid #888;
   border-radius: 4px;
+}
+
+.dark div#poster-comments-container {
+  background: black;
 }
 
 .mobile div#poster-comments-container {
@@ -825,6 +947,11 @@ div#poster {
   max-width: 100%;
   max-height: calc(100% - 5px);
   transition: 0.3s linear background-color;
+}
+
+.dark div#poster {
+  background: #444;
+  color: #ddd;
 }
 
 .mobile div#poster {

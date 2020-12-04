@@ -2,6 +2,7 @@
   <div
     id="chat-local"
     class="chat-container"
+    :class="{ dark: darkMode }"
     :style="{
       width: isMobile
         ? 'calc(100vw - 20px)'
@@ -29,6 +30,7 @@
         @compositionstart="composing = true"
         @compositionend="composing = false"
         @input="onInput"
+        @keydown.stop
         @keydown.enter="onKeyDownEnterChatInput($event)"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
@@ -39,57 +41,110 @@
       ></textarea>
 
       <span
-        id="show-encrypt"
+        id="enable-encryption"
         :class="{
+          'with-tool-tip': true,
           disabled: !enableEncryption,
           impossible: !encryptionPossibleInChat,
+          hover: hoverElement == 'enable-encryption',
         }"
+        @mouseenter="$emit('set-hover-with-delay', 'enable-encryption')"
+        @mouseleave="$emit('cancel-hover')"
         ><img
           class="encrypt-icon"
           src="/img/icon/lock-152879_1280.png"
           alt="暗号化"
           @click="$emit('set-encryption', !enableEncryption)"
-      /></span>
-      <button
-        id="submit"
-        @click="clickSubmit(localCommentHistory[replying?.id]?.__depth)"
-        :disabled="
-          (!replying && !editingOld && (!chatGroup || chatGroup.length == 0)) ||
-            ChatInput.value?.value == ''
-        "
-      >
-        <img
-          class="icon"
-          src="/img/icon/enter-arrow.png"
-          alt="保存"
-          v-if="editingOld"
         />
-        <img class="icon" src="/img/icon/right-arrow.png" alt="送信" v-else />
-      </button>
-      <button
-        v-if="is_chrome"
-        id="dictation"
-        class="chat-tool-button"
-        :class="{ running: dictation.running }"
-        @click="toggleDictation"
-        :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
+        <div class="tooltip" v-if="encryptionPossibleInChat">
+          暗号化は{{ enableEncryption ? "ON" : "OFF" }}です
+        </div>
+        <div class="tooltip" v-else>暗号化できません</div>
+      </span>
+      <span class="with-tool-tip" :class="{ hover: hoverElement == 'submit' }">
+        <button
+          id="submit"
+          class="chat-tool-button"
+          @click="clickSubmit(localCommentHistory[replying?.id]?.__depth)"
+          @mouseenter="$emit('set-hover-with-delay', 'submit')"
+          @mouseleave="$emit('cancel-hover')"
+          :disabled="
+            (!replying &&
+              !editingOld &&
+              (!chatGroup || chatGroup.length == 0)) ||
+            chatInputValue == ''
+          "
+        >
+          <img
+            class="icon"
+            src="/img/icon/enter-arrow.png"
+            alt="保存"
+            v-if="editingOld"
+          />
+          <img class="icon" src="/img/icon/right-arrow.png" alt="送信" v-else />
+        </button>
+        <div class="tooltip">送信</div>
+      </span>
+
+      <span
+        class="with-tool-tip"
+        :class="{ hover: hoverElement == 'dictation' }"
       >
-        <img
-          class="icon"
-          id="voice-input"
-          src="/img/icon/microphone.png"
-          :alt="dictation.running ? '音声入力中' : '音声入力'"
-        />
-        <span v-if="dictation.running">入力中</span>
-      </button>
-      <button
+        <button
+          v-if="is_chrome"
+          id="dictation"
+          class="chat-tool-button"
+          :class="{
+            running: dictation.running,
+          }"
+          @mouseenter="$emit('set-hover-with-delay', 'dictation')"
+          @mouseleave="$emit('cancel-hover')"
+          @click="toggleDictation"
+          :disabled="!editingOld && (!chatGroup || chatGroup.length == 0)"
+        >
+          <img
+            class="icon"
+            id="voice-input"
+            src="/img/icon/microphone.png"
+            :alt="dictation.running ? '音声入力中' : '音声入力'"
+          />
+          <span v-if="dictation.running">入力中</span>
+        </button>
+        <div class="tooltip">音声入力</div>
+      </span>
+      <span
+        class="with-tool-tip"
+        id="clear-input"
+        :class="{ hover: hoverElement == 'clear-input' }"
+      >
+        <button
+          v-if="!editingOld && (!chatGroup || chatGroup.length == 0)"
+          :disabled="chatInputValue == ''"
+          class="chat-tool-button"
+          @click="clearInput"
+          @mouseenter="$emit('set-hover-with-delay', 'clear-input')"
+          @mouseleave="$emit('cancel-hover')"
+        >
+          <img class="icon" id="clear-input-img" src="/img/icon/dustbin.png" />
+        </button>
+        <div class="tooltip">入力をクリア</div>
+      </span>
+      <span
         id="leave-chat"
-        class="chat-tool-button"
-        @click="$emit('leave-chat')"
-        :disabled="!chatGroup || chatGroup.length == 0"
+        class="with-tool-tip"
+        :class="{ hover: hoverElement == 'leave-chat' }"
+        @mouseenter="$emit('set-hover-with-delay', 'leave-chat')"
+        @mouseleave="$emit('cancel-hover')"
       >
-        <img class="icon" src="/img/icon/departures.png" alt="会話から離脱" />
-      </button>
+        <button
+          class="chat-tool-button"
+          @click="$emit('leave-chat')"
+          :disabled="!chatGroup || chatGroup.length == 0"
+        >
+          <img class="icon" src="/img/icon/departures.png" alt="会話から離脱" />
+        </button>
+        <div class="tooltip">会話から離脱</div>
+      </span>
       <button
         v-if="replying"
         id="abort-reply"
@@ -128,9 +183,7 @@
             {{ people[t.to] ? people[t.to].name : "" }}
           </span>
         </div>
-        <div id="participants" v-else>
-          会話に参加していません
-        </div>
+        <div id="participants" v-else>会話に参加していません</div>
       </h2>
     </div>
     <div
@@ -139,17 +192,20 @@
       :style="{
         height: 'calc(100% - ' + (142 + numInputRows * 20) + 'px)',
       }"
+      @scroll="onScroll"
     >
       <div
         v-for="c in localCommentHistory"
         :key="'' + c.timestamp + c.person + c.to + c.kind"
         :class="{
           'comment-entry': c.event == 'comment',
+          highlight: highlightUnread[c.id],
           'date-entry': c.event == 'new_date',
           replying: replying && c.id == replying.id,
           editing: editingOld && c.id == editingOld,
           hidden: contentHidden,
         }"
+        @mouseenter="$emit('read-comment', c.id, true)"
       >
         <!-- <Picker
           v-if="showEmojiPicker && showEmojiPicker == c.id"
@@ -236,6 +292,7 @@
         </div>
         <div
           v-if="c.event == 'comment'"
+          :id="'comment-entry-' + c.id"
           :style="{
             'margin-left': '' + inRange(c.__depth - 1, 0, 5) * 30 + 'px',
             replying: replying?.id == c.id,
@@ -317,6 +374,10 @@
 </template>
 
 <script lang="ts">
+import axiosClient from "@aspida/axios"
+import api from "@/api/$api"
+import { AxiosInstance } from "axios"
+
 import {
   Person,
   ChatCommentDecrypted,
@@ -328,6 +389,7 @@ import {
   CommentEvent,
   DateEvent,
   ChatEvent,
+  ChatEventInComment,
 } from "@/@types/types"
 import { countLines, formatTime } from "../util"
 import { flattenTree, inRange, sortBy } from "@/common/util"
@@ -343,6 +405,7 @@ import {
   PropType,
   nextTick,
   ref,
+  onMounted,
 } from "vue"
 
 import MyPicker from "./MyPicker.vue"
@@ -357,7 +420,20 @@ export default defineComponent({
     // Picker,
     MyPicker,
   },
+  emits: [
+    "on-input-text-change",
+    "set-editing-old",
+    "add-emoji-reaction",
+    "submit-comment",
+    "set-hover-with-delay",
+    "cancel-hover",
+    "read-comment",
+  ],
   props: {
+    axios: {
+      type: Function as PropType<AxiosInstance>,
+      required: true,
+    },
     poster: {
       type: Object as PropType<PosterTyp>,
     },
@@ -406,6 +482,17 @@ export default defineComponent({
       type: Boolean,
       required: true,
     },
+    darkMode: {
+      type: Boolean,
+      required: true,
+    },
+    hoverElement: {
+      type: String,
+    },
+    highlightUnread: {
+      type: Object as PropType<{ [comment_id: string]: boolean }>,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({
@@ -417,14 +504,25 @@ export default defineComponent({
         text: undefined as string | undefined,
       },
       recognition: null as any | null,
+      voiceRecognitionResultTime: undefined as number | undefined,
       showEmojiPicker: undefined as CommentId | undefined,
       replying: undefined as CommentEvent | undefined,
+      chatInputValue: "",
       numInputRows: 1,
+      visibleComments: {} as { [comment_id: string]: boolean },
+      showEmptySessions:
+        localStorage[
+          "virtual-poster:" + props.myself?.id + ":config:show_empty_sessions"
+        ] != "0",
+      initialScrollDone: false,
     })
+    const client = api(axiosClient(props.axios))
+
     const ChatInput = ref<HTMLTextAreaElement>()
 
     const onInput = async ev => {
       const text = ev.target.value
+      state.chatInputValue = text
       console.log("watch ChatInput", text)
       if (!text || text == "") {
         state.numInputRows = 1
@@ -432,7 +530,7 @@ export default defineComponent({
       const c = countLines(ev.target)
       console.log("countLines", c)
       state.numInputRows = Math.min(c, 15)
-      context.emit("onInputTextChange")
+      context.emit("on-input-text-change")
     }
 
     watch(
@@ -470,29 +568,84 @@ export default defineComponent({
           } as CommentEvent
         })
 
-      const events = sortBy(
+      const events: CommentHistoryEntry[] = sortBy(
         props.events.map(e => {
           return { ...e, event: "event" }
-        }) as CommentHistoryEntry[],
+        }) as ChatEventInComment[],
         c => c.timestamp
       )
       const comments_and_events: CommentHistoryEntry[] = []
       let event_idx = 0
       for (const c of comments) {
         if (c.__depth == 1) {
+          let events_to_push: CommentHistoryEntry[] = []
+          let started = false
           for (
             ;
             event_idx < events.length &&
             events[event_idx].timestamp < c.timestamp;
             event_idx++
           ) {
-            comments_and_events.push(events[event_idx])
+            const e = events[event_idx] as ChatEventInComment
+            if (!state.showEmptySessions) {
+              if (e.event_type == "new") {
+                for (const e1 of events_to_push) {
+                  comments_and_events.push(e1)
+                }
+                events_to_push = []
+                started = true
+              } else if (
+                e.event_type == "leave" &&
+                e.event_data.left_user == props.myself?.id &&
+                started
+              ) {
+                events_to_push = []
+                started = false
+                continue
+              } else if (e.event_type == "dissolve" && started) {
+                events_to_push = []
+                started = false
+                continue
+              }
+            }
+            events_to_push.push(e)
+          }
+
+          for (const e of events_to_push) {
+            comments_and_events.push(e)
           }
         }
         comments_and_events.push(c)
       }
+      let events_to_push: CommentHistoryEntry[] = []
+      let started = false
       for (; event_idx < events.length; event_idx++) {
-        comments_and_events.push(events[event_idx])
+        const e = events[event_idx] as ChatEventInComment
+        if (!state.showEmptySessions) {
+          if (e.event_type == "new") {
+            for (const e1 of events_to_push) {
+              comments_and_events.push(e1)
+            }
+            events_to_push = []
+            started = true
+          } else if (
+            e.event_type == "leave" &&
+            e.event_data.left_user == props.myself?.id &&
+            started
+          ) {
+            events_to_push = []
+            started = false
+            continue
+          } else if (e.event_type == "dissolve" && started) {
+            events_to_push = []
+            started = false
+            continue
+          }
+        }
+        events_to_push.push(e)
+      }
+      for (const e of events_to_push) {
+        comments_and_events.push(e)
       }
 
       const comments_with_date: CommentHistoryEntry[] = []
@@ -545,6 +698,7 @@ export default defineComponent({
         return
       }
       ChatInput.value.value = ""
+      state.chatInputValue = ""
     }
 
     const startUpdateComment = (cid: string) => {
@@ -572,6 +726,15 @@ export default defineComponent({
       webkitSpeechRecognition,
     }: SpeechWindow = (window as any) as SpeechWindow
 
+    const stopDictation = () => {
+      state.dictation.running = false
+      console.log("stopDictation", state.recognition)
+      if (state.recognition) {
+        state.recognition.stop()
+        state.recognition = undefined
+      }
+    }
+
     const startDictation = () => {
       if (state.dictation.running) {
         return
@@ -587,7 +750,10 @@ export default defineComponent({
       recognition.interimResults = true
       recognition.lang = "ja-JP"
 
+      state.voiceRecognitionResultTime = Date.now()
+
       recognition.onresult = event => {
+        state.voiceRecognitionResultTime = Date.now()
         const text = event.results[0][0].transcript
         //Vue.set
         state.dictation.text = text
@@ -603,7 +769,13 @@ export default defineComponent({
         console.log(event.results[0][0].transcript, event.results[0])
       }
       recognition.onend = () => {
-        console.log("Ended")
+        const elapsed = state.voiceRecognitionResultTime
+          ? Date.now() - state.voiceRecognitionResultTime
+          : 0
+        console.log("Recognition ended", elapsed)
+        if (elapsed >= 1000 * 10) {
+          stopDictation()
+        }
         const ta = ChatInput.value
         if (!ta) {
           console.error("Textarea ref not found")
@@ -616,13 +788,6 @@ export default defineComponent({
       }
 
       recognition.start()
-    }
-
-    const stopDictation = () => {
-      state.dictation.running = false
-      console.log("stopDictation", state.recognition)
-      state.recognition.stop()
-      state.recognition = undefined
     }
 
     const toggleDictation = () => {
@@ -715,6 +880,10 @@ export default defineComponent({
         console.error("Textarea ref not found")
         return
       }
+      if (!ChatInput.value.value) {
+        console.warn("Empty text")
+        return
+      }
       context.emit(
         "submit-comment",
         ChatInput.value.value,
@@ -727,6 +896,7 @@ export default defineComponent({
       )
       ChatInput.value.value = ""
       state.numInputRows = 1
+      stopDictation()
     }
 
     const onKeyDownEnterChatInput = (ev: KeyboardEvent) => {
@@ -743,6 +913,111 @@ export default defineComponent({
       }
     }
 
+    watch(
+      () => props.chatGroup,
+      (users: string[] | undefined) => {
+        if ((!users || users.length == 0) && state.dictation.running) {
+          stopDictation()
+        }
+      }
+    )
+
+    watch(
+      () => props.editingOld,
+      (comment_id: string | undefined) => {
+        if (comment_id && ChatInput.value) {
+          const c = countLines(ChatInput.value)
+          state.numInputRows = Math.min(c, 15)
+        }
+      }
+    )
+
+    const onScroll = async (ev: Event) => {
+      if (!state.initialScrollDone) {
+        return
+      }
+      //https://stackoverflow.com/a/21627295
+      const visibleY = (el1: Element) => {
+        let rect = el1.getBoundingClientRect()
+        const top = rect.top
+        const height = rect.height
+        let el = el1.parentNode
+        if (!el) {
+          return false
+        }
+        // Check if bottom of the element is off the page
+        if (rect.bottom < 0) return false
+        // Check its within the document viewport
+        if (top > document.documentElement.clientHeight) return false
+        do {
+          rect = (el as Element).getBoundingClientRect()
+          if (top <= rect.bottom === false) return false
+          // Check if the element is out of view due to a container scrolling
+          if (top + height <= rect.top) return false
+          el = el.parentNode
+        } while (el && el != document.body)
+        return true
+      }
+      for (const c of Object.values(props.comments)) {
+        const el = document.querySelector("#comment-entry-" + c.id)
+        const parent = document.querySelector("#chat-local-history")
+
+        if (el && parent) {
+          const visible = visibleY(el)
+          const old_visible = props.comments[c.id].read
+          if (visible != old_visible) {
+            state.visibleComments[c.id] = visible
+            if (visible) {
+              context.emit("read-comment", c.id)
+            }
+            // console.log(c.id, visible, c.text_decrypted)
+          }
+        } else {
+          // console.warn(`${c.id} element not found`) //Probably reaction icon
+        }
+      }
+    }
+
+    watch(
+      () => props.myself?.id,
+      (newValue: string | undefined) => {
+        if (newValue) {
+          state.showEmptySessions =
+            localStorage[
+              "virtual-poster:" + newValue + ":config:show_empty_sessions"
+            ] != "0"
+        }
+      }
+    )
+
+    watch(
+      () => props.comments,
+      async (nv, ov) => {
+        if (Object.values(ov).length == 0) {
+          await nextTick(() => {
+            const el = document.querySelector("#chat-local-history")
+            if (el) {
+              el.scrollTop = el.scrollHeight
+            }
+            setTimeout(() => {
+              state.initialScrollDone = true
+            }, 100)
+          })
+        }
+      }
+    )
+
+    onMounted(() => {
+      window.addEventListener("storage", ev => {
+        if (
+          ev.key ==
+          "virtual-poster:" + props.myself?.id + ":config:show_empty_sessions"
+        ) {
+          state.showEmptySessions = ev.newValue == "1"
+        }
+      })
+    })
+
     return {
       ...toRefs(state),
       ChatInput,
@@ -756,6 +1031,7 @@ export default defineComponent({
       toggleDictation,
       is_chrome,
       notSender,
+      onScroll,
       // emojiIndex,
       clickShowEmoji,
       selectEmoji,
@@ -783,6 +1059,10 @@ export default defineComponent({
   top: 10px;
   min-width: 250px;
   height: calc(100% - 20px);
+}
+
+.dark #chat-local {
+  color: white;
 }
 
 #chat-local-input-container {
@@ -856,26 +1136,36 @@ textarea#local-chat-input {
   }
 }
 
-button#leave-chat {
-  float: right;
-  margin-right: 10px;
+button.chat-tool-button {
+  margin-left: 10px;
   vertical-align: 7px;
 }
 
-#show-encrypt {
+span#leave-chat {
+  float: right;
+  margin-right: 10px;
+}
+
+span#leave-chat .tooltip {
+  /* float: right; */
+  width: 110px;
+  right: 10px;
+}
+
+#enable-encryption {
   margin: 0px;
 }
 
-#show-encrypt img {
+#enable-encryption img {
   margin: 0px 0px -2px 10px;
   cursor: pointer;
 }
 
-#show-encrypt.disabled img {
+#enable-encryption.disabled img {
   opacity: 0.3;
 }
 
-#show-encrypt.impossible img {
+#enable-encryption.impossible img {
   opacity: 0.4;
   filter: invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg)
     brightness(95%) contrast(112%);
@@ -899,5 +1189,15 @@ button#leave-chat {
 
 .encrypt-icon {
   height: 25px;
+}
+
+span.with-tool-tip {
+  display: inline-block;
+  margin: 0px;
+  padding: 0px;
+}
+
+.tooltip {
+  margin-left: 10px;
 }
 </style>

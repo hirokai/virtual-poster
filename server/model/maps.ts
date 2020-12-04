@@ -25,6 +25,7 @@ import { emit } from "../socket"
 import { promisify } from "util"
 import fs from "fs"
 import path from "path"
+import { NullableBoolean } from "aws-sdk/clients/xray"
 const readFile = promisify(fs.readFile)
 
 const USE_S3_CDN = config.aws.s3.via_cdn
@@ -105,15 +106,20 @@ export class MapModel {
     numRows: number
     numCols: number
     allow_poster_assignment: boolean
+    name: string
   }> {
     const data1 = await this.getStaticMap()
-    const allow_poster_assignment = !!(
-      await model.db.oneOrNone(
-        `SELECT allow_poster_assignment FROM room WHERE id=$1`,
-        [this.room_id]
-      )
-    )?.allow_poster_assignment
-    const data = { ...data1, allow_poster_assignment }
+    const room = await model.db.oneOrNone(
+      `SELECT name,allow_poster_assignment FROM room WHERE id=$1`,
+      [this.room_id]
+    )
+    if (!room) {
+      throw "Not found room"
+    }
+
+    const allow_poster_assignment = !!room.allow_poster_assignment
+    const name: string = room!.name
+    const data = { ...data1, allow_poster_assignment, name }
     return data
   }
 

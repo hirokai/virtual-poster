@@ -1,4 +1,4 @@
-import _ from "lodash"
+import _, { reject } from "lodash"
 import axios from "axios"
 import AWS from "aws-sdk"
 import fs from "fs"
@@ -9,9 +9,10 @@ import { config } from "../config"
 import { isAdjacent } from "../../common/util"
 import { promisify } from "util"
 const readFileAsync = promisify(fs.readFile)
-import { spawn } from "child_process"
+import { ChildProcessWithoutNullStreams, spawn } from "child_process"
 const writeFileAsync = promisify(fs.writeFile)
 const deleteFile = promisify(fs.unlink)
+const copyFileAsync = promisify(fs.copyFile)
 const statAsync = promisify(fs.stat)
 import path from "path"
 
@@ -49,6 +50,7 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
   if (!d) {
     return null
   }
+  log.debug("poster.get", d)
   d.last_updated = parseInt(d.last_updated)
   const file_url = d.file_uploaded
     ? config.aws.s3.upload
@@ -65,6 +67,7 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
     last_updated: d.last_updated,
     location: d.location,
     file_url,
+    file_size: d.file_size,
     access_log: d.access_log,
     author_online_only: d.author_online_only,
     poster_number: d.poster_number,
@@ -89,11 +92,12 @@ export async function getByNumber(
 
 export async function set(
   poster: Poster,
-  file_uploaded?: boolean
+  file_size?: number
 ): Promise<boolean> {
-  if (file_uploaded != undefined) {
+  const file_uploaded = file_size != undefined
+  if (file_uploaded) {
     await db.query(
-      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_uploaded=$8 where id=$7;`,
+      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_uploaded=$8,file_size=$9 where id=$7;`,
       [
         poster.location,
         poster.title,
@@ -103,11 +107,12 @@ export async function set(
         poster.author_online_only,
         poster.id,
         file_uploaded,
+        file_size,
       ]
     )
   } else {
     await db.query(
-      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6 where id=$7;`,
+      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_size=$8 where id=$7;`,
       [
         poster.location,
         poster.title,
@@ -116,6 +121,7 @@ export async function set(
         poster.access_log,
         poster.author_online_only,
         poster.id,
+        file_size,
       ]
     )
   }
@@ -152,6 +158,7 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
       last_updated: d.last_updated,
       location: d.location,
       file_url,
+      file_size: d.file_size,
       access_log: d.access_log,
       author_online_only: d.author_online_only,
       poster_number: d.poster_number,
@@ -166,14 +173,6 @@ export function genPosterId(): PosterId {
       return s
     }
   }
-}
-
-export async function getOfUser(
-  room_id: RoomId,
-  user_id: UserId
-): Promise<Poster | null> {
-  const posters = await getAll(room_id)
-  return _.find(posters, p => p.author == user_id) || null
 }
 
 export async function getAllOfUser(user_id: UserId): Promise<Poster[] | null> {
@@ -201,6 +200,20 @@ function getSignedUrlAsync(
 export async function get_signed_url(
   poster_id: PosterId
 ): Promise<string | null> {
+  try {
+    const headCode = await s3
+      .headObject({
+        Bucket: config.aws.s3.bucket,
+        Key: `files/${poster_id}.png`,
+      })
+      .promise()
+    log.debug({ headCode })
+  } catch (err) {
+    log.debug({ err })
+    if (err.code == "NotFound") {
+      return null
+    }
+  }
   const keyPairId = config.aws.cloud_front.key_pair_id
   const privateKey = await readFileAsync(
     config.aws.cloud_front.private_key,
@@ -424,15 +437,38 @@ async function uploadFileToS3(file_path: string): Promise<string> {
   return data.Location
 }
 
+async function waitForChild(child: ChildProcessWithoutNullStreams) {
+  return new Promise<number>((resolve, reject) => {
+    // use child.stdout.setEncoding('utf8'); if you want text chunks
+    child.stdout.on("data", (chunk: Buffer) => {
+      log.debug("Child process stdout:", chunk.toString("utf8"))
+    })
+    child.on("close", code => {
+      resolve(code)
+    })
+    child.on("error", err => {
+      log.error(err)
+      reject(err)
+    })
+  })
+}
+
 export async function updatePosterFile(
   poster: Poster,
   file: any
 ): Promise<{ ok: boolean; error?: string }> {
   const data = file.buffer
+  let file_size: number
   if (file.mimetype == "image/png") {
     const out_path = "db/posters/" + poster.id + ".png"
     await writeFileAsync(out_path, data)
-    await set(poster, true)
+    try {
+      file_size = (await statAsync(out_path)).size
+    } catch (err) {
+      log.error(err)
+      return { ok: false }
+    }
+    await set(poster, file_size)
     if (config.aws.s3.upload && config.aws.s3.bucket) {
       const _s3_url = await uploadFileToS3(out_path)
       await deleteFile(out_path)
@@ -443,6 +479,7 @@ export async function updatePosterFile(
     await writeFileAsync(filename, data)
     log.debug("writeFile: ", filename, data.length)
 
+    const out_path1 = "db/posters/" + poster.id + ".tmp.png"
     const out_path = "db/posters/" + poster.id + ".png"
     const child = spawn("gs", [
       "-sDEVICE=png16m",
@@ -450,64 +487,58 @@ export async function updatePosterFile(
       "-r300",
       "-dGraphicsAlphaBits=4",
       "-o",
-      out_path,
+      out_path1,
       filename,
     ])
-    await set(poster, true)
-    const r = await new Promise<{ ok: boolean; error?: string }>(resolve => {
-      // use child.stdout.setEncoding('utf8'); if you want text chunks
-      child.stdout.on("data", (chunk: Buffer) => {
-        log.debug("Ghostscript stdout:", chunk.toString("utf8"))
-      })
-      child.on("close", code => {
-        fs.unlink(filename, () => {
-          //
-        })
-        if (code == 0) {
-          if (config.aws.s3.upload && config.aws.s3.bucket) {
-            log.info("Uploading to S3.")
-            uploadFileToS3(out_path)
-              .then(() => {
-                deleteFile(out_path)
-                  .then(() => {
-                    log.info("Uploaded PDF to S3 and deleted a local file.")
-                  })
-                  .catch(err => {
-                    log.error(err)
-                    set(poster, false)
-                      .then(() => {
-                        //
-                      })
-                      .catch(() => {
-                        //
-                      })
-                  })
-              })
-              .catch(err => {
-                log.error(err)
-                set(poster, false)
-                  .then(() => {
-                    //
-                  })
-                  .catch(() => {
-                    //
-                  })
-              })
-          }
-          resolve({ ok: true })
-        } else {
-          resolve({ ok: false, error: "PDF conversion error" })
-          set(poster, false)
-            .then(() => {
-              //
-            })
-            .catch(() => {
-              //
-            })
-        }
-      })
+    const code = await waitForChild(child).catch(() => -1)
+    await deleteFile(filename)
+    if (code != 0) {
+      return { ok: false, error: "PDF conversion error" }
+    }
+    const child2 = spawn("magick", [
+      "convert",
+      "-resize",
+      "6237000@>", //  = 2100*2970
+      out_path1,
+      out_path,
+    ])
+    const code2 = await waitForChild(child2).catch(err => {
+      log.error(err)
+      return -1
     })
-    return r
+    log.debug("imagemagick result", code2)
+    if (code2 != 0) {
+      await set(poster)
+      return { ok: true } // PNG file reduction is not necessary, so NO error
+      // return { ok: false, error: "PNG file reduction error" }
+    } else {
+      await deleteFile(out_path1)
+    }
+    const file_to_upload = code2 == 0 ? out_path : out_path1
+    try {
+      file_size = (await statAsync(file_to_upload)).size
+    } catch (err) {
+      log.error(err)
+      return { ok: false }
+    }
+    if (config.aws.s3.upload && config.aws.s3.bucket) {
+      log.info("Uploading to S3.")
+      try {
+        await uploadFileToS3(file_to_upload)
+        await deleteFile(file_to_upload)
+        log.info("Uploaded PDF to S3 and deleted a local file.")
+      } catch (err) {
+        log.error(err)
+        await set(poster)
+      }
+    } else {
+      await set(poster, file_size)
+      if (code2 != 0) {
+        await copyFileAsync(out_path1, out_path)
+        await deleteFile(out_path1)
+      }
+    }
+    return { ok: true }
   }
 }
 
@@ -521,6 +552,27 @@ async function exists(path: string, remote: boolean) {
   }
 }
 
+async function getFileSize(
+  path: string,
+  remote: boolean
+): Promise<number | undefined> {
+  if (remote) {
+    const r = await axios.head(path)
+    return r.status == 200 ? r.headers["Content-Length"] : undefined
+  } else {
+    try {
+      const r = await statAsync(path)
+      return r.size
+    } catch (err) {
+      if (err.code == "ENOENT") {
+        return undefined
+      } else {
+        throw err
+      }
+    }
+  }
+}
+
 export async function refreshFiles(
   room_id: RoomId
 ): Promise<{ ok: boolean; updated?: Poster[] }> {
@@ -529,23 +581,35 @@ export async function refreshFiles(
     const updated: Poster[] = []
     for (const poster_id of poster_ids) {
       let e: boolean
+      let file_size: number | undefined
       if (config.aws.s3.upload) {
         const url = await get_signed_url(poster_id)
-        e = !!url
+        if (url) {
+          file_size = await getFileSize(url, true)
+          e = file_size != undefined
+        } else {
+          e = false
+        }
       } else {
         const path = `db/posters/${poster_id}.png`
-        e = await exists(path, config.aws.s3.upload)
+        file_size = await getFileSize(path, false)
+        e = file_size != undefined
       }
-      const e_old = !!(
-        await db.query(`SELECT file_uploaded FROM poster WHERE id=$1`, [
-          poster_id,
-        ])
-      )[0]?.file_uploaded
-      await db.query(`UPDATE poster SET file_uploaded=$1 WHERE id=$2`, [
-        e,
-        poster_id,
-      ])
-      if (e_old != e) {
+      const row = (
+        await db.query(
+          `SELECT file_uploaded, file_size FROM poster WHERE id=$1`,
+          [poster_id]
+        )
+      )[0]
+      const e_old = !!row?.file_uploaded
+      const file_size_old: number | undefined = row?.file_size
+
+      const file_size2 = file_size == undefined ? null : file_size
+      await db.query(
+        `UPDATE poster SET file_uploaded=$1, file_size=$2 WHERE id=$3`,
+        [e, file_size2, poster_id]
+      )
+      if (e_old != e || file_size_old != file_size) {
         const p = await get(poster_id)
         if (p) {
           updated.push(p)
@@ -557,4 +621,9 @@ export async function refreshFiles(
     log.error(err)
     return { ok: false }
   }
+}
+
+export async function getSubscribers(poster_id: PosterId): Promise<UserId[]> {
+  const poster = await get(poster_id)
+  return poster ? [poster.author] : [] //Stub
 }

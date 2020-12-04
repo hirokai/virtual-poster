@@ -85,7 +85,7 @@ export const initPeopleService = async (
   })
   socket.on("PersonUpdate", (ps: PersonUpdate[]) => {
     for (const p of ps) {
-      console.log("socket PersonUpdate", p)
+      // console.log("socket PersonUpdate", p)
       updatePerson(axios, props, state, p)
     }
   })
@@ -97,13 +97,13 @@ export const initPeopleService = async (
     }
   })
   socket.on("person_multi", ds => {
-    console.log("socket people", ds)
+    // console.log("socket people", ds)
     for (const d of ds) {
       updatePerson(axios, props, state, d)
     }
   })
   socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
-    console.log("ActiveUsers socket", ds)
+    // console.log("ActiveUsers socket", ds)
     for (const d of ds.users) {
       const p = state.people[d.user]
       if (p) {
@@ -141,7 +141,7 @@ export const initPeopleService = async (
     }),
     "id"
   )
-  console.log("r_people", r_people)
+  // console.log("r_people", r_people)
   // Adhoc fix
   //Vue.set
   state.people[props.myUserId] = {

@@ -7,7 +7,7 @@
       </div>
     </div> -->
     <div class="column">
-      <span style="display:none;">{{ bgPosition }}</span>
+      <span style="display: none">{{ bgPosition }}</span>
       <div class="tabs">
         <ul>
           <li
@@ -22,50 +22,6 @@
         </ul>
       </div>
       <div id="tabs">
-        <div v-if="tab == 'avatar'" class="tab-content">
-          <section>
-            <h5 class="title is-5">アバター</h5>
-
-            <div
-              v-for="n in avatars"
-              :key="n"
-              alt=""
-              class="avatar"
-              width="38"
-              :class="{ current: n == myself.avatar.split(':')[0] }"
-              @click="clickAvatar(n)"
-              @mouseenter="onMouseOverAvatar(n, true)"
-              @mouseleave="onMouseOverAvatar(n, false)"
-              :style="{
-                'background-image': bgImage(n),
-              }"
-            />
-            <div style="clear: both"></div>
-            <p>
-              画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用
-            </p>
-          </section>
-          <section>
-            <h5 class="title is-5">名前の表示色</h5>
-            <div
-              v-for="color in name_colors"
-              :key="color"
-              class="name-color"
-              :class="{ current: color == myself.avatar.split(':')[1] }"
-              :style="{ background: color }"
-              @click="clickNameColor(color)"
-            ></div>
-            <div style="clear:both"></div>
-            <div>
-              <input
-                type="checkbox"
-                name=""
-                v-model="displayNameBold"
-                id="check-name-bold"
-              /><label for="check-name-bold">太字にする</label>
-            </div>
-          </section>
-        </div>
         <ManageRooms
           v-if="tab == 'rooms'"
           :myUserId="myUserId"
@@ -84,6 +40,78 @@
           @renew-access-code="renewAccessCode"
           @delete-access-code="deleteAccessCode"
         />
+        <div class="tab-content" id="tab-map" v-if="tab == 'style'">
+          <section>
+            <div style="font-size: 80%; margin: 10px 0px">
+              下記の設定は端末に保存されます
+            </div>
+            <h5 class="title is-5">表示設定</h5>
+            <h6 class="title is-6">全体</h6>
+            <div>
+              <span style="vertical-align: -7px">ダークモード</span>
+              <button
+                class="button"
+                :class="{ 'is-primary': !darkModeUnset && darkMode }"
+                @click="setDarkMode(true)"
+              >
+                ON
+              </button>
+              <button
+                class="button"
+                :class="{ 'is-primary': !darkModeUnset && !darkMode }"
+                @click="setDarkMode(false)"
+              >
+                OFF
+              </button>
+              <button
+                class="button"
+                :class="{ 'is-primary': darkModeUnset }"
+                @click="setDarkMode(undefined)"
+              >
+                OSの設定に合わせる
+              </button>
+            </div>
+            <h6 class="title is-6">マップ</h6>
+            <div>
+              <span style="vertical-align: -7px">マップの表示</span>
+              <button
+                class="button"
+                :class="{ 'is-primary': mapVisualStyle == n[0] }"
+                v-for="n in [
+                  ['default', 'デフォルト'],
+                  ['abstract', '抽象'],
+                  ['monochrome', 'モノクロ'],
+                  ['abstract_monochrome', '抽象・モノクロ'],
+                ]"
+                :key="n[0]"
+                @click="setStyle(n[0])"
+              >
+                {{ n[1] }}
+              </button>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                id="config-show-minimap"
+                v-model="enableMiniMap"
+              />
+              <label for="config-show-minimap">ミニマップを表示する</label>
+            </div>
+            <h6 class="title is-6">チャット</h6>
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                id="config-show-empty-sessions"
+                v-model="showEmptySessions"
+              />
+              <label for="config-show-empty-sessions"
+                >会話が無かったセッション（開始〜解散）を表示する</label
+              >
+            </div>
+          </section>
+        </div>
         <div
           class="tab-content"
           id="tab-map"
@@ -96,7 +124,7 @@
               type="text"
               id="access_code"
               ref="AccessCodeInput"
-              style="width: 300px; margin-right: 10px;"
+              style="width: 300px; margin-right: 10px"
             />
             <button @click="submitAccessCode" class="button is-primary">
               送信
@@ -138,7 +166,7 @@
           </button>
 
           <div v-if="vote.message_sent">
-            <div style="margin: 30px 10px;">
+            <div style="margin: 30px 10px">
               下記の内容を（Googleフォームやオンライン掲示板を用いて）匿名で送信してください。
             </div>
             <h3>投票内容</h3>
@@ -186,6 +214,48 @@
       </div> -->
           </section>
           <section>
+            <h5 class="title is-5">アバター</h5>
+
+            <div
+              v-for="n in avatars"
+              :key="n"
+              alt=""
+              class="avatar"
+              width="38"
+              :class="{ current: n == myself.avatar.split(':')[0] }"
+              @click="clickAvatar(n)"
+              @mouseenter="onMouseOverAvatar(n, true)"
+              @mouseleave="onMouseOverAvatar(n, false)"
+              :style="{
+                'background-image': bgImage(n),
+              }"
+            />
+            <div style="clear: both"></div>
+            <p>
+              画像は<a href="https://pipoya.net/sozai/">ぴぽや倉庫</a>を使用
+            </p>
+          </section>
+          <section>
+            <h5 class="title is-5">名前の表示色</h5>
+            <div
+              v-for="color in name_colors"
+              :key="color"
+              class="name-color"
+              :class="{ current: color == myself.avatar.split(':')[1] }"
+              :style="{ background: color }"
+              @click="clickNameColor(color)"
+            ></div>
+            <div style="clear: both"></div>
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                v-model="displayNameBold"
+                id="check-name-bold"
+              /><label for="check-name-bold">太字にする</label>
+            </div>
+          </section>
+          <section>
             <h5 class="title is-5">ログのエクスポート</h5>
             <button class="button is-primary" @click="exportLog">
               エクスポート
@@ -221,22 +291,22 @@
                 >
               </div>
 
-              <div v-if="privateKeyString" style="height: 40px; margin: 10px;">
+              <div v-if="privateKeyString" style="height: 40px; margin: 10px">
                 秘密鍵が設定されています
               </div>
               <div
                 class="danger"
                 v-if="!privateKeyString"
-                style="height: 40px; margin: 10px;"
+                style="height: 40px; margin: 10px"
               >
-                <span style="margin-right: 10px;">秘密鍵がありません</span>
+                <span style="margin-right: 10px">秘密鍵がありません</span>
               </div>
-              <div style="margin-bottom: 10px;">
+              <div style="margin-bottom: 10px">
                 <button class="button is-primary" @click="setPrivateKey">
                   秘密鍵を読み込み
                 </button>
                 <button
-                  style="margin-left: 10px;"
+                  style="margin-left: 10px"
                   :disabled="!privateKeyString"
                   class="button is-primary"
                   @click="showPrivKey = !showPrivKey"
@@ -267,7 +337,7 @@
         </div>
         <div v-if="tab == 'help'" class="tab-content">
           <h5 class="title is-5">簡単な使い方</h5>
-          <p style="font-size: 14px; line-height: 1; margin: 0px;">
+          <p style="font-size: 14px; line-height: 1; margin: 0px">
             ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
           </p>
           <ul>
@@ -325,13 +395,14 @@ import {
   Room,
   Announcement,
   RoomUpdateSocketData,
+  VisualStyle,
 } from "@/@types/types"
 import { keyBy, difference, range, chunk } from "@/common/util"
 import io from "socket.io-client"
 import * as encryption from "../encryption"
 import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
-import { deleteUserInfoOnLogout, formatTime } from "../util"
+import { deleteUserInfoOnLogout, formatTime, getVisualStyle } from "../util"
 import { decryptIfNeeded } from "../room/room_chat_service"
 import MypagePoster from "./MypagePoster.vue"
 import ManageRooms from "../admin/ManageRooms.vue"
@@ -355,7 +426,7 @@ const debug_as: UserId | null = url.searchParams.get("debug_as") || null
 const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
-console.log({ debug_as, debug_token })
+// console.log({ debug_as, debug_token })
 const hash = url.hash.slice(1) || "account"
 location.hash = "#" + hash
 
@@ -448,7 +519,7 @@ export default defineComponent({
       lastUpdated: null as number | null,
       tabs: [
         { id: "account", name: "アカウント" },
-        { id: "avatar", name: "アバター" },
+        { id: "style", name: "表示設定" },
         { id: "rooms", name: "会場" },
         { id: "poster", name: "ポスター" },
         { id: "vote", name: "投票" },
@@ -496,6 +567,21 @@ export default defineComponent({
       ownedMaps: [] as Room[],
       displayNameBold: false,
       reloadWaiting: false,
+      mapVisualStyle: getVisualStyle(
+        localStorage["virtual-poster:" + myUserId + ":config:map_visual_style"]
+      ) as VisualStyle,
+      darkMode:
+        localStorage["virtual-poster:" + myUserId + ":config:dark_mode"] == "1",
+      darkModeUnset:
+        localStorage["virtual-poster:" + myUserId + ":config:dark_mode"] ==
+        null,
+      enableMiniMap:
+        localStorage["virtual-poster:" + myUserId + ":config:show_minimap"] !=
+        "0",
+      showEmptySessions:
+        localStorage[
+          "virtual-poster:" + myUserId + ":config:show_empty_sessions"
+        ] != "0",
     })
 
     const name_colors = [
@@ -800,6 +886,24 @@ export default defineComponent({
       () => state.tab_sub,
       (v: string | undefined) => {
         console.log("tab_sub changed", v)
+      }
+    )
+
+    watch(
+      () => state.enableMiniMap,
+      newValue => {
+        localStorage[
+          "virtual-poster:" + state.myUserId + ":config:show_minimap"
+        ] = newValue ? "1" : "0"
+      }
+    )
+
+    watch(
+      () => state.showEmptySessions,
+      newValue => {
+        localStorage[
+          "virtual-poster:" + state.myUserId + ":config:show_empty_sessions"
+        ] = newValue ? "1" : "0"
       }
     )
 
@@ -1303,6 +1407,31 @@ export default defineComponent({
       state.socket?.emit("AskReload", d)
     }
 
+    const setDarkMode = (is_dark?: boolean) => {
+      if (is_dark == undefined) {
+        localStorage.removeItem(
+          "virtual-poster:" + state.myUserId + ":config:dark_mode"
+        )
+        state.darkMode =
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches
+        state.darkModeUnset = true
+      } else {
+        localStorage[
+          "virtual-poster:" + state.myUserId + ":config:dark_mode"
+        ] = is_dark ? "1" : "0"
+        state.darkMode = is_dark
+        state.darkModeUnset = false
+      }
+    }
+
+    const setStyle = (n: VisualStyle) => {
+      localStorage[
+        "virtual-poster:" + state.myUserId + ":config:map_visual_style"
+      ] = n
+      state.mapVisualStyle = n
+    }
+
     return {
       ...toRefs(state),
       name_colors,
@@ -1341,6 +1470,8 @@ export default defineComponent({
       askReload,
       renewAccessCode,
       deleteAccessCode,
+      setDarkMode,
+      setStyle,
     }
   },
 })
@@ -1480,5 +1611,10 @@ div.poster-entry {
 
 .room-entry button {
   float: right;
+}
+
+.is-6 {
+  margin-top: 10px;
+  margin-bottom: 0px;
 }
 </style>

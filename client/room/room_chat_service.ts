@@ -18,6 +18,7 @@ import {
   CommentEncryptedEntry,
   Tree,
   ChatEventSocketData,
+  NewCommentNotification,
 } from "@/@types/types"
 import { keyBy, compact, sortTree } from "@/common/util"
 import * as encryption from "../encryption"
@@ -287,10 +288,10 @@ export const newComment = async (
         return { to: a.to, encrypted: a.encrypted }
       }),
       text_decrypted: r.text || "（暗号化）",
+      read: !!d.read,
     }
 
     const is_new_latest = !state.comments[d.id] && !d2.reply_to
-    //Vue.set
     state.comments[d.id] = d2
     if (is_new_latest) {
       await nextTick(() => {
@@ -299,6 +300,20 @@ export const newComment = async (
           el.scrollTop = el.scrollHeight
         }
       })
+    }
+    const windowInactive = false
+    if (d2.person != props.myUserId && (!is_new_latest || windowInactive)) {
+      state.highlightUnread[d2.id] = true
+      state.notifications = state.notifications.filter(
+        n => n.kind != "new_comments"
+      )
+      state.notifications.unshift({
+        kind: "new_comments",
+        data: {
+          count: Object.values(state.highlightUnread).length,
+        },
+        timestamp: Date.now(),
+      } as NewCommentNotification)
     }
   } catch (err) {
     console.error(err)
@@ -562,8 +577,6 @@ export const initChatService = async (
   ])
   state.chatGroups = keyBy(groups, "id")
 
-  console.log("comments", comments)
-
   const decrypted: ChatCommentDecrypted[] = []
   const events: ChatEvent[] = []
   for (const c of comments) {
@@ -599,6 +612,7 @@ export const initChatService = async (
         person: c.person,
         kind: c.kind,
         reply_to: c.reply_to,
+        read: !!(c as ChatComment).read,
       }
       // comment.encrypted = r.encrypted || false
       decrypted.push(comment_decr)
@@ -606,6 +620,23 @@ export const initChatService = async (
   }
   state.chat_events = events
   state.comments = keyBy(decrypted, "id")
+
+  const comments_new = Object.values(state.comments).filter(
+    c =>
+      c.read == false &&
+      c.person != props.myUserId &&
+      c.text_decrypted.indexOf("\\reaction ") != 0
+  )
+  const n: NewCommentNotification = {
+    kind: "new_comments",
+    timestamp: Math.max(...comments_new.map(c => c.timestamp)),
+    data: {
+      count: comments_new.length,
+    },
+  }
+  if (n.data.count > 0) {
+    state.notifications.push(n)
+  }
   return true
 }
 
@@ -716,7 +747,6 @@ export const commentTree = (
       sortTree(tree, (a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp == b.timestamp ? 0 : 1
       )
-      console.log("commentTree", tree)
       return tree
     }
   )

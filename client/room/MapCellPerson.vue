@@ -29,10 +29,42 @@
     "
   >
     <image
+      v-if="pictureStyle"
       :style="{ opacity: person.connected ? 1 : 0.3 }"
       :xlink:href="avatarImage"
       width="48px"
       height="48px"
+    />
+    <circle
+      v-if="abstractStyle"
+      :style="{ opacity: person.connected ? 1 : 0.3 }"
+      cx="24"
+      cy="24"
+      r="24"
+      :fill="abstractColorOfAvatar(person.avatar)"
+      :stroke="monochromeStyle ? 'black' : ''"
+      :stroke-width="monochromeStyle ? '2px' : ''"
+      :stroke-dasharray="monochromeStyle ? (person.connected ? '' : '3') : ''"
+    />
+    <path
+      v-if="abstractStyle && person.direction != 'none'"
+      :style="{ opacity: 0.3 }"
+      d="M0,0 L0,-24 A24,24 0 0,1 0,24z"
+      fill="#000"
+      class="person-abstract-front"
+      :transform="
+        'translate(24, 24) rotate(' +
+          (person.direction == 'up'
+            ? 90
+            : person.direction == 'left'
+            ? 0
+            : person.direction == 'down'
+            ? -90
+            : person.direction == 'right'
+            ? 180
+            : 0) +
+          ')'
+      "
     />
     <rect
       v-if="chat || chat_color"
@@ -97,8 +129,9 @@
 </template>
 
 <script lang="ts">
-import { PersonInMap } from "@/@types/types"
+import { PersonInMap, VisualStyle } from "@/@types/types"
 import { defineComponent, reactive, computed, PropType, toRefs } from "vue"
+import { abstractColorOfAvatar } from "./util"
 
 export default defineComponent({
   props: {
@@ -139,6 +172,10 @@ export default defineComponent({
     },
     top: {
       type: Number,
+      required: true,
+    },
+    visualStyle: {
+      type: String as PropType<VisualStyle>,
       required: true,
     },
   },
@@ -189,12 +226,34 @@ export default defineComponent({
       }
     }
 
+    const abstractStyle = computed(() => {
+      return (
+        props.visualStyle == "abstract" ||
+        props.visualStyle == "abstract_monochrome"
+      )
+    })
+
+    const pictureStyle = computed(() => {
+      return props.visualStyle == "monochrome" || props.visualStyle == "default"
+    })
+
+    const monochromeStyle = computed(() => {
+      return (
+        props.visualStyle == "monochrome" ||
+        props.visualStyle == "abstract_monochrome"
+      )
+    })
+
     return {
       ...toRefs(state),
       avatarImage,
       onDragOverMyPoster,
       onDragLeaveMyPoster,
       onDropMyPoster,
+      abstractColorOfAvatar,
+      abstractStyle,
+      pictureStyle,
+      monochromeStyle,
     }
   },
 })
@@ -233,5 +292,9 @@ export default defineComponent({
   animation-iteration-count: infinite;
 
   fill: #f64;
+}
+
+.person-abstract-front {
+  filter: saturate(1.3);
 }
 </style>

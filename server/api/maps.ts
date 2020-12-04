@@ -323,6 +323,15 @@ async function maps_api_routes(
     }
   })
 
+  fastify.get<any>("/maps/:roomId/notifications", async (req, res) => {
+    const map = model.maps[req.params.roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    return model.people.getNotifications(req["requester"], map.room_id)
+  })
+
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
     // console.log("APPROACH", req["requester"])
     emit

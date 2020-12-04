@@ -646,9 +646,9 @@ export default defineComponent({
             (await client.posters._posterId(p.id).file_url.$get()).url ||
             p.file_url
         }
-        if (p.file_url) {
-          p.file_url += "?timestamp=" + p.last_updated
-        }
+        // if (p.file_url) {
+        //   p.file_url += "?timestamp=" + p.last_updated  //CloudFront gives error
+        // }
       }
     }
 

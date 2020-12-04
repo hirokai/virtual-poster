@@ -53,12 +53,6 @@ async function routes(
 
   fastify.addHook("preHandler", protectedRoute)
 
-  fastify.get<any>("/maps/:roomId/people/:userId/poster", async req => {
-    const { userId, roomId } = req.params
-    const poster = await model.posters.getOfUser(roomId, userId)
-    return { ok: !!poster, poster: poster || undefined }
-  })
-
   fastify.get<any>("/people/:userId/posters", async req => {
     const { userId } = req.params
     const posters = await model.posters.getAllOfUser(userId)
@@ -115,28 +109,33 @@ async function routes(
     }
     if (isNaN(num)) {
       return { ok: false }
-    } else {
-      const r = await model.maps[roomId].freePosterLocation(
-        num,
-        req["requester"],
-        true
-      )
-      const last_updated = Date.now()
-      if (r.ok && r.poster_id) {
-        emit
-          .channels([roomId, req["requester"]])
-          .posterRemove(roomId, req["requester"], r.poster_id)
-        emit.channels([roomId, req["requester"]]).peopleUpdate(
-          r.viewers!.map(pid => {
-            return { id: pid, last_updated, poster_viewing: null }
-          })
-        )
-        emit
-          .channels([roomId, "::index"])
-          .room({ id: roomId, poster_count: r.poster_count })
-      }
-      return r
     }
+    const room = await model.maps[roomId]?.getMetadata()
+    const permitted =
+      req["requester_type"] == "admin" || room?.allow_poster_assignment
+    if (!permitted) {
+      throw { statusCode: 403 }
+    }
+    const r = await model.maps[roomId].freePosterLocation(
+      num,
+      req["requester"],
+      true
+    )
+    const last_updated = Date.now()
+    if (r.ok && r.poster_id) {
+      emit
+        .channels([roomId, req["requester"]])
+        .posterRemove(roomId, req["requester"], r.poster_id)
+      emit.channels([roomId, req["requester"]]).peopleUpdate(
+        r.viewers!.map(pid => {
+          return { id: pid, last_updated, poster_viewing: null }
+        })
+      )
+      emit
+        .channels([roomId, "::index"])
+        .room({ id: roomId, poster_count: r.poster_count })
+    }
+    return r
   })
 
   fastify.patch<any>("/posters/:posterId", async req => {
@@ -150,8 +149,10 @@ async function routes(
     if (!p) {
       throw { statusCode: 404 }
     }
+    const room = await model.maps[p.room]?.getMetadata()
     const permitted =
-      req["requester_type"] == "admin" || req["requester"] == p.author
+      req["requester_type"] == "admin" ||
+      (room?.allow_poster_assignment && req["requester"] == p.author)
     if (!permitted) {
       throw { statusCode: 403 }
     }
@@ -169,14 +170,16 @@ async function routes(
     emit.channels([p.room, req["requester"], p.author]).poster(p)
     return { ok: r }
   })
-
+  /*
   fastify.post<any>(
     "/maps/:roomId/people/:userId/poster/file",
     { preHandler: upload },
     async req => {
       const { userId, roomId } = req.params
+      const room = await model.maps[roomId].getMetadata()
       const permitted =
-        req["requester_type"] == "admin" || req["requester"] == userId
+        req["requester_type"] == "admin" ||
+        (room.allow_poster_assignment && req["requester"] == userId)
       if (!permitted) {
         throw { statusCode: 403 }
       } else {
@@ -194,9 +197,21 @@ async function routes(
       }
     }
   )
-
+  */
   fastify.get<any>("/posters/:posterId/file", async (req, res) => {
     const posterId: string = req.params.posterId
+    const poster = await model.posters.get(posterId)
+    if (!poster) {
+      throw { statusCode: 404, message: "Poster not found" }
+    }
+    if (
+      poster.author != req["requester"] &&
+      req["requester_type"] != "admin" &&
+      !(await model.posters.isViewing(req["requester"], poster.id))
+    ) {
+      throw { statusCode: 403 }
+    }
+
     const file = path.join(
       __dirname,
       "..",
@@ -205,18 +220,17 @@ async function routes(
       "posters",
       posterId + ".png"
     )
-    if (await existsAsync(file)) {
-      fastify.log.info("File found: " + posterId + " " + file)
-
-      const ti = Date.now()
-      const content = await readFile(file)
-      await res.send(content)
-      const tf = Date.now()
-      fastify.log.debug(`Sent file in ${tf - ti} ms.`)
-    } else {
+    if (!(await existsAsync(file))) {
       fastify.log.info("File not found: " + posterId + " " + file)
       throw { statusCode: 404 }
     }
+    fastify.log.info("File found: " + posterId + " " + file)
+
+    const ti = Date.now()
+    const content = await readFile(file)
+    await res.send(content)
+    const tf = Date.now()
+    fastify.log.debug(`Sent file in ${tf - ti} ms.`)
   })
 
   fastify.post<any>(
@@ -229,8 +243,10 @@ async function routes(
       if (!poster) {
         return { ok: false, error: "Poster not found" }
       }
+      const room = await model.maps[poster.room]?.getMetadata()
       const permitted =
-        req["requester_type"] == "admin" || req["requester"] == poster.author
+        req["requester_type"] == "admin" ||
+        (room?.allow_poster_assignment && req["requester"] == poster.author)
       if (!permitted) {
         throw { statusCode: 403 }
       }
@@ -254,45 +270,52 @@ async function routes(
       const posterId: string = req.params.posterId
       const poster = await model.posters.get(posterId)
       if (!poster) {
-        return { ok: false, error: "Poster not found" }
-      } else {
-        poster.last_updated = Date.now()
-        if (config.aws.s3.upload) {
-          const key = "files/" + posterId + ".png"
-          req.log.info("Deleting S3 file", key)
-          await s3
-            .deleteObject({
-              Bucket: S3_BUCKET as string,
-              Key: key,
-            })
-            .promise()
-          if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
-            const invalidate_items = ["/" + key]
-            req.log.info("Invalidating CloudFront cache", invalidate_items)
-            const params = {
-              DistributionId: CLOUDFRONT_ID,
-              InvalidationBatch: {
-                CallerReference: String(new Date().getTime()),
-                Paths: {
-                  Quantity: invalidate_items.length,
-                  Items: invalidate_items,
-                },
-              },
-            }
-            const data1 = await cloudfront.createInvalidation(params).promise()
-            req.log.debug(data1)
-          }
-        } else {
-          await deleteFile("db/posters/" + poster.id + ".png")
-        }
-        await model.db.query(
-          `UPDATE poster SET file_uploaded='f' WHERE id=$1`,
-          [posterId]
-        )
-        poster.file_url = undefined
-        emit.channels([poster.author, poster.room]).poster(poster)
-        return { ok: true, poster }
+        throw { statusCode: 404 }
       }
+      const room = await model.maps[poster.room]?.getMetadata()
+      const permitted =
+        req["requester_type"] == "admin" ||
+        (room?.allow_poster_assignment && req["requester"] == poster.author)
+      if (!permitted) {
+        throw { statusCode: 403 }
+      }
+      poster.last_updated = Date.now()
+      if (config.aws.s3.upload) {
+        const key = "files/" + posterId + ".png"
+        req.log.info("Deleting S3 file", key)
+        await s3
+          .deleteObject({
+            Bucket: S3_BUCKET as string,
+            Key: key,
+          })
+          .promise()
+        if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
+          const invalidate_items = ["/" + key]
+          req.log.info("Invalidating CloudFront cache", invalidate_items)
+          const params = {
+            DistributionId: CLOUDFRONT_ID,
+            InvalidationBatch: {
+              CallerReference: String(new Date().getTime()),
+              Paths: {
+                Quantity: invalidate_items.length,
+                Items: invalidate_items,
+              },
+            },
+          }
+          const data1 = await cloudfront.createInvalidation(params).promise()
+          req.log.debug(data1)
+        }
+      } else {
+        await deleteFile("db/posters/" + poster.id + ".png")
+      }
+      await model.db.query(
+        `UPDATE poster SET file_uploaded='f',file_size=NULL WHERE id=$1`,
+        [posterId]
+      )
+      poster.file_url = undefined
+      poster.file_size = undefined
+      emit.channels([poster.author, poster.room]).poster(poster)
+      return { ok: true, poster }
     }
   )
 
@@ -318,22 +341,6 @@ async function routes(
       return { ok: true, url: file_url }
     }
   })
-
-  fastify.delete<any>(
-    "/maps/:room_id/people/:user_id/poster/file",
-    async req => {
-      const { user_id, room_id } = req.params
-      const poster = await model.posters.getOfUser(room_id, user_id)
-      if (!poster) {
-        return { ok: false, error: "Poster not found" }
-      } else {
-        poster.last_updated = Date.now()
-        await deleteFile("db/posters/" + poster.id + ".png")
-        emit.channels([poster.author, poster.room]).poster(poster)
-        return { ok: true, poster }
-      }
-    }
-  )
 
   fastify.post<any>(
     "/posters/:posterId/comments",
@@ -472,14 +479,6 @@ async function routes(
     const room = req.params.roomId
     return await model.posters.getAll(room)
   })
-
-  const sleepAsync = (delay_millisec: number) => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve()
-      }, delay_millisec)
-    })
-  }
 
   fastify.post<any>(
     "/maps/:roomId/posters/refresh_files",

@@ -46,6 +46,44 @@ import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
 
+export const posterLooking: (
+  props: RoomAppProps,
+  state: RoomAppState
+) => ComputedRef<PosterId | undefined> = (
+  props: RoomAppProps,
+  state: RoomAppState
+) =>
+  computed(() => {
+    return state.people[props.myUserId]?.poster_viewing
+  })
+
+export const playBGM = (props: RoomAppProps, state: RoomAppState) => () => {
+  if (state.playingBGM) {
+    state.playingBGM.pause()
+  }
+  const audio = new Audio()
+  state.playingBGM = audio
+  audio.src = posterLooking(props, state).value
+    ? "/sound/montagu.mp3"
+    : // : "/sound/morning-murmur.mp3"
+      "/sound/harunouta.mp3"
+  audio.volume = 0.1
+  audio.loop = true
+  audio
+    .play()
+    .then(() => {
+      //
+    })
+    .catch(() => {
+      //
+    })
+}
+
+export const stopBGM = (state: RoomAppState) => () => {
+  state.playingBGM?.pause()
+  state.playingBGM = undefined
+}
+
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
   return (msg: string, timeout = 5000): void => {
     //Vue.set
@@ -77,7 +115,6 @@ export const enterPoster = (
   props: RoomAppProps,
   state: RoomAppState
 ) => async () => {
-  console.log("enterPoster() invoked")
   const pid = await new Promise<PosterId | null>(resolve => {
     const bm = state.batchMove
     if (!bm) {
@@ -125,6 +162,9 @@ export const enterPoster = (
   state.socket?.emit("Subscribe", {
     channel: pid,
   })
+  if (state.playingBGM) {
+    playBGM(props, state)()
+  }
 }
 
 export let moveOneStep = (
@@ -770,7 +810,6 @@ export const initMapService = async (
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
-  console.log("initMapService", socket)
   const client = api(axiosClient(axios))
   socket.on("Room", (data: RoomUpdateSocketData) => {
     if (data.id != props.room_id) {
@@ -812,6 +851,11 @@ export const initMapService = async (
   state.cols = data.numCols
   state.rows = data.numRows
   state.allow_poster_assignment = data.allow_poster_assignment
+  state.roomName = data.name
+  state.notifications = await client.maps
+    ._roomId(props.room_id)
+    .notifications.$get()
+    .catch(() => [])
 
   return true
 }

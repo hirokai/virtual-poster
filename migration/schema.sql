@@ -106,6 +106,7 @@ CREATE TABLE map_cell (
     kind text NOT NULL,
     poster_number integer,
     custom_image text,
+    link_url text,
     UNIQUE (room, x, y)
 );
 
@@ -135,7 +136,8 @@ CREATE TABLE stat_encountered (
 
 CREATE TABLE person_room_access (
     room text REFERENCES room (id) NOT NULL,
-    email text person (id) NOT NULL,
+    email text NOT NULL,
+    added_by text,
     "role" user_role NOT NULL,
     PRIMARY KEY (room, email)
 );

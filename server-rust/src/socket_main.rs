@@ -299,8 +299,8 @@ async fn main() -> std::io::Result<()> {
     //     "actix_server=info,actix_web=info,websocket=debug",
     // );
 
-    let s = std::fs::read_to_string("./virtual_poster.yaml")
-        .unwrap_or(std::fs::read_to_string("../virtual_poster.yaml").unwrap());
+    let s = std::fs::read_to_string("./app_config.yaml")
+        .unwrap_or(std::fs::read_to_string("../app_config.yaml").unwrap());
     let doc = &YamlLoader::load_from_str(&s).unwrap()[0];
     let port = doc["socket_server"]["port"].as_i64().unwrap();
 

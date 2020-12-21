@@ -50,8 +50,8 @@ export function range(from: number, to: number): number[] {
   return Array.from({ length: to - from }, (_, i) => i + from)
 }
 
-export function compact<T>(vs: T[]): T[] {
-  return vs.filter(Boolean)
+export function compact<T>(vs: (T | undefined | null)[]): T[] {
+  return vs.filter(Boolean) as T[]
 }
 
 export function intersection<T>(vss: T[][]): T[] {

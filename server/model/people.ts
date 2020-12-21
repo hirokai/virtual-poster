@@ -37,6 +37,19 @@ const get_pos_pg = new pg.PreparedStatement({
   text: `SELECT * from person_position WHERE room=$1 AND person=$2`,
 })
 
+async function setRedisEmailAndId(
+  email: string,
+  user_id: UserId,
+  admin?: boolean
+): Promise<void> {
+  await redis.accounts.set("email:" + email, user_id)
+  await redis.accounts.set("uid:" + user_id, email)
+  if (admin) {
+    await redis.accounts.set("email:" + email + ":admin", user_id)
+    await redis.accounts.set("uid:" + user_id + ":admin", email)
+  }
+}
+
 export async function writePeopleCache(): Promise<void> {
   try {
     const people: (PersonRDB & {
@@ -48,12 +61,7 @@ export async function writePeopleCache(): Promise<void> {
     for (const p of people) {
       const { email, id } = p
       if (email) {
-        await redis.accounts.set("email:" + email, id)
-        await redis.accounts.set("uid:" + id, email)
-        if (p.role == "admin") {
-          await redis.accounts.set("email:" + email + ":admin", id)
-          await redis.accounts.set("uid:" + id + ":admin", email)
-        }
+        await setRedisEmailAndId(email, id, p.role == "admin")
       }
       if (p.token && p.expire_at) {
         const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
@@ -267,12 +275,7 @@ export async function create(
     const uid_actual: string = (
       await db.query(`SELECT id FROM person WHERE email=$1`, [email])
     )[0].id
-    await redis.accounts.set("email:" + email, uid_actual)
-    await redis.accounts.set("uid:" + uid_actual, email)
-    if (typ == "admin") {
-      await redis.accounts.set("email:" + email + ":admin", uid_actual)
-      await redis.accounts.set("uid:" + uid_actual + ":admin", email)
-    }
+    await setRedisEmailAndId(email, uid_actual, typ == "admin")
     if (merge_strategy == "replace") {
       await db.query(`DELETE FROM person_room_access WHERE email=$1;`, [email])
     }
@@ -1040,6 +1043,10 @@ export async function removePerson(
     await db.query(`DELETE FROM stat_encountered WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM token WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM vote WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM chat_event_recipient WHERE person=$1`, [
+      user_id,
+    ])
+    await db.query(`DELETE FROM poster_comment_read WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM public_key WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person WHERE id=$1`, [user_id])
     await db.query(`COMMIT`)

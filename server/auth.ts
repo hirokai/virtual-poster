@@ -5,7 +5,7 @@ import * as admin from "firebase-admin"
 import * as jwt from "jsonwebtoken"
 import axios from "axios"
 import { config } from "./config"
-import firebaseConfig from "../firebaseConfig"
+import { readFileSync } from "fs"
 
 const DEBUG_TOKEN = config.debug_token
 
@@ -28,6 +28,13 @@ renewFirebaseAuthKeys()
 
 setInterval(renewFirebaseAuthKeys, 1000 * 60 * 60)
 
+const s = readFileSync("./firebaseConfig.json", "utf-8")
+const firebaseProjectId: string = JSON.parse(s).projectId
+
+if (!firebaseProjectId) {
+  throw "firebaseConfig.json is invalid"
+}
+
 export async function verifyIdToken(
   token: string
 ): Promise<{
@@ -35,7 +42,7 @@ export async function verifyIdToken(
   decoded?: admin.auth.DecodedIdToken
   error?: string
 }> {
-  const firebaseProject: string = firebaseConfig.projectId
+  const firebaseProject: string = firebaseProjectId
   const decode = promisify(jwt.decode)
   try {
     let decoded: admin.auth.DecodedIdToken | null = null

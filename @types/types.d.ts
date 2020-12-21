@@ -215,6 +215,8 @@ type RoomAppState = {
   }
 
   playingBGM?: HTMLAudioElement
+
+  posterContainerWidth: number
 }
 
 interface NotificationEntry {
@@ -279,6 +281,7 @@ export type Cell = {
   name?: string
   poster_number?: number
   custom_image?: string
+  link_url?: string
 }
 
 type PosterCell = Cell & {
@@ -293,6 +296,7 @@ type MapCellRDB = {
   kind: CellType
   poster_number: number | null
   custom_image: string | null
+  link_url: string | null
 }
 
 export interface CommentHistoryEntry {
@@ -419,6 +423,7 @@ export type ChatGroupRDB = {
 
 type ChatEvent = {
   kind: "event"
+  room: RoomId
   group: ChatGroupId
   person: UserId
   event_type: string

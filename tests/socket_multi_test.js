@@ -5,7 +5,7 @@ const path = require("path")
 const jsYaml = require("js-yaml")
 const fs = require("fs")
 const config = jsYaml.load(
-  fs.readFileSync(path.join(__dirname, "..", "virtual_poster.yaml"))
+  fs.readFileSync(path.join(__dirname, "..", "app_config.yaml"))
 )
 
 console.log("parent:" + process.pid)

@@ -6,9 +6,9 @@
   "author": "Hiro Kai <fullerenec84@gmail.com>",
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "yarn dev:api && vue-cli-service build && tsc && cp -r server/model/map_templates dist_server/server/model && cp firebaseConfig.js dist_server/ && cp server/virtual-poster.v1.yaml dist_server/server/",
+    "build": "yarn dev:api && vue-cli-service build && tsc && cp -r server/model/map_templates dist_server/server/model && cp server/virtual-poster.v1.yaml dist_server/server/",
     "lint": "vue-cli-service lint --no-fix",
-    "db": "psql $(./node_modules/yaml-cli/libexec/yaml get virtual_poster.yaml postgresql)",
+    "db": "psql $(./node_modules/yaml-cli/libexec/yaml get app_config.yaml postgresql)",
     "dev": "set NODE_ENV=development && nodemon -L >&2 | npm run serve",
     "dev:api": "(rm -r api || true) && openapi2aspida -i server/virtual-poster.v1.yaml",
     "init_data": "ts-node -O '{\"module\": \"commonjs\"}' server/initialize_data.ts",

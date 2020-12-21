@@ -28,8 +28,8 @@ server-rust/target/
 *.pem
 *.secret.json
 /dist_server
-virtual_poster.yaml
+app_config.yaml
 test-servers
 stats_app.*
 /api
-firebaseConfig.js
+firebaseConfig.json

@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { UserId, ChatGroup, ChatGroupId } from "../../@types/types"
+import { UserId, ChatGroup, ChatGroupId, RoomId } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { userLog } from "../model"
@@ -23,6 +23,7 @@ async function routes(
     if (joinedGroup) {
       emit.channel(req.params.roomId).group(joinedGroup)
       emit.channels(joinedGroup.users).chatEvent({
+        room: req.params.roomId,
         group: joinedGroup.id,
         person: from_user,
         kind: "event",
@@ -49,6 +50,7 @@ async function routes(
       emit.channel(room).group(leftGroup)
       emit.channels(leftGroup.users.concat([user_id])).chatEvent({
         kind: "event",
+        room,
         person: user_id,
         timestamp,
         group: leftGroup.id,
@@ -60,6 +62,7 @@ async function routes(
       if (removedGroupOldMembers) {
         emit.channels(removedGroupOldMembers.concat([user_id])).chatEvent({
           kind: "event",
+          room,
           person: user_id,
           timestamp,
           group: removedGroup,
@@ -87,6 +90,7 @@ async function routes(
       emit.channel(room).group(leftGroup)
       emit.channels(leftGroup.users.concat([personToRemove])).chatEvent({
         kind: "event",
+        room,
         person: requester,
         timestamp,
         group: leftGroup.id,
@@ -100,6 +104,7 @@ async function routes(
           .channels(removedGroupOldMembers.concat([personToRemove]))
           .chatEvent({
             kind: "event",
+            room,
             person: requester,
             timestamp,
             group: removedGroup,
@@ -112,17 +117,19 @@ async function routes(
 
   fastify.post<any>("/maps/:roomId/groups/:groupId/people", async req => {
     const personToAdd: string = req.body.userId
+    const room: RoomId = req.params.roomId
     const requester = req["requester"]
     const { ok, error, joinedGroup } = await model.chat.addMember(
-      req.params.roomId,
+      room,
       requester,
       personToAdd,
       req.params.groupId
     )
     if (joinedGroup) {
-      emit.channel(req.params.roomId).group(joinedGroup)
+      emit.channel(room).group(joinedGroup)
       emit.channels(joinedGroup.users).chatEvent({
         kind: "event",
+        room,
         group: req.params.groupId,
         person: requester,
         event_type: "add",
@@ -177,6 +184,7 @@ async function routes(
         emit.channel(roomId).group(group)
         emit.channels(group.users).chatEvent({
           kind: "event",
+          room: roomId,
           person: requester,
           timestamp,
           group: group.id,

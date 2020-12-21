@@ -373,15 +373,16 @@ async function routes(
         }
       }
       const r = await model.people.removePerson(userId)
-      try {
-        const firebase_user = await admin.auth().getUserByEmail(u.email!)
-        console.log("Deleting firebase user", firebase_user.uid)
-        await admin.auth().deleteUser(firebase_user.uid)
-        console.log("Successfully deleted user")
-      } catch (error) {
-        console.log("Error deleting Firebase user:", error)
-      }
+
       if (r.ok) {
+        try {
+          const firebase_user = await admin.auth().getUserByEmail(u.email!)
+          req.log.info("Deleting Firebase user", firebase_user.uid)
+          await admin.auth().deleteUser(firebase_user.uid)
+          req.log.info("Successfully deleted Firebase user")
+        } catch (error) {
+          req.log.error("Error deleting Firebase user:", error)
+        }
         const all_rooms = Object.keys(model.maps)
         emit.channels(all_rooms).peopleRemove([userId])
       }

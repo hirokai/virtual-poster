@@ -120,6 +120,13 @@
             stroke="none"
           />
           <rect
+            v-if="person.poster_viewing"
+            fill="#994c15"
+            :width="'' + size + 'px'"
+            :height="'' + size + 'px'"
+            opacity="0.5"
+          />
+          <rect
             v-if="size >= 5 && people_typing[person.id]"
             class="typing-indicator"
             :width="'' + size + 'px'"
@@ -128,23 +135,21 @@
           />
         </g>
       </g>
+      <g id="minimap-area">
+        <rect
+          fill="none"
+          :style="{
+            stroke: 'blue',
+            'stroke-width': 1.5,
+            'stroke-opacity': hidden ? 0 : 1,
+            x: '' + ((this.center.x - mapRadiusX) * size + 1) + 'px',
+            y: '' + ((this.center.y - mapRadiusY) * size + 1) + 'px',
+            width: size * (mapRadiusX * 2 + 1) - 2 + 'px',
+            height: size * (mapRadiusY * 2 + 1) - 2 + 'px',
+          }"
+        ></rect>
+      </g>
     </svg>
-    <div
-      id="minimap-area"
-      :style="{
-        opacity: hidden ? 0 : 1,
-        left:
-          '' +
-          ((isMobile ? 10 : 8) + (this.center.x - mapRadiusX) * size) +
-          'px',
-        top:
-          '' +
-          ((isMobile ? 0 : 612) + (this.center.y - mapRadiusY) * size) +
-          'px',
-        width: size * (mapRadiusX * 2 + 1) + 'px',
-        height: size * (mapRadiusY * 2 + 1) + 'px',
-      }"
-    ></div>
   </div>
 </template>
 
@@ -169,6 +174,8 @@ import {
   VisualStyle,
 } from "@/@types/types"
 import { abstractColorOfAvatar } from "./util"
+import { Poster } from "@/api/@types"
+import { compact, flatten, keyBy } from "@/common/util"
 
 export default defineComponent({
   props: {
@@ -190,6 +197,10 @@ export default defineComponent({
     },
     people: {
       type: Object as PropType<{ [index: string]: Person }>,
+      required: true,
+    },
+    posters: {
+      type: Object as PropType<{ [index: string]: Poster }>,
       required: true,
     },
     selectedPos: {
@@ -342,7 +353,36 @@ export default defineComponent({
       return props.visualStyle == "monochrome" || props.visualStyle == "default"
     })
 
+    const posterByCellId = computed((): { [index: string]: Poster } => {
+      return keyBy(Object.values(props.posters || {}), "location")
+    })
+
+    const imgs: { [image_name: string]: HTMLCanvasElement } = {}
+
+    const loadImage = (
+      url: string,
+      size: number
+    ): Promise<HTMLCanvasElement | undefined> => {
+      const img = new Image()
+      return new Promise<HTMLCanvasElement | undefined>(resolve => {
+        img.onload = () => {
+          const offscreenCanvas = document.createElement("canvas")
+          // document.body.appendChild(offscreenCanvas)
+          offscreenCanvas.width = Math.ceil(size)
+          offscreenCanvas.height = Math.ceil(size)
+          const ctx = offscreenCanvas.getContext("2d")!
+          ctx.drawImage(img, 0, 0, size, size)
+          resolve(offscreenCanvas)
+        }
+        img.onerror = () => {
+          resolve(undefined)
+        }
+        img.src = url
+      })
+    }
+
     const drawMap = async () => {
+      console.log("drawMap()", imgs)
       const ti = performance.now()
       const canvas = document.getElementById(
         "minimap-canvas"
@@ -356,56 +396,71 @@ export default defineComponent({
       // console.log("Minimap cell size", s, props.cells.length)
       if (pictureStyle.value) {
         // Draw a image.
-        const loadImage = (url: string, size: number) => {
-          const img = new Image()
-          return new Promise<HTMLCanvasElement>(resolve => {
-            img.onload = () => {
-              const offscreenCanvas = document.createElement("canvas")
-              // document.body.appendChild(offscreenCanvas)
-              offscreenCanvas.width = Math.ceil(size)
-              offscreenCanvas.height = Math.ceil(size)
-              const ctx = offscreenCanvas.getContext("2d")!
-              ctx.drawImage(img, 0, 0, size, size)
-              resolve(offscreenCanvas)
-            }
-            img.src = url
-          })
-        }
-        const ps = [
-          "/img/map/kusa.png",
-          "/img/map/yama.png",
-          "/img/map/water.png",
-          "/img/map/kusa_red.png",
-          "/img/map/mud.png",
-          "/img/map/post.png",
-        ].map(u => loadImage(u, s))
-        const imgs = await Promise.all(ps)
+
         // console.log("Map size", props.cells[0]?.length, props.cells.length)
         const ctx = canvas.getContext("2d")!
+        ctx.font = "bold " + s * 0.7 + "px 'sans-serif'"
+        ctx.textAlign = "center"
         for (const y in props.cells) {
           for (const x in props.cells[y]) {
             // console.log(+x, +y)
             const sx = s
             const sy = s
-            if (props.cells[y][x].kind == "grass") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "wall") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-              ctx.drawImage(imgs[1], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "water") {
-              ctx.drawImage(imgs[2], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "poster_seat") {
-              ctx.drawImage(imgs[3], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "mud") {
-              ctx.drawImage(imgs[4], +x * sx, +y * sy) // Draw the image at (20, 10).
-            } else if (props.cells[y][x].kind == "poster") {
-              ctx.drawImage(imgs[0], +x * sx, +y * sy) // Draw the image at (20, 10).
-              ctx.drawImage(imgs[5], +x * sx, +y * sy) // Draw the image at (20, 10).
+            const c = props.cells[y][x]
+            if (c.kind == "grass") {
+              const img = imgs[c.custom_image || "kusa.png"]
+              // console.log("img kusa", img)
+              if (img) {
+                ctx.drawImage(img, +x * sx, +y * sy)
+              }
+            } else if (c.kind == "wall") {
+              ctx.drawImage(imgs["kusa.png"], +x * sx, +y * sy)
+              const img = imgs[c.custom_image || "yama.png"]
+              if (img) {
+                ctx.drawImage(img, +x * sx, +y * sy)
+              }
+            } else if (c.kind == "water") {
+              const img = imgs[c.custom_image || "water.png"]
+              if (img) {
+                ctx.drawImage(img, +x * sx, +y * sy)
+              }
+            } else if (c.kind == "poster_seat") {
+              const img = imgs[c.custom_image || "kusa_red.png"]
+              if (img) {
+                ctx.drawImage(img, +x * sx, +y * sy)
+              }
+            } else if (c.kind == "mud") {
+              const img = imgs[c.custom_image || "mud.png"]
+              if (img) {
+                ctx.drawImage(img, +x * sx, +y * sy)
+              }
+            } else if (c.kind == "poster") {
+              ctx.drawImage(imgs["kusa.png"], +x * sx, +y * sy)
+              const poster = posterByCellId.value[c.id]
+              const img = imgs[c.custom_image || "post.png"]
+              if (poster) {
+                if (img) {
+                  ctx.globalAlpha = 0.5
+                  ctx.drawImage(img, +x * sx, +y * sy)
+                  ctx.globalAlpha = 1
+                }
+                ctx.fillText(
+                  "" + c.poster_number,
+                  +x * sx + sx / 2,
+                  +y * sy + 5 + sy / 2
+                )
+              } else {
+                if (img) {
+                  ctx.drawImage(img, +x * sx, +y * sy)
+                }
+              }
             }
           }
         }
       } else {
         const ctx = canvas.getContext("2d")!
+        ctx.font = "bold " + s * 0.7 + "px 'sans-serif'"
+        ctx.textAlign = "center"
         const colors = {
           grass: "#8DAC4B",
           wall: "#959174",
@@ -416,11 +471,34 @@ export default defineComponent({
         }
         for (const y in props.cells) {
           for (const x in props.cells[y]) {
+            const c = props.cells[y][x]
             // console.log(+x, +y)
             const sx = s
             const sy = s
-            ctx.fillStyle = colors[props.cells[y][x].kind] || "rgba(0,0,0,0)"
+            ctx.fillStyle = colors[c.kind] || "rgba(0,0,0,0)"
             ctx.fillRect(+x * sx, +y * sy, s, s)
+            if (c.kind == "poster") {
+              const poster = posterByCellId.value[c.id]
+              console.log(
+                poster ? "poster" : "No poster",
+                poster,
+                posterByCellId.value
+              )
+              if (poster) {
+                ctx.fillStyle = "rgba(0,0,0)"
+                console.log(
+                  "fillText",
+                  "" + c.poster_number,
+                  +x * sx + sx / 2,
+                  +y * sy + 5 + sy / 2
+                )
+                ctx.fillText(
+                  "" + c.poster_number,
+                  +x * sx + sx / 2,
+                  +y * sy + 5 + sy / 2
+                )
+              }
+            }
           }
         }
       }
@@ -433,16 +511,47 @@ export default defineComponent({
     }
 
     watch(
-      () => [state.size, props.cells, props.visualStyle],
-      async () => {
+      () => [state.size, props.cells, props.visualStyle, props.posters],
+      async (newValues, oldValues) => {
         if (state.size > 0) {
-          await drawMap()
+          if (oldValues[0] != newValues[0]) {
+            const image_names = [
+              "kusa.png",
+              "yama.png",
+              "water.png",
+              "mud.png",
+              "kusa_red.png",
+              "post.png",
+            ].concat(
+              compact(
+                flatten(props.cells).map(c => {
+                  return c.custom_image
+                })
+              )
+            )
+            console.log("Loading images", state.size, image_names)
+
+            const ps = image_names
+              .map(n => {
+                return "/img/map/" + n
+              })
+              .map(u => loadImage(u, newValues[0] as number))
+            const imgs_list = await Promise.all(ps)
+            for (let i = 0; i < image_names.length; i++) {
+              const img = imgs_list[i]
+              if (img) {
+                imgs[image_names[i]] = img
+              }
+            }
+          }
+          await requestAnimationFrame(drawMap)
         }
-      }
+      },
+      { deep: true }
     )
-    onMounted(async () => {
-      await drawMap()
-    })
+    // onMounted(async () => {
+    //   await drawMap()
+    // })
 
     const monochromeStyle = computed(() => {
       return (
@@ -495,6 +604,9 @@ svg#minimap.monochrome {
 
 #minimap-area {
   transition: opacity 0.3s linear;
+  position: absolute;
+  border: blue 1px solid;
+  position: absolute;
 }
 
 canvas#minimap-canvas {

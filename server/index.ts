@@ -32,6 +32,8 @@ import fastifyCookie from "fastify-cookie"
 import { config } from "./config"
 import axios from "axios"
 import { encodeAppNotificationData } from "../common/util"
+import { promisify } from "util"
+const readFileAsync = promisify(fs.readFile)
 
 const PRODUCTION: boolean = process.env.NODE_ENV == "production"
 
@@ -98,6 +100,25 @@ class HTTPEmitter {
   }
 }
 
+function parseRedisURL(url: string) {
+  try {
+    const host = url.split("://")[1].split(/[:/]/)[0]
+    const port = parseInt(
+      url
+        .split("://")[1]
+        .split("/")[0]
+        .split(":")[1]
+    )
+    if (isNaN(port)) {
+      throw "Port number parse failed"
+    }
+    return { host, port }
+  } catch (e) {
+    log.error("Redis URL parse error. Using localhost as default.", e)
+    return null
+  }
+}
+
 async function workerInitData(): Promise<void> {
   await model.initMapModel(POSTGRES_CONNECTION_STRING)
   if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
@@ -161,7 +182,20 @@ workerInitData()
       if (RUST_WS_SERVER) {
         registerSocket(new HTTPEmitter())
       } else {
-        registerSocket(io({ host: "localhost", port: 6379 }))
+        let host: string
+        let port: number
+
+        const r = parseRedisURL(config.redis)
+        if (r) {
+          host = r.host
+          port = r.port
+          log.info("Redis", { host, port })
+        } else {
+          log.error("Redis URL parse error. Using localhost as default.")
+          host = "localhost"
+          port = 6379
+        }
+        registerSocket(io({ host, port }))
       }
       ;(async () => {
         try {
@@ -221,6 +255,16 @@ workerInitData()
               }
             }
           )
+
+          server.get("/firebaseConfig.json", async () => {
+            try {
+              const s = await readFileAsync("./firebaseConfig.json", "utf-8")
+              const data = JSON.parse(s)
+              return data
+            } catch (err) {
+              throw { statusCode: 404 }
+            }
+          })
 
           server.listen(PORT, "0.0.0.0", err => {
             // log.info(

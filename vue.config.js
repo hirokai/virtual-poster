@@ -110,6 +110,11 @@ module.exports = {
         ws: false,
         secure: false,
       },
+      "^/firebaseConfig.json": {
+        target: "http://localhost:3000",
+        ws: false,
+        secure: false,
+      },
     },
     // headers: { "Cache-Control": "no-store" },
   },

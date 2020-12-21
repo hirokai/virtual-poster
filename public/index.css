@@ -132,8 +132,3 @@ div#poster-comments {
   user-select: none;
   transition: opacity 0.5s linear;
 }
-
-#minimap-area {
-  position: absolute;
-  border: blue 1px solid;
-}

@@ -326,7 +326,12 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
       worker: cluster && cluster.worker ? cluster.worker.id : -1,
     })
 
-    const cookies = cookie.parse(socket.handshake.headers.cookie)
+    const cookie_str: string | undefined = socket.handshake.headers.cookie
+    if (!cookie_str) {
+      log.warn("Cookie not found. Aborting connection")
+      return
+    }
+    const cookies = cookie.parse(cookie_str)
     const cookie_session_id = cookies.virtual_poster_session_id
     const user_id = await model.redis.sessions.get(
       "cookie:uid:" + cookie_session_id
@@ -579,3 +584,8 @@ export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
     })
   })
 }
+
+process.on("unhandledRejection", (reason, p) => {
+  console.log("Unhandled Rejection at: Promise", p, "reason:", reason)
+  // application specific logging, throwing an error, or other logic here
+})

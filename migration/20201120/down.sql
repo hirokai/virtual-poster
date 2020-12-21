@@ -1,0 +1,1 @@
+DROP TABLE poster_comment_read;

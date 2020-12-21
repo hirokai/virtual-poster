@@ -54,16 +54,16 @@
       class="person-abstract-front"
       :transform="
         'translate(24, 24) rotate(' +
-          (person.direction == 'up'
-            ? 90
-            : person.direction == 'left'
-            ? 0
-            : person.direction == 'down'
-            ? -90
-            : person.direction == 'right'
-            ? 180
-            : 0) +
-          ')'
+        (person.direction == 'up'
+          ? 90
+          : person.direction == 'left'
+          ? 0
+          : person.direction == 'down'
+          ? -90
+          : person.direction == 'right'
+          ? 180
+          : 0) +
+        ')'
       "
     />
     <rect
@@ -101,6 +101,15 @@
       fill="none"
       stroke-width="2"
       stroke="blue"
+    />
+    <rect
+      v-if="person.poster_viewing"
+      x="0"
+      y="0"
+      width="48"
+      height="48"
+      fill="#994c15"
+      opacity="0.5"
     />
     <rect width="46px" y="28px" height="18px" opacity="0.4" fill="white" />
     <text

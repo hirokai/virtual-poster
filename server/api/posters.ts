@@ -331,8 +331,8 @@ async function routes(
         req["requester_type"] == "admin" ||
         (await model.posters.isViewing(req["requester"], poster.id))
       ) {
-        const url = (await model.posters.get_signed_url(posterId)) || undefined
-        return { ok: !!url, url }
+        const r = (await model.posters.get_signed_url(posterId)) || undefined
+        return r ? { ok: true, url: r.url } : { ok: false }
       } else {
         throw { statusCode: 403 }
       }

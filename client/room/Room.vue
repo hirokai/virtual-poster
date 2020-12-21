@@ -82,6 +82,7 @@
       :mapRadiusX="4"
       :mapRadiusY="7"
       :people="people"
+      :posters="posters"
       :chatGroups="chatGroups"
       :avatarImages="avatarImages"
       :people_typing="people_typing"
@@ -276,10 +277,10 @@
         :class="{ hover: hoverElement == 'mypage' }"
         :href="
           '/mypage?room=' +
-            room_id +
-            (debug_as
-              ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
-              : '')
+          room_id +
+          (debug_as
+            ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
+            : '')
         "
         target="_blank"
         @mouseenter="setHoverWithDelay('mypage')"
@@ -400,6 +401,7 @@
       :mapRadiusX="5"
       :mapRadiusY="5"
       :people="people"
+      :posters="posters"
       :chatGroups="chatGroups"
       :avatarImages="avatarImages"
       :people_typing="people_typing"
@@ -428,6 +430,7 @@
       :encryptionPossibleInChat="encryption_possible_in_chat"
       :hoverElement="hoverElement"
       :highlightUnread="highlightUnread"
+      :posterContainerWidth="posterContainerWidth"
       @leave-chat="leaveChat"
       @submit-comment="submitComment"
       @update-comment="sendOrUpdateComment"
@@ -443,6 +446,7 @@
     />
     <Poster
       v-if="!botActive"
+      v-show="posterLooking"
       ref="posterComponent"
       :isMobile="isMobile"
       :myself="myself"
@@ -464,7 +468,7 @@
       @upload-poster="uploadPoster"
       @add-emoji-reaction="addEmojiReaction"
       @read-comment="readPosterComment"
-      v-show="posterLooking"
+      @set-poster-container-width="setPosterContainerWidth"
     />
     <div id="tools-on-map">
       <button
@@ -762,7 +766,10 @@ export default defineComponent({
       socket: null as SocketIOClient.Socket | null,
       peer: null,
       skywayRoom: null,
-      enableEncryption: false,
+      enableEncryption:
+        localStorage[
+          "virtual-poster:" + props.myUserId + ":config:encryption"
+        ] == "1",
       avatarImages: {} as { [index: string]: string },
 
       enableMiniMap: !props.isMobile,
@@ -853,6 +860,7 @@ export default defineComponent({
       highlightUnread: {},
       highlightUnreadPoster: {},
       playingBGM: undefined,
+      posterContainerWidth: 0,
     })
 
     props.axios.interceptors.request.use(config => {
@@ -1090,6 +1098,11 @@ export default defineComponent({
           "virtual-poster:" + props.myUserId + ":config:show_minimap"
         ) {
           state.enableMiniMap = ev.newValue != "0"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:encryption"
+        ) {
+          state.enableEncryption = ev.newValue == "1"
         }
       })
       const mm = window.matchMedia("(prefers-color-scheme: dark)")
@@ -1591,7 +1604,10 @@ export default defineComponent({
       setTimeout(
         () => {
           if (!state.highlightUnreadPoster[poster_id]) {
-            console.error("highlightUnreadPoster undefined")
+            console.error(
+              "highlightUnreadPoster undefined",
+              state.highlightUnreadPoster
+            )
             return
           }
           delete state.highlightUnreadPoster[poster_id][comment_id]
@@ -1722,6 +1738,11 @@ export default defineComponent({
       highlightUnreadPosterComments(poster_id, true)
     }
 
+    const setPosterContainerWidth = (w: number) => {
+      console.log("setPosterContainerWidth", w)
+      state.posterContainerWidth = w
+    }
+
     watch(
       () => state.comments,
       async (nv, ov) => {
@@ -1779,6 +1800,7 @@ export default defineComponent({
       playBGM: playBGM,
       stopBGM: stopBGM,
       approachPoster,
+      setPosterContainerWidth,
     }
   },
 })
@@ -2162,7 +2184,7 @@ button#leave-poster-on-map {
   border-radius: 5px;
   padding: 5px;
   color: white;
-  z-index: 100;
+  z-index: 300;
 }
 
 .with-tool-tip.hover .tooltip {

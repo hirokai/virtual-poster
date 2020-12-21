@@ -5,6 +5,7 @@
         id="poster-container"
         v-show="poster && (!isMobile || mobilePane == 'poster')"
         :class="{ mobile: isMobile }"
+        @resize="onResizePosterContainer"
       >
         <h2>
           {{
@@ -15,6 +16,29 @@
               : ""
           }}: {{ poster ? poster.title : "" }}
         </h2>
+        <div id="poster-tools">
+          <img
+            @click="zoomIn"
+            class="toolbar-icon"
+            src="/img/icon/zoom-in.png"
+            width="25"
+            height="25"
+          />
+          <img
+            @click="zoomOut"
+            class="toolbar-icon"
+            src="/img/icon/zoom-out.png"
+            width="25"
+            height="25"
+          />
+          <img
+            @click="zoomFit"
+            class="toolbar-icon"
+            src="/img/icon/maximize.png"
+            width="25"
+            height="25"
+          />
+        </div>
         <div
           id="poster"
           ref="posterImage"
@@ -30,29 +54,6 @@
           @mousedown="mouseDownPoster"
           @mousemove="mouseMovePoster"
         >
-          <div id="poster-tools">
-            <img
-              @click="zoomIn"
-              class="toolbar-icon"
-              src="/img/icon/zoom-in.png"
-              width="25"
-              height="25"
-            />
-            <img
-              @click="zoomOut"
-              class="toolbar-icon"
-              src="/img/icon/zoom-out.png"
-              width="25"
-              height="25"
-            />
-            <img
-              @click="zoomFit"
-              class="toolbar-icon"
-              src="/img/icon/maximize.png"
-              width="25"
-              height="25"
-            />
-          </div>
           <div
             id="poster-notfound"
             v-if="!!poster && posterStatus == 'not_found' && poster.author"
@@ -313,6 +314,7 @@ import {
   ref,
   computed,
   PropType,
+  onMounted,
 } from "vue"
 
 import MyPicker from "./MyPicker.vue"
@@ -366,6 +368,14 @@ export default defineComponent({
       required: true,
     },
   },
+  emits: [
+    "set-poster-container-width",
+    "set-editing-old",
+    "upload-poster",
+    "submit-poster-comment",
+    "add-emoji-reaction",
+    "read-comment",
+  ],
   setup(props, context) {
     const state = reactive({
       posterDataURI: "",
@@ -719,6 +729,22 @@ export default defineComponent({
       PosterCommentInput.value.focus()
     }
 
+    onMounted(() => {
+      const elem = document.getElementById("poster-container")
+      if (!elem) {
+        return
+      }
+      const observer = new MutationObserver(() => {
+        const width = elem.getBoundingClientRect().width
+        const height = elem.getBoundingClientRect().height
+        context.emit("set-poster-container-width", width)
+      })
+      observer.observe(elem, {
+        attributes: true,
+        attributeFilter: ["style"],
+      })
+    })
+
     watch(
       () => props.editingOld,
       (comment_id: string | undefined) => {
@@ -755,6 +781,7 @@ export default defineComponent({
         } while (el && el != document.body)
         return true
       }
+
       for (const c of Object.values(props.comments)) {
         const el = document.querySelector("#poster-comment-entry-" + c.id)
         const parent = document.querySelector("#poster-comments-container")
@@ -773,6 +800,10 @@ export default defineComponent({
           // console.warn(`${c.id} element not found`) //Probably reaction icon
         }
       }
+    }
+
+    const onResizePosterContainer = ev => {
+      console.log("resize poster container", ev)
     }
 
     return {
@@ -802,6 +833,7 @@ export default defineComponent({
       inRange,
       onInput,
       onScroll,
+      onResizePosterContainer,
     }
   },
 })
@@ -852,8 +884,11 @@ div#poster-container {
   min-width: 400px;
   min-height: 600px;
   width: calc(95vh / 1.4);
+  max-width: calc(100vw - 550px - 200px);
   height: calc(100vh - 20px);
   z-index: 200;
+  resize: horizontal;
+  overflow: hidden;
 }
 
 .dark div#poster-container {
@@ -876,6 +911,12 @@ div#poster-container {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+#poster-container h2 {
+  display: inline-block;
+  height: 40px;
+  width: calc(100% - 100px);
 }
 
 div#poster-comments-container {
@@ -936,7 +977,7 @@ div#poster-comments {
 
 div#poster {
   min-width: 400px;
-  width: calc((100vh - 52px) / 1.414);
+  /* width: calc((100vh - 52px) / 1.414); */
   min-height: 560px;
   height: calc(100vh - 52px);
   cursor: grab;
@@ -994,8 +1035,9 @@ textarea#poster-chat-input {
 
 #poster-chat-input-container {
   position: absolute;
+  left: 8px;
   bottom: 20px;
-  width: 528px;
+  width: 527px;
   z-index: 100 !important;
   padding: 10px;
 }
@@ -1009,13 +1051,17 @@ textarea#poster-chat-input {
   padding: 0px 10px;
 }
 
-.mobile #poster-tools {
+#poster-tools {
   position: absolute;
-  right: 10vw;
+  right: 0px;
+  top: 8px;
+  width: 100px;
+  height: 30px;
+  float: right;
 }
 
 #poster-tools .toolbar-icon {
-  opacity: 0.5;
+  /* opacity: 0.5; */
   margin: 0px 3px;
 }
 </style>

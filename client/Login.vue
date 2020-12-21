@@ -19,14 +19,13 @@
 </template>
 
 <script lang="ts">
-import axios from "axios"
+import axiosDefault from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 import * as firebaseui from "firebaseui"
 import jsSHA from "jssha"
 
 import { onMounted, toRefs, defineComponent, reactive } from "vue"
-import firebaseConfig from "../firebaseConfig"
 
 import { setUserInfo, deleteUserInfoOnLogout } from "./util"
 
@@ -34,10 +33,16 @@ import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 
 const API_ROOT = "/api"
-axios.defaults.baseURL = API_ROOT
+const axios = axiosDefault.create({ baseURL: API_ROOT })
 
 export default defineComponent({
-  setup() {
+  props: {
+    firebaseConfig: {
+      type: Object,
+      required: true,
+    },
+  },
+  setup(props) {
     const state = reactive({
       user: null as firebase.User | null,
       verifyStatus: "",
@@ -62,7 +67,7 @@ export default defineComponent({
     }
 
     onMounted(() => {
-      firebase.initializeApp(firebaseConfig)
+      firebase.initializeApp(props.firebaseConfig)
       const uiConfig: firebaseui.auth.Config = {
         callbacks: {
           signInSuccessWithAuthResult: authResult => {
@@ -127,7 +132,7 @@ export default defineComponent({
                   .then(() => {
                     console.log("Verification email sent")
                   })
-                  .catch(function(error) {
+                  .catch(function (error) {
                     console.error(error)
                   })
               }
@@ -148,7 +153,7 @@ export default defineComponent({
         ],
         // signInSuccessUrl: "/",
         tosUrl: "<your-tos-url>",
-        privacyPolicyUrl: function() {
+        privacyPolicyUrl: function () {
           window.location.assign("<your-privacy-policy-url>")
         },
       }

@@ -1,5 +1,5 @@
 {
-  "watch": ["server", "common", "@types", "./.env", "./virtual_poster.yaml"],
+  "watch": ["server", "common", "@types", "./.env", "./app_config.yaml"],
   "ignore": ["*.test.ts"],
   "ext": "ts,yaml",
   "exec": "ts-node",

@@ -7,6 +7,7 @@
       water: cell.kind == 'water',
       poster: cell.kind == 'poster',
       poster_seat: cell.kind == 'poster_seat',
+      link: !!cell.link_url,
       selected: selected,
     }"
     :data-x="cell.x"
@@ -22,10 +23,11 @@
     @mouseleave="$emit('hover-cell', false, { x: cell.x, y: cell.y })"
   >
     <image
-      xlink:href="/img/map/kusa.png"
+      :xlink:href="'/img/map/' + (cell.custom_image || 'kusa.png')"
       width="48px"
       height="48px"
       v-if="pictureStyle"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       class="poster-name"
@@ -38,9 +40,10 @@
     />
     <image
       v-if="cell.kind == 'poster_seat' && pictureStyle"
-      xlink:href="/img/map/kusa_red.png"
+      :xlink:href="'/img/map/' + (cell.custom_image || 'kusa_red.png')"
       width="48px"
       height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'poster_seat' && abstractStyle"
@@ -49,6 +52,7 @@
       width="48px"
       height="48px"
       fill="#A8A735"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="
@@ -61,6 +65,7 @@
       width="48px"
       height="48px"
       fill="#7E7353"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       class="poster-name"
@@ -72,8 +77,8 @@
         pictureStyle
       "
       width="46px"
-      y="28px"
-      height="18px"
+      y="4px"
+      height="30px"
       opacity="0.4"
       fill="white"
     />
@@ -86,8 +91,11 @@
         pictureStyle
       "
       :xlink:href="'/img/map/' + (cell.custom_image || 'post.png')"
-      width="48px"
-      height="48px"
+      width="80px"
+      height="80px"
+      x="-16px"
+      y="-20px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="poster && myself && poster.author == myself.id && dragOver"
@@ -104,11 +112,14 @@
       :class="{ poster_self: true, drag_over: dragOver }"
       v-if="poster && myself && poster.author == myself.id && pictureStyle"
       xlink:href="/img/map/post.png"
-      width="48px"
-      height="48px"
+      width="80px"
+      height="80px"
+      x="-16px"
+      y="-20px"
       @dragover.prevent="onDragOverMyPoster"
       @dragleave.prevent="onDragLeaveMyPoster"
       @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       :class="{ poster_self: true, drag_over: dragOver }"
@@ -131,22 +142,16 @@
         people[poster.author]
       "
       x="24px"
-      y="44px"
+      y="32px"
       :style="{
-        'font-size': 16,
-        'font-weight': 'bold',
+        'font-family': '\'Helvetica\', sans-serif',
+        'font-size': '28px',
+        'font-weight': 'bolder',
       }"
       dominant-baseline="bottom"
       text-anchor="middle"
       >{{ poster.poster_number }}</text
     >
-
-    <!-- <image
-      v-if="cell.kind == 'grass' && pictureStyle"
-      xlink:href="/img/map/kusa.png"
-      width="48px"
-      height="48px"
-    /> -->
     <rect
       v-if="cell.kind == 'grass' && abstractStyle"
       x="0"
@@ -154,12 +159,14 @@
       width="48px"
       height="48px"
       fill="#8DAC4B"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'water' && pictureStyle"
-      xlink:href="/img/map/water.png"
+      :xlink:href="'/img/map/' + (cell.custom_image || 'water.png')"
       width="48px"
       height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'water' && abstractStyle"
@@ -168,12 +175,14 @@
       width="48px"
       height="48px"
       fill="#6D8793"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'mud' && pictureStyle"
-      xlink:href="/img/map/mud.png"
+      :xlink:href="'/img/map/' + (cell.custom_image || 'mud.png')"
       width="48px"
       height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'mud' && abstractStyle"
@@ -182,12 +191,21 @@
       width="48px"
       height="48px"
       fill="#8D894E"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'wall' && pictureStyle"
-      xlink:href="/img/map/yama.png"
+      :xlink:href="'/img/map/kusa.png'"
       width="48px"
       height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
+    />
+    <image
+      v-if="cell.kind == 'wall' && pictureStyle"
+      :xlink:href="'/img/map/' + (cell.custom_image || 'yama.png')"
+      width="48px"
+      height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'wall' && abstractStyle"
@@ -196,6 +214,7 @@
       width="48px"
       height="48px"
       fill="#959174"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
   </g>
 </template>
@@ -288,6 +307,12 @@ export default defineComponent({
         context.emit("upload-poster", file, poster_id)
       }
     }
+
+    const clickLink = (url: string) => {
+      if (url && confirm("外部URLを開きますか： " + url)) {
+        window.open(url, "_blank")
+      }
+    }
     return {
       ...toRefs(state),
       onDragOverMyPoster,
@@ -295,6 +320,7 @@ export default defineComponent({
       onDropMyPoster,
       abstractStyle,
       pictureStyle,
+      clickLink,
     }
   },
 })
@@ -302,6 +328,10 @@ export default defineComponent({
 
 <style lang="css">
 g.cell {
+  cursor: default;
+}
+
+g.cell.link {
   cursor: pointer;
 }
 

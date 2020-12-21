@@ -199,7 +199,7 @@ function getSignedUrlAsync(
 
 export async function get_signed_url(
   poster_id: PosterId
-): Promise<string | null> {
+): Promise<{ url: string; file_size: number } | null> {
   try {
     const headCode = await s3
       .headObject({
@@ -208,25 +208,26 @@ export async function get_signed_url(
       })
       .promise()
     log.debug({ headCode })
+    const keyPairId = config.aws.cloud_front.key_pair_id
+    const privateKey = await readFileAsync(
+      config.aws.cloud_front.private_key,
+      "utf-8"
+    )
+    const image_url = await getSignedUrlAsync(keyPairId, privateKey, {
+      url: "https://" + config.domain + "/files/" + poster_id + ".png",
+      expires: Math.floor(Date.now() / 1000) + 60,
+    }).catch(err => {
+      log.error(err)
+      return null
+    })
+    const file_size = headCode.ContentLength
+    return image_url && file_size ? { url: image_url, file_size } : null
   } catch (err) {
     log.debug({ err })
-    if (err.code == "NotFound") {
-      return null
-    }
-  }
-  const keyPairId = config.aws.cloud_front.key_pair_id
-  const privateKey = await readFileAsync(
-    config.aws.cloud_front.private_key,
-    "utf-8"
-  )
-  const image_url = await getSignedUrlAsync(keyPairId, privateKey, {
-    url: "https://" + config.domain + "/files/" + poster_id + ".png",
-    expires: Math.floor(Date.now() / 1000) + 60,
-  }).catch(err => {
-    log.error(err)
+    // if (err.code == "NotFound") {
     return null
-  })
-  return image_url
+    // }
+  }
 }
 
 export async function startViewing(
@@ -285,7 +286,8 @@ export async function startViewing(
     )
     let image_url: string | undefined = undefined
     if (config.aws.s3.upload) {
-      image_url = (await get_signed_url(poster.id)) || undefined
+      const r = (await get_signed_url(poster.id)) || undefined
+      image_url = r ? r.url : undefined
     }
 
     return { ok: true, joined_time, image_allowed, image_url }
@@ -558,6 +560,7 @@ async function getFileSize(
 ): Promise<number | undefined> {
   if (remote) {
     const r = await axios.head(path)
+    log.debug("getFileSize", r.headers)
     return r.status == 200 ? r.headers["Content-Length"] : undefined
   } else {
     try {
@@ -583,9 +586,10 @@ export async function refreshFiles(
       let e: boolean
       let file_size: number | undefined
       if (config.aws.s3.upload) {
-        const url = await get_signed_url(poster_id)
-        if (url) {
-          file_size = await getFileSize(url, true)
+        const r = await get_signed_url(poster_id)
+        if (r) {
+          // file_size = await getFileSize(r.url, true)
+          file_size = r.file_size
           e = file_size != undefined
         } else {
           e = false

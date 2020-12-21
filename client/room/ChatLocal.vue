@@ -7,12 +7,12 @@
       width: isMobile
         ? 'calc(100vw - 20px)'
         : poster
-        ? 'calc(100% - max(68vh,570px) - 569px)'
+        ? 'calc(100% - ' + posterContainerWidth + 'px - 569px)'
         : 'calc(100% - 570px)',
       left: isMobile
         ? '10px'
         : poster
-        ? 'calc(550px + max(400px, 95vh / 1.4))'
+        ? 'calc(550px + ' + posterContainerWidth + 'px)'
         : '550px',
       top: isMobile ? '-10px' : undefined,
       height: isMobile ? 'calc(100% - 20vw)' : undefined,
@@ -491,6 +491,10 @@ export default defineComponent({
     },
     highlightUnread: {
       type: Object as PropType<{ [comment_id: string]: boolean }>,
+      required: true,
+    },
+    posterContainerWidth: {
+      type: Number,
       required: true,
     },
   },

@@ -1,5 +1,5 @@
 <template>
-  <div id="cell-info" style="font-size: 10px; height: 15px;">
+  <div id="cell-info" style="font-size: 10px; height: 15px">
     <span v-if="cell">
       <span v-if="cell" id="cell-position">{{ cell.x }}-{{ cell.y }}</span>
       <span v-if="cell && person">
@@ -19,7 +19,12 @@
       >
       <span v-else>その他</span>
     </span>
-    <span> </span>
+    <span v-if="cell && cell.link_url"
+      >(リンク
+      {{
+        cell.link_url.slice(0, 30) + (cell.link_url.length > 30 ? "..." : "")
+      }})</span
+    >
   </div>
 </template>
 

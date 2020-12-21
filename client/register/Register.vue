@@ -2,9 +2,7 @@
   <div id="app" v-cloak>
     <h1>ユーザー登録 - バーチャルポスターセッション</h1>
     <div>
-      <h2>
-        ユーザー情報を入力してください。
-      </h2>
+      <h2>ユーザー情報を入力してください。</h2>
       <div>
         <label for="register-email">Email</label>
         <input type="text" id="register-email" v-model="email" disabled />
@@ -26,31 +24,14 @@
         />
         <button @click="submitRegistration" :disabled="loginReady">登録</button>
         <transition name="fade">
-          <div v-if="loginReady" id="register-done">
-            登録が完了しました
-          </div>
+          <div v-if="loginReady" id="register-done">登録が完了しました</div>
         </transition>
       </div>
       <transition name="fade-2">
         <div v-if="loginReady">
-          <h2>秘密鍵パスフレーズ</h2>
-          <p id="explain-key">
-            このパスフレーズはチャットのエンドツーエンド暗号化に使用されます。<br />
-            紛失しない，人に見られない場所に保管してください。<br />
-            この端末のみに保存されるため，他の端末からアプリケーションを利用する場合には再度入力が必要です。<br />
-            ※同じ端末であれば，パスフレーズはマイページの「アカウント」タブからいつでも確認できます。
-          </p>
-          <button @click="show_key = !show_key">
-            秘密鍵を{{ show_key ? "隠す" : "表示する" }}
-          </button>
-          <pre id="mnemonic" v-if="show_key">{{ prv_mnemonic_formatted }}</pre>
-          <pre id="mnemonic" class="hidden" v-else
-            >{{ prv_mnemonic_formatted }}
-</pre
-          >
           <div>
             <h2>簡単な使い方</h2>
-            <p style="font-size: 14px; line-height: 1; margin: 0px;">
+            <p style="font-size: 14px; line-height: 1; margin: 0px">
               ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
             </p>
             <ul>
@@ -91,10 +72,8 @@
 </template>
 
 <script lang="ts">
-import firebaseConfig from "../../firebaseConfig"
-
 import { onMounted, toRefs, computed, defineComponent, reactive } from "vue"
-import axios from "axios"
+import axiosDefault from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
 
@@ -102,14 +81,20 @@ import * as encryption from "../encryption"
 import { chunk } from "@/common/util"
 
 const API_ROOT = "/api"
-axios.defaults.baseURL = API_ROOT
+const axios = axiosDefault.create({ baseURL: API_ROOT })
 
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
 const client = api(axiosClient(axios))
 
 export default defineComponent({
-  setup() {
+  props: {
+    firebaseConfig: {
+      type: Object,
+      required: true,
+    },
+  },
+  setup(props) {
     const state = reactive({
       email: localStorage["virtual-poster:email"] as string | undefined,
       user: null as any | null,
@@ -149,7 +134,7 @@ export default defineComponent({
     }
 
     onMounted(() => {
-      firebase.initializeApp(firebaseConfig)
+      firebase.initializeApp(props.firebaseConfig)
       firebase.auth().onAuthStateChanged(user => {
         state.user = user
       })

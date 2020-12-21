@@ -359,6 +359,7 @@ export async function getAllComments(
     (row): ChatEvent => {
       return {
         kind: "event",
+        room: room_id,
         group: row.chat_group,
         person: row.person,
         event_type: row.event_type,

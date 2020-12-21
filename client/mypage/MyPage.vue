@@ -321,7 +321,7 @@
                 >{{ privateKeyMnemonic }}
 </pre
               >
-              <span class="danger"
+              <span class="danger" v-if="privateKeyString"
                 >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
               >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
             </div>
@@ -1256,7 +1256,7 @@ export default defineComponent({
         return
       }
       const { data } = await axios.delete("/people/" + state.myUserId)
-      console.log("delete account result", r)
+      console.log("delete account result", data)
       if (data.ok) {
         localStorage.removeItem("virtual-poster:user_id")
         localStorage.removeItem("virtual-poster:email")

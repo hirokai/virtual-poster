@@ -12,6 +12,7 @@ import {
   MapCellRDB,
   Direction,
   ChatGroupId,
+  PersonInMap,
 } from "../../@types/types"
 import shortid from "shortid"
 import { redis, log, db, pgp, POSTGRES_CONNECTION_STRING } from "./index"
@@ -56,6 +57,19 @@ function adjacentCells(
     .map(([x_, y_]) => {
       return cells[y_][x_]
     })
+}
+
+async function setRedisPeoplePosition(room_id: RoomId, people: PersonInMap[]) {
+  const cmds = people.map(p => {
+    return [
+      "set",
+      "pos:" + room_id + ":" + p.id,
+      p.x + "." + p.y + "." + p.direction,
+    ]
+  })
+  await redis.accounts.pipeline(cmds).exec(() => {
+    //
+  })
 }
 
 export class MapModel {
@@ -257,14 +271,19 @@ export class MapModel {
     await this.initStaticMap()
     await this.initLiveObjects()
   }
+
+  async clearStaticMapCache(): Promise<void> {
+    await model.redis.staticMap.del("map_cache:" + this.room_id)
+  }
+
   async initStaticMap(): Promise<void> {
     const cells = await this.getAllStaticMapCellsFromRDB()
-    for (const c of cells) {
-      await redis.staticMap.set(
-        mkKey(this.room_id, c.x, c.y),
-        JSON.stringify(c)
-      )
-    }
+    const cmds = cells.map(c => {
+      return ["set", mkKey(this.room_id, c.x, c.y), JSON.stringify(c)]
+    })
+    await redis.staticMap.pipeline(cmds).exec(() => {
+      //
+    })
     const numCols =
       cells.length == 0 ? 0 : (_.max(cells.map(c => c.x || 0)) || 0) + 1
     const numRows =
@@ -272,16 +291,12 @@ export class MapModel {
     await redis.staticMap.set(this.room_id + ":num_cols", numCols)
     await redis.staticMap.set(this.room_id + ":num_rows", numRows)
   }
+
   async initLiveObjects(): Promise<void> {
     const people = await model.people.getAllPeopleList(this.room_id)
-
-    for (const p of people) {
-      await redis.accounts.set(
-        "pos:" + this.room_id + ":" + p.id,
-        p.x + "." + p.y + "." + p.direction
-      )
-    }
+    await setRedisPeoplePosition(this.room_id, people)
   }
+
   private async tryPurge(
     user_id: UserId,
     p: PosDir,
@@ -810,6 +825,9 @@ export class MapModel {
       if (r.custom_image != null) {
         r2.custom_image = r.custom_image
       }
+      if (r.link_url != null) {
+        r2.link_url = r.link_url
+      }
       return r2
     })
   }
@@ -1046,6 +1064,52 @@ export class MapModel {
   async deleteRoomFromDB(): Promise<boolean> {
     try {
       await db.query("BEGIN")
+
+      await db.query(
+        `
+      DELETE FROM announce
+      WHERE room = $1`,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
+        DELETE FROM poster_viewer
+        WHERE poster IN (
+                SELECT
+                    id
+                FROM
+                    poster
+                WHERE
+                    "location" IN (
+                        SELECT
+                            id
+                        FROM
+                            map_cell
+                        WHERE
+                            room = $1))`,
+        [this.room_id]
+      )
+      await db.query(
+        `
+        DELETE FROM chat_event_recipient
+        WHERE event IN (
+                SELECT
+                    id
+                FROM
+                    chat_event
+                WHERE
+                    room = $1)`,
+        [this.room_id]
+      )
+      await db.query(
+        `
+      DELETE FROM chat_event
+      WHERE room = 'RCm0lk9Qqy'
+      `,
+        [this.room_id]
+      )
+
       await db.query(
         `DELETE from comment_to_person where comment in (SELECT id from comment where room=$1);`,
         [this.room_id]

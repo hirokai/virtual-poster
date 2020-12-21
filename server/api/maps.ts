@@ -172,6 +172,25 @@ async function maps_api_routes(
     }
   })
 
+  fastify.post<any>("/maps/:roomId/reset_cache", async (req, res) => {
+    const map = model.maps[req.params.roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    if (req["requester_type"] != "admin") {
+      const owner = await map.getOwner()
+      if (!owner || owner != req["requester"]) {
+        return {
+          ok: false,
+          error: "You are not the admin or owner of the room.",
+        }
+      }
+    }
+    await map.clearStaticMapCache()
+    return { ok: true }
+  })
+
   fastify.patch<any>("/maps/:roomId", async (req, res) => {
     const map = model.maps[req.params.roomId]
     if (!map) {
@@ -186,8 +205,7 @@ async function maps_api_routes(
         `UPDATE room SET allow_poster_assignment=$1 WHERE id=$2`,
         [allow_poster_assignment, map.room_id]
       )
-      const key = "map_cache:" + map.room_id
-      await model.redis.staticMap.del(key)
+      await map.clearStaticMapCache()
       const data = await map.getMetadata()
       emit.room(data)
       return { ok: true }
@@ -196,21 +214,18 @@ async function maps_api_routes(
   })
 
   fastify.delete<any>("/maps/:roomId", async (req, res) => {
-    const userId = req["requester"]
     const roomId = req.params.roomId
     const m = model.maps[roomId]
     if (!m) {
       throw { statusCode: 404 }
     }
     if (req["requester_type"] != "admin") {
-      const owned_rooms = (
-        await model.db.query<{ id: RoomId }[]>(
-          `SELECT 1 FROM room WHERE room_owner=$1 AND id=$2`,
-          [userId, roomId]
-        )
-      ).map(r => r.id)
-      if (owned_rooms.length != 1) {
-        return { ok: false, error: "You are not the owner of the room." }
+      const owner = await m.getOwner()
+      if (!owner || owner != req["requester"]) {
+        return {
+          ok: false,
+          error: "You are not the admin or owner of the room.",
+        }
       }
     }
     const ok = await m.deleteRoomFromDB()
@@ -247,8 +262,7 @@ async function maps_api_routes(
         `DELETE FROM room_access_code WHERE room=$1 RETURNING code`,
         [map.room_id]
       )
-      const key = "map_cache:" + map.room_id
-      await model.redis.staticMap.del(key)
+      await map.clearStaticMapCache()
       const data = await map.getMetadata()
       emit.room(data)
       const deleted_code = rows[0]?.code
@@ -272,8 +286,7 @@ async function maps_api_routes(
         `UPDATE room_access_code SET active=$1 WHERE room=$2`,
         [active, map.room_id]
       )
-      const key = "map_cache:" + map.room_id
-      await model.redis.staticMap.del(key)
+      await map.clearStaticMapCache()
       const data = await map.getMetadata()
       emit.room(data)
 
@@ -310,8 +323,7 @@ async function maps_api_routes(
         `INSERT INTO room_access_code (code,room,granted_right,timestamp,active) VALUES ($1,$2,$3,$4,$5)`,
         [code, map.room_id, "user", Date.now(), active]
       )
-      const key = "map_cache:" + map.room_id
-      await model.redis.staticMap.del(key)
+      await map.clearStaticMapCache()
       await model.db.query(`COMMIT`)
       const data = await map.getMetadata()
       emit.room(data)

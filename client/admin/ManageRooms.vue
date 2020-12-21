@@ -243,6 +243,9 @@
           room.numRows
         }}）
       </div>
+      <div>
+        <button class="button is-primary" @click="clearMapCache">キャッシュをクリア</button>
+        </div> 
     </section>
     <section v-if="room && room_subpage == 'chat'">
       <h1>チャットグループ一覧</h1>
@@ -998,6 +1001,21 @@ export default defineComponent({
       reader.readAsText(file)
     }
 
+    const clearMapCache = async () => {
+      const room_id = props.room?.id
+      if (!room_id) {
+        console.error("Room ID is undefined")
+        return
+      }
+      const r = await client.maps._roomId(room_id).reset_cache.$post()
+      console.log("Reset cache result", r)
+      if (r.ok) {
+        alert("キャッシュをクリアしました")
+      } else {
+        alert("キャッシュをクリアできませんでした")
+      }
+    }
+
     props.socket.on("Poster", async (p: Poster) => {
       if (p.file_url == "not_disclosed") {
         p.file_url =
@@ -1089,6 +1107,7 @@ export default defineComponent({
       assignUserFile,
       onUserBatchFileChanged,
       assignUserBatch,
+      clearMapCache,
     }
   },
 })

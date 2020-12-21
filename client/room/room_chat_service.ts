@@ -565,8 +565,12 @@ export const initChatService = async (
   })
 
   socket.on("ChatEvent", (d: ChatEvent) => {
-    console.log("ChatEvent", d)
-    state.chat_events.push(d)
+    if (d.room == props.room_id) {
+      console.log("ChatEvent", d)
+      state.chat_events.push(d)
+    } else {
+      console.log("ChatEvent in the other room (ignored)", d)
+    }
   })
 
   const client = api(axiosClient(axios))
@@ -583,6 +587,7 @@ export const initChatService = async (
     if (c.kind == "event") {
       const ev: ChatEvent = {
         kind: "event",
+        room: props.room_id,
         group: c.group,
         person: c.person,
         event_type: c.event_type,

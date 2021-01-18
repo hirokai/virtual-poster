@@ -27,7 +27,7 @@ import {
 import { redis, log, db, pgp, maps, chat } from "./index"
 
 import { config } from "../config"
-import { calcDirection, isAdjacent } from "../../common/util"
+import { calcDirection, isAdjacent, removeUndefined } from "../../common/util"
 import { ChatGroupId } from "@/api/@types"
 import { genChatEventId } from "./chat"
 const DEBUG_TOKEN = config.debug_token
@@ -108,24 +108,26 @@ export async function getUserIdFromEmail(
   return await redis.accounts.get("email:" + email)
 }
 
+const allowed_profile_keys = [
+  "url",
+  "url2",
+  "url3",
+  "display_name_full",
+  "display_name_short",
+]
+
 export async function get(
   user_id: UserId,
+  room_id?: RoomId,
   with_email = false,
   with_room_access = false
-): Promise<{
-  id: UserId
-  last_updated: number
-  name: string
-  avatar?: string
-  email?: string
-  rooms?: { room_id: RoomId; pos?: PosDir }[]
-} | null> {
+): Promise<(Person & { rooms?: { room_id: RoomId; pos?: PosDir }[] }) | null> {
   const rows = with_room_access
     ? await db.query(
         `
         SELECT
             person.*,
-            string_agg(ra.room, '::::') AS rooms
+            array_agg(ra.room) AS rooms
         FROM
             person
             LEFT JOIN person_room_access AS ra ON person.email = ra.email
@@ -148,23 +150,83 @@ export async function get(
             id = $1;`,
         [user_id]
       )
-  const p =
+  const profile_rows = await db.query(
+    `
+    SELECT
+        *
+    FROM
+        person_profile
+    WHERE
+        person = $1
+    `,
+    [user_id]
+  )
+  const profile_rows_room = room_id
+    ? await db.query(
+        `
+    SELECT
+        *
+    FROM
+        person_profile
+    WHERE
+        person = $1
+        AND room = $2
+    `,
+        [user_id, room_id]
+      )
+    : []
+
+  const profiles: {
+    [key: string]: {
+      last_updated: number
+      content: string
+      metadata?: any
+    }
+  } = {}
+
+  for (const k of config.profile_keys) {
+    profiles[k] = {
+      last_updated: -1,
+      content: "",
+    }
+  }
+
+  log.debug(profile_rows.concat(profile_rows_room))
+
+  for (const p of profile_rows.concat(profile_rows_room)) {
+    if (config.profile_keys.indexOf(p.key) >= 0) {
+      profiles[p.key] = removeUndefined({
+        last_updated: +p.last_updated,
+        content: p.content,
+        metadata: p.metadata || undefined,
+      })
+    }
+  }
+
+  const p: (Person & { rooms?: { room_id: RoomId; pos?: PosDir }[] }) | null =
     rows.length == 0
       ? null
       : {
           id: rows[0].id,
           last_updated: parseInt(rows[0].last_updated),
           public_key: rows[0].public_key || undefined,
-          room: rows[0].room,
+          // room: rows[0].room,
           name: rows[0].name,
           avatar: rows[0].avatar,
           rooms:
-            rows[0].rooms?.split("::::")?.map((room_id: string) => {
+            rows[0].rooms?.map((room_id: string) => {
               return { room_id }
             }) || [],
           email: with_email
             ? (await redis.accounts.get("uid:" + user_id)) || undefined
             : undefined,
+          stats: {
+            walking_steps: 0,
+            people_encountered: [],
+            chat_count: 0,
+            chat_char_count: 0,
+          },
+          profiles,
         }
   return p
 }
@@ -180,7 +242,7 @@ export async function getUnwrap(
   email?: string
   rooms?: { room_id: RoomId; pos?: PosDir }[]
 }> {
-  const p = await get(user_id, with_email, with_room_access)
+  const p = await get(user_id, undefined, with_email, with_room_access)
   if (p) {
     return p
   } else {
@@ -362,7 +424,7 @@ export async function getAllPeopleList(
       ? db.query(
           ` SELECT
                 person.*,
-                string_agg(ra.room, '::::') AS rooms,
+                array_agg(ra.room) AS rooms,
                 k.public_key
             FROM
                 person
@@ -401,13 +463,14 @@ export async function getAllPeopleList(
       poster_viewing?: PosterId
     } = {
       name: row["name"],
-      rooms: row["rooms"] ? row["rooms"].split("::::") : [],
+      rooms: row["rooms"] || [],
       stats: {
         walking_steps: 0,
         people_encountered: [],
         chat_count: 0,
         chat_char_count: 0,
       },
+      profiles: {},
       public_key: row["public_key"],
       id: uid,
       last_updated: parseInt(row["last_updated"]),
@@ -731,13 +794,19 @@ export async function set(
     name?: string
     email?: string
     avatar?: string
+  },
+  profiles?: {
+    [key: string]: {
+      content: string
+      metadata?: any
+    }
   }
 ): Promise<void> {
   const updateObj = {
     ..._.pickBy(_.pick(data, ["name", "email", "avatar"])),
     last_updated: Date.now(),
   }
-  console.log(updateObj)
+  console.log("model.people.set", updateObj, profiles)
   const q = await pgp.helpers.update(updateObj, null, "person")
   const condition = pgp.as.format(" WHERE id=$1", person_id)
   await db.query(q + condition)
@@ -752,32 +821,98 @@ export async function set(
       await redis.accounts.set("email:" + data.email, person_id)
     }
   }
+  if (profiles) {
+    for (const [k, v] of Object.entries(profiles)) {
+      try {
+        await db.query("BEGIN")
+        // Note: with a nullable column, unique constrait cannot be used for upsert.
+        await db.query(
+          `DELETE FROM person_profile WHERE person = $1 AND "key" = $2 AND room IS NULL`,
+          [person_id, k]
+        )
+        await db.query(
+          `
+          INSERT INTO person_profile (person, last_updated, "key", content, metadata)
+              VALUES ($1, $2, $3, $4, $5);
+          `,
+          [
+            person_id,
+            updateObj.last_updated,
+            k,
+            v.content,
+            v.metadata?.description
+              ? { description: v.metadata.description }
+              : null,
+          ]
+        )
+        await db.query("COMMIT")
+      } catch (e) {
+        log.error(e)
+        await db.query("ROLLBACK")
+      }
+    }
+  }
 }
 export async function set_stats(pid: UserId, stats: PersonStat): Promise<void> {
   log.debug("set_stats() stub:", pid, stats)
   await 1
 }
 
+function decodeProperty(
+  key: string,
+  value: any
+): { is_profile: boolean; value: any } | null {
+  if (["name", "email", "avatar"].indexOf(key) >= 0) {
+    return { is_profile: false, value }
+  } else if (config.profile_keys.indexOf(key) >= 0) {
+    const content = value.content
+    const description = value.description
+    return { is_profile: true, value: { content, metadata: { description } } }
+  } else {
+    return null
+  }
+}
+
 export async function update(
   user_id: UserId,
-  obj: { [index: string]: string | number }
+  obj: { [index: string]: any }
 ): Promise<{
   keys: string[]
-  update: { id: UserId; last_updated: number; name?: string; email?: string }
+  update: {
+    id: UserId
+    last_updated: number
+    name?: string
+    email?: string
+    avatar?: string
+  }
 } | null> {
   const person = await get(user_id)
   if (!person) {
     return null
   } else {
-    log.debug(obj)
+    const updated_keys: string[] = []
     const last_updated = Date.now()
     const new_person = { ...person, last_updated }
-    const keys = _.intersection(Object.keys(obj), ["name", "email", "avatar"])
-    for (const k of keys) {
-      new_person[k] = obj[k]
+    for (const k of Object.keys(obj)) {
+      const v = decodeProperty(k, obj[k])
+      if (v) {
+        updated_keys.push(k)
+        if (v.is_profile) {
+          if (!new_person.profiles) {
+            new_person.profiles = {}
+          }
+          new_person.profiles[k] = v.value
+        } else {
+          new_person[k] = v.value
+        }
+      }
     }
-    await set(user_id, new_person)
-    return { keys: keys.concat(["last_updated"]), update: new_person }
+    if (updated_keys.length > 0) {
+      await set(user_id, new_person, new_person.profiles)
+      return { keys: updated_keys.concat(["last_updated"]), update: new_person }
+    } else {
+      return null
+    }
   }
 }
 
@@ -955,8 +1090,8 @@ export async function removePerson(
     for (const room_id of owned_rooms) {
       const ok = await maps[room_id].deleteRoomFromDB()
       if (!ok) {
-        log.warn("Deleteing owneed room failed. This must be a bug.")
-        return { ok: false, error: "Deleteing owneed room failed." }
+        log.warn("Deleting my own room failed. This must be a bug.")
+        return { ok: false, error: "Deleting my own room failed." }
       } else {
         delete maps[room_id]
       }
@@ -979,14 +1114,13 @@ export async function removePerson(
     await db.query(`DELETE FROM person_in_chat_group WHERE person=$1`, [
       user_id,
     ])
-    await db.query(
-      `DELETE FROM comment_to_person WHERE comment IN (SELECT id FROM comment WHERE person=$1)`,
-      [user_id]
-    )
-    await db.query(`DELETE FROM comment_to_person WHERE person=$1`, [user_id])
     console.log("Reply to delete 1")
     await db.query(
       `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)))));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)))));`,
       [user_id]
     )
     await db.query(
@@ -999,6 +1133,10 @@ export async function removePerson(
       [user_id]
     )
     await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1))));`,
+      [user_id]
+    )
+    await db.query(
       `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1))));`,
       [user_id]
     )
@@ -1008,12 +1146,21 @@ export async function removePerson(
       [user_id]
     )
     await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)));`,
+      [user_id]
+    )
+    await db.query(
       `DELETE from comment where id in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1)));`,
       [user_id]
     )
+
     console.log("Reply to delete 4")
     await db.query(
       `DELETE from comment_to_person where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1));`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster where comment in (SELECT id FROM comment WHERE reply_to in (SELECT id FROM comment WHERE person=$1));`,
       [user_id]
     )
     await db.query(
@@ -1023,6 +1170,10 @@ export async function removePerson(
     console.log("Reply to delete 5")
     await db.query(
       `DELETE from comment_to_person WHERE comment IN (SELECT id FROM comment WHERE person=$1);`,
+      [user_id]
+    )
+    await db.query(
+      `DELETE from comment_to_poster WHERE comment IN (SELECT id FROM comment WHERE person=$1);`,
       [user_id]
     )
     await db.query(`DELETE from comment where person=$1;`, [user_id])
@@ -1048,6 +1199,7 @@ export async function removePerson(
     ])
     await db.query(`DELETE FROM poster_comment_read WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM public_key WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM person_profile WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person WHERE id=$1`, [user_id])
     await db.query(`COMMIT`)
     await redis.accounts.del("email:" + email)

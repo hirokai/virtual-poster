@@ -23,10 +23,24 @@
     @mouseleave="$emit('hover-cell', false, { x: cell.x, y: cell.y })"
   >
     <image
-      :xlink:href="'/img/map/' + (cell.custom_image || 'kusa.png')"
+      xlink:href="/img/map/kusa.png"
       width="48px"
       height="48px"
-      v-if="pictureStyle"
+      v-if="pictureStyle && cell.kind == 'grass'"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
+    />
+    <image
+      xlink:href="/img/map/kusa_red.png"
+      width="48px"
+      height="48px"
+      v-if="pictureStyle && cell.kind == 'poster'"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
+    />
+    <image
+      :xlink:href="'/img/map/' + cell.custom_image"
+      width="48px"
+      height="48px"
+      v-if="pictureStyle && cell.custom_image"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
@@ -40,7 +54,14 @@
     />
     <image
       v-if="cell.kind == 'poster_seat' && pictureStyle"
-      :xlink:href="'/img/map/' + (cell.custom_image || 'kusa_red.png')"
+      xlink:href="/img/map/kusa_red.png"
+      width="48px"
+      height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
+    />
+    <image
+      v-if="cell.kind == 'poster_seat' && pictureStyle && cell.custom_image"
+      :xlink:href="'/img/map/' + cell.custom_image"
       width="48px"
       height="48px"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
@@ -163,7 +184,14 @@
     />
     <image
       v-if="cell.kind == 'water' && pictureStyle"
-      :xlink:href="'/img/map/' + (cell.custom_image || 'water.png')"
+      xlink:href="/img/map/water.png"
+      width="48px"
+      height="48px"
+      @click="cell.link_url ? clickLink(cell.link_url) : null"
+    />
+    <image
+      v-if="cell.kind == 'water' && pictureStyle && cell.custom_image"
+      :xlink:href="'/img/map/' + cell.custom_image"
       width="48px"
       height="48px"
       @click="cell.link_url ? clickLink(cell.link_url) : null"

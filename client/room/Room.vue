@@ -65,6 +65,7 @@
       :chatGroupOfUser="chatGroupOfUser"
       :selectedPos="selectedPos"
       :selectedUsers="selectedUsers"
+      :personInFront="personInFront"
       :people_typing="people_typing"
       :avatarImages="avatarImages"
       @select="updateSelectedPos"
@@ -173,6 +174,20 @@
           このポスターを閲覧すると<br />足あとが記録されます
         </span>
       </div>
+      <button
+        id="start-chat-on-map"
+        @click="startChatInFront"
+        v-if="!myChatGroup && personInFront"
+      >
+        会話を始める
+      </button>
+      <button
+        id="view-info-person-on-map"
+        @click="viewInfoPersonInFront"
+        v-if="!myChatGroup && personInFront"
+      >
+        プロフィール
+      </button>
       <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
         会話から離脱
       </button>
@@ -185,7 +200,13 @@
     >
       ポスターから離脱
     </button>
-    <div id="message" :class="{ hide: message.hide }">
+    <div
+      id="message"
+      :class="{ hide: message.hide }"
+      :style="{
+        background: message.color,
+      }"
+    >
       <div id="message-close" @click="hideMessage">&times;</div>
       {{ message.text }}
     </div>
@@ -277,10 +298,10 @@
         :class="{ hover: hoverElement == 'mypage' }"
         :href="
           '/mypage?room=' +
-          room_id +
-          (debug_as
-            ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
-            : '')
+            room_id +
+            (debug_as
+              ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
+              : '')
         "
         target="_blank"
         @mouseenter="setHoverWithDelay('mypage')"
@@ -382,6 +403,7 @@
       :chatGroupOfUser="chatGroupOfUser"
       :selectedPos="selectedPos"
       :selectedUsers="selectedUsers"
+      :personInFront="personInFront"
       :people_typing="people_typing"
       :avatarImages="avatarImages"
       :visualStyle="visualStyle"
@@ -501,13 +523,88 @@
       >
         ポスターから離脱
       </button>
-
+      <button
+        id="start-chat-on-map"
+        @click="startChatInFront"
+        v-if="!myChatGroup && personInFront"
+      >
+        会話を始める
+      </button>
+      <button
+        id="view-info-person-on-map"
+        @click="viewInfoPersonInFront"
+        v-if="!myChatGroup && personInFront"
+        :class="{ 'poster-adjacent': adjacentPoster }"
+      >
+        プロフィール
+      </button>
       <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
         会話から離脱
       </button>
-      <div id="message" :class="{ hide: message.hide }">
+      <div
+        id="message"
+        :class="{ hide: message.hide }"
+        :style="{
+          background: message.color,
+        }"
+      >
         <div id="message-close" @click="hideMessage">&times;</div>
         {{ message.text }}
+      </div>
+      <div
+        id="person-info"
+        v-if="personInfo.person"
+        :class="{ hide: personInfo.hide }"
+        :style="{
+          background: personInfo.color,
+        }"
+      >
+        <div id="person-info-close" @click="hidePersonInfo">&times;</div>
+        <div
+          v-if="personInfo.person.profiles?.display_name_full?.content"
+          style="font-weight: bold; font-size: 14px"
+        >
+          {{ personInfo.person.profiles?.display_name_full?.content }} （{{
+            personInfo.person.name
+          }}）
+        </div>
+        <div v-else style="font-weight: bold; font-size: 14px">
+          {{ personInfo.person.name }}
+        </div>
+        <div
+          style="font-weight: bold; font-size: 14px"
+          v-if="personInfo.person.profiles?.affiliation"
+        >
+          {{ personInfo.person.profiles.affiliation.content }}
+        </div>
+        <div
+          v-for="[k, v] in Object.entries(personInfo.person.profiles)"
+          :key="k"
+        >
+          <span
+            v-if="
+              ['url', 'url2', 'url3'].indexOf(k) >= 0 &&
+                v.content.indexOf('http') == 0
+            "
+            style="font-size: 12px"
+          >
+            <div style="font-weight: bold">
+              {{ showProfileKind(k)
+              }}{{
+                v.metadata?.description ? ": " + v.metadata?.description : ""
+              }}
+            </div>
+            <div>
+              <a :href="v.content" target="_blank">{{
+                v.content.length > 60
+                  ? v.content.slice(0, 30) +
+                    "..." +
+                    v.content.slice(v.content.length - 30, v.content.length)
+                  : v.content
+              }}</a>
+            </div>
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -557,7 +654,7 @@ import ChatLocal from "./ChatLocal.vue"
 import Notification from "./Notification.vue"
 import MyPage from "../mypage/MyPage.vue"
 
-import { inRange, keyBy, sortBy } from "@/common/util"
+import { inRange, keyBy, sortBy, showProfileKind } from "@/common/util"
 import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
@@ -578,10 +675,12 @@ import {
   chatGroupOfUser,
   myChatGroup as _myChatGroup,
   commentTree as _commentTree,
+  startChat,
 } from "./room_chat_service"
 
 import {
   showMessage as showMessage_,
+  showPersonInfo as showPersonInfo_,
   moveByArrow,
   cellsMag,
   initMapService,
@@ -590,6 +689,7 @@ import {
   playBGM as _playBGM,
   stopBGM as _stopBGM,
   posterLooking as _posterLooking,
+  personInFront as _personInFront,
 } from "./room_map_service"
 
 import {
@@ -635,8 +735,7 @@ const setupSocketHandlers = (
   })
 
   socket.on("Greeting", d => {
-    console.log("Greeting received.", d?.worker)
-    // socket.emit("Active", { room: props.room_id, user: props.myUserId })
+    console.log("Greeting received.", d)
   })
 
   socket.on("Announce", d => {
@@ -802,11 +901,8 @@ export default defineComponent({
       inputFocused: false,
 
       oneStepAccepted: false,
-      message: { hide: true } as {
-        text?: string
-        hide: boolean
-        timer?: number
-      },
+      message: { hide: true },
+      personInfo: { hide: true },
 
       socket_active: false,
 
@@ -864,7 +960,7 @@ export default defineComponent({
     })
 
     props.axios.interceptors.request.use(config => {
-      if (props.debug_as) {
+      if (props.debug_token) {
         config.params = config.params || {}
         config.params["debug_as"] = props.debug_as
         config.params["debug_token"] = props.debug_token
@@ -891,6 +987,8 @@ export default defineComponent({
     const adjacentPoster = _adjacentPoster(props, state)
 
     const showMessage = showMessage_(props, state)
+
+    const showPersonInfo = showPersonInfo_(props, state)
 
     const posterComponent = ref<typeof Poster>()
 
@@ -1015,6 +1113,34 @@ export default defineComponent({
       }
     }
 
+    const updateSelectedPos = (
+      pos: {
+        x: number
+        y: number
+        event: MouseEvent
+      } | null
+    ) => {
+      state.selectedPos = pos
+      if (!pos) {
+        state.selectedUsers = new Set()
+        return
+      }
+      const person: PersonInMap | undefined = Object.values(state.people).find(
+        person =>
+          person.id != props.myUserId && person.x == pos.x && person.y == pos.y
+      )
+      if (
+        person &&
+        myself.value &&
+        Math.abs(myself.value.x - person.x) <= 1 &&
+        Math.abs(myself.value.y - person.y) <= 1
+      ) {
+        state.selectedUsers = new Set([person.id])
+      } else {
+        state.selectedUsers = new Set()
+      }
+    }
+
     const inputArrowKey = (key: ArrowKey): boolean => {
       const me = myself.value
       if (!me) {
@@ -1030,6 +1156,7 @@ export default defineComponent({
         }
         return true
       } else {
+        updateSelectedPos(null)
         const { error } = moveByArrow(props.axios, props, state, me, key)
         if (error == "during_chat") {
           showMessage("会話中は動けません。動くためには一度退出してください。")
@@ -1382,6 +1509,10 @@ export default defineComponent({
       state.message.hide = true
     }
 
+    const hidePersonInfo = () => {
+      state.personInfo.hide = true
+    }
+
     const dblClick = async (p: Point) => {
       state.selectedPos = null
       await dblClickHandler(props, state, props.axios)(p)
@@ -1419,29 +1550,6 @@ export default defineComponent({
         : undefined
     })
 
-    const updateSelectedPos = (pos: {
-      x: number
-      y: number
-      event: MouseEvent
-    }) => {
-      console.log(pos, event)
-      state.selectedPos = pos
-      const person: PersonInMap | undefined = Object.values(state.people).find(
-        person =>
-          person.id != props.myUserId && person.x == pos.x && person.y == pos.y
-      )
-      if (
-        person &&
-        myself.value &&
-        Math.abs(myself.value.x - person.x) <= 1 &&
-        Math.abs(myself.value.y - person.y) <= 1
-      ) {
-        state.selectedUsers = new Set([person.id])
-      } else {
-        state.selectedUsers = new Set()
-      }
-    }
-
     const hoverOnCell = (p: { x: number; y: number; person?: PersonInMap }) => {
       state.cellOnHover = { cell: state.hallMap[p.y][p.x], person: p.person }
     }
@@ -1466,6 +1574,7 @@ export default defineComponent({
         alert("Myself not set")
         return
       }
+      updateSelectedPos(null)
       const id = window.setInterval(() => {
         const dir = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"][
           Math.floor(Math.random() * 4)
@@ -1521,6 +1630,8 @@ export default defineComponent({
     }
 
     const posterLooking = _posterLooking(props, state)
+
+    const personInFront = _personInFront(props, state)
 
     const moveToPane = (pane: string) => {
       if ((pane == "poster" || pane == "poster_chat") && !posterLooking.value) {
@@ -1716,7 +1827,7 @@ export default defineComponent({
     }
 
     const sleepAsync = (delay_millisec: number) => {
-      return new Promise(resolve => {
+      return new Promise<void>(resolve => {
         setTimeout(() => {
           resolve()
         }, delay_millisec)
@@ -1741,6 +1852,34 @@ export default defineComponent({
     const setPosterContainerWidth = (w: number) => {
       console.log("setPosterContainerWidth", w)
       state.posterContainerWidth = w
+    }
+
+    const startChatInFront = async () => {
+      const p = personInFront.value
+      if (myChatGroup.value || !p) {
+        return
+      }
+      state.selectedUsers.clear()
+      state.selectedUsers.add(p.id)
+      const r = await startChat(props, state, props.axios)
+      if (r) {
+        console.log(r)
+        showMessage("会話を開始しました")
+      }
+    }
+
+    const viewInfoPersonInFront = async () => {
+      const p1 = personInFront.value
+      if (!p1) {
+        return
+      }
+      const p = await client.people._userId(p1.id).$get()
+      console.log("viewInfoPersonInFront", p)
+      let s = "名前: " + p.name + ""
+      if (p.profiles) {
+        s += "　プロフィール: " + JSON.stringify(p.profiles)
+      }
+      showPersonInfo(p, 30 * 1000)
     }
 
     watch(
@@ -1770,6 +1909,7 @@ export default defineComponent({
       onInputTextChange,
       cellsMag: cellsMag(state, props.isMobile ? 4 : 5, props.isMobile ? 6 : 5),
       hideMessage,
+      hidePersonInfo,
       dblClick,
       toggleBot,
       setEditingOld,
@@ -1801,6 +1941,10 @@ export default defineComponent({
       stopBGM: stopBGM,
       approachPoster,
       setPosterContainerWidth,
+      personInFront,
+      startChatInFront,
+      viewInfoPersonInFront,
+      showProfileKind,
     }
   },
 })
@@ -1918,6 +2062,27 @@ button#leave-chat-on-map {
   width: 120px;
   height: 26px;
   left: 400px;
+  top: 60px;
+}
+
+button#start-chat-on-map {
+  position: absolute;
+  width: 120px;
+  height: 26px;
+  left: 400px;
+  top: 60px;
+}
+
+button#view-info-person-on-map {
+  position: absolute;
+  width: 120px;
+  height: 26px;
+  left: 400px;
+  top: 90px;
+}
+
+button#view-info-person-on-map.poster-adjacent {
+  left: 270px;
   top: 60px;
 }
 
@@ -2097,6 +2262,32 @@ button#leave-poster-on-map {
   font-weight: bold !important;
   float: right;
   cursor: pointer;
+}
+
+#person-info {
+  position: absolute;
+  word-break: break-all;
+  top: 400px;
+  left: 50px;
+  width: 440px;
+  height: 160px;
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(200, 200, 255, 0.9);
+  box-shadow: 2px 2px 2px #8c8;
+  /* animation: opacity 1s linear; */
+}
+
+#person-info-close {
+  border: 1px solid black;
+  font-size: 14px !important ;
+  font-weight: bold !important;
+  float: right;
+  cursor: pointer;
+}
+
+#person-info.hide {
+  display: none;
 }
 
 .icon-link {

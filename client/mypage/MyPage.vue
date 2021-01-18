@@ -117,7 +117,7 @@
           id="tab-map"
           v-if="tab == 'rooms' && tab_sub == undefined"
         >
-          <section>
+          <section style="display: none">
             <h5 class="title is-5">アクセスコード</h5>
             <label for="access_code">アクセスコード</label>
             <input
@@ -181,31 +181,116 @@
         </div>
         <div class="tab-content" id="tab-account" v-if="tab == 'account'">
           <section>
-            <h5 class="title is-5">基本情報</h5>
+            <h5 class="title is-5">基本情報・プロフィール</h5>
             <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
             <div class="info-entry">
-              表示名:
+              <span class="key">ユーザーID</span> {{ myUserId }}
+            </div>
+            <div class="info-entry">
+              <span class="key">Email</span> {{ user ? user.email : "(不明)" }}
+            </div>
+            <div class="info-entry">
+              <span class="key">表示名（短縮）</span>
               <span v-if="editing.name">
                 <input
                   class="name-field"
                   type="text"
                   ref="inputName"
                   @keydown.enter="saveName"
-                />
-                <span class="edit-btn" @click="saveName">OK</span>
-                <span class="edit-btn" @click="editing.name = null"
-                  >キャンセル</span
-                >
+                /><br />
+                <button class="edit-btn" @click="saveName">OK</button>
+                <button class="edit-btn" @click="editing.name = button">
+                  キャンセル
+                </button>
               </span>
               <span v-else>
                 <span class="name-field">{{ myself.name }} </span>
-                <span class="edit-btn" @click="startEditingName">Edit</span>
+                <button class="edit-btn" @click="startEditingName">編集</button>
               </span>
             </div>
-            <div class="info-entry">ユーザーID: {{ myUserId }}</div>
-            <div class="info-entry">
-              Email: {{ user ? user.email : "(不明)" }}
+            <div
+              class="info-entry"
+              v-for="[profile, key] in myProfilesOrdered"
+              :key="key"
+            >
+              <span class="key" v-if="!hasDescription(key)">{{
+                showProfileKind(key, profile)
+              }}</span>
+              <span v-if="editingProfile[key] && hasDescription(key)">
+                <div class="profile-row">
+                  <label
+                    class="profile-title"
+                    :for="'profile-' + key + '-input'"
+                    >{{ showProfileKind(key, profile) }}</label
+                  >
+                  <input class="input-profile" ref="inputProfile" /><br />
+                </div>
+                <div class="profile-row">
+                  <label
+                    class="profile-title"
+                    :for="'profile-' + key + '-description-input'"
+                  >
+                    説明
+                  </label>
+                  <input
+                    type="text"
+                    class="input-profile"
+                    ref="inputProfileDescription"
+                    :id="'profile-' + key + '-description-input'"
+                  />
+                </div>
+                <div class="profile-row">
+                  <button class="edit-btn" @click="saveProfile(key, $event)">
+                    OK
+                  </button>
+                  <button class="edit-btn" @click="delete editingProfile[key]">
+                    キャンセル
+                  </button>
+                </div>
+              </span>
+              <span v-else-if="editingProfile[key]">
+                <div class="profile-row">
+                  <input class="input-profile" ref="inputProfile" />
+                </div>
+                <div class="profile-row">
+                  <button class="edit-btn" @click="saveProfile(key, $event)">
+                    OK
+                  </button>
+                  <button class="edit-btn" @click="delete editingProfile[key]">
+                    キャンセル
+                  </button>
+                </div>
+              </span>
+              <span v-else-if="hasDescription(key)">
+                <div class="profile-row">
+                  <span class="profile-title">{{
+                    showProfileKind(key, profile)
+                  }}</span>
+                  <span class="profile-value">{{ profile.content }}</span>
+                </div>
+                <div class="profile-row">
+                  <span class="profile-title">説明 </span>
+                  <span class="profile-value">
+                    {{ profile.metadata?.description }}
+                  </span>
+                </div>
+                <div class="profile-row">
+                  <button class="edit-btn" @click="startEditingProfile(key)">
+                    編集
+                  </button>
+                </div>
+              </span>
+
+              <span v-else class="show-profile">
+                <div class="profile-row">
+                  <span>{{ profile.content }}</span>
+                  <button class="edit-btn" @click="startEditingProfile(key)">
+                    編集
+                  </button>
+                </div>
+              </span>
             </div>
+
             <!-- <div class="info-entry">
         話しかけた人:
         <span v-for="pid in myself.stats.people_encountered" :key="pid">
@@ -397,7 +482,7 @@ import {
   RoomUpdateSocketData,
   VisualStyle,
 } from "@/@types/types"
-import { keyBy, difference, range, chunk } from "@/common/util"
+import { keyBy, difference, range, chunk, showProfileKind } from "@/common/util"
 import io from "socket.io-client"
 import * as encryption from "../encryption"
 import * as BlindSignature from "blind-signatures"
@@ -473,7 +558,7 @@ export default defineComponent({
     const name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
     const email = localStorage["virtual-poster:email"]
-    const myUserId = debug_as || user_id
+    const myUserId: string = debug_as || user_id
     if (!(name && user_id && email)) {
       location.href = "/login"
     }
@@ -498,6 +583,7 @@ export default defineComponent({
         user_id: string
       } | null,
       myUserId: myUserId,
+      myself: null as Person | null,
       debug_as,
       debug_token,
       jwt_hash: localStorage["virtual-poster:jwt_hash"] as string | undefined,
@@ -515,6 +601,8 @@ export default defineComponent({
       },
 
       editing: { name: null } as { name: string | null },
+
+      editingProfile: {} as { [key: string]: boolean },
 
       lastUpdated: null as number | null,
       tabs: [
@@ -600,12 +688,29 @@ export default defineComponent({
       "#17becf",
     ]
 
-    const myself = computed((): Person | null => {
-      return state.myUserId ? state.people[state.myUserId] : null
-    })
+    if (state.myUserId) {
+      client.people
+        ._userId(state.myUserId)
+        .$get()
+        .then(d => {
+          state.myself = d
+        })
+        .catch(() => {
+          //
+        })
+    }
+
+    watch<UserId | null>(
+      () => state.myUserId,
+      async () => {
+        state.myself = state.myUserId
+          ? await client.people._userId(state.myUserId).$get()
+          : null
+      }
+    )
 
     const bgImage = (n: string) => {
-      if (myself.value) {
+      if (state.myself) {
         const data_url =
           state.avatarImages[
             n + "-" + (state.mouseOnAvatar[n] ? state.bgPosition : "down")
@@ -841,9 +946,9 @@ export default defineComponent({
     const inputName = ref<HTMLInputElement>()
 
     const startEditingName = async () => {
-      state.editing.name = myself.value?.name || null
+      state.editing.name = state.myself?.name || null
       await nextTick(() => {
-        inputName.value!.value = myself.value?.name || ""
+        inputName.value!.value = state.myself?.name || ""
       })
     }
 
@@ -865,9 +970,71 @@ export default defineComponent({
         ._userId(state.myUserId)
         .$patch({ body: { name: new_name } })
       console.log(data)
-      //Vue.set
       state.people[state.myUserId].name = new_name
+      state.myself!.name = new_name
       state.editing.name = null
+    }
+
+    const inputProfile = ref<HTMLInputElement>()
+    const inputProfileDescription = ref<HTMLInputElement>()
+
+    const startEditingProfile = async (key: string) => {
+      const me = state.myself
+      if (!me) {
+        return
+      }
+      for (const [k, v] of Object.entries(state.editingProfile)) {
+        state.editingProfile[k] = false
+      }
+      state.editingProfile[key] = true
+      await nextTick(() => {
+        inputProfile.value!.value = me.profiles![key].content || ""
+        if (inputProfileDescription.value) {
+          inputProfileDescription.value!.value =
+            me.profiles![key].metadata?.description || ""
+        }
+      })
+    }
+
+    const saveProfile = async (
+      profile_key: string,
+      ev: KeyboardEvent & MouseEvent
+    ) => {
+      if (ev.keyCode && ev.keyCode !== 13) {
+        return
+      }
+      const new_value = inputProfile.value!.value.trim()
+      const new_description = inputProfileDescription.value?.value
+      // if (!new_value) {
+      //   alert("文字を入力してください。")
+      //   state.editing.name = null
+      //   return
+      // }
+      if (["url", "url2", "url3"].indexOf(profile_key) >= 0) {
+        if (
+          new_value != "" &&
+          new_value.indexOf("http://") != 0 &&
+          new_value.indexOf("https://") != 0
+        ) {
+          alert("URLが正しくありません")
+          return
+        }
+      }
+      console.log(state.myUserId, new_value)
+      const obj: { [key: string]: any } = {}
+      obj[profile_key] = { content: new_value }
+      if (new_description) {
+        obj[profile_key].description = new_description
+      }
+      const data = await client.people
+        ._userId(state.myUserId)
+        .$patch({ body: obj })
+      console.log(data)
+      state.myself!.profiles![profile_key].content = new_value
+      state.myself!.profiles![profile_key].metadata = {
+        description: new_description,
+      }
+      delete state.editingProfile[profile_key]
     }
 
     const signOut = async () => {
@@ -1432,6 +1599,44 @@ export default defineComponent({
       state.mapVisualStyle = n
     }
 
+    const hasDescription = (key: string) => {
+      return ["url", "url2", "url3"].indexOf(key) >= 0
+    }
+
+    const myProfilesOrdered = computed(() => {
+      const me = state.myself
+      if (!me) {
+        return []
+      } else {
+        const keyIndex = (k: string): number => {
+          if (k == "display_name_short") {
+            return 10
+          } else if (k == "display_name_full") {
+            return 20
+          } else if (k == "affiliation") {
+            return 25
+          } else if (k == "url") {
+            return 31
+          } else if (k == "url2") {
+            return 32
+          } else if (k == "url3") {
+            return 33
+          } else {
+            return 100
+          }
+        }
+        const ps = Object.entries(me.profiles || {}).map<
+          [{ content: string; last_updated: number; metadata?: any }, string]
+        >(([k, v]) => {
+          return [v, k]
+        })
+        ps.sort((a, b) => {
+          return keyIndex(a[1]) - keyIndex(b[1])
+        })
+        return ps
+      }
+    })
+
     return {
       ...toRefs(state),
       name_colors,
@@ -1451,6 +1656,10 @@ export default defineComponent({
       inputName,
       startEditingName,
       saveName,
+      startEditingProfile,
+      inputProfile,
+      inputProfileDescription,
+      saveProfile,
       setPoster,
       deletePoster,
       updateLastLoaded,
@@ -1459,7 +1668,6 @@ export default defineComponent({
         return n.toString().padStart(3, "0")
       }),
       page_from,
-      myself,
       submitAccessCode,
       exportLog,
       AccessCodeInput,
@@ -1472,6 +1680,9 @@ export default defineComponent({
       deleteAccessCode,
       setDarkMode,
       setStyle,
+      showProfileKind,
+      hasDescription,
+      myProfilesOrdered,
     }
   },
 })
@@ -1483,10 +1694,20 @@ export default defineComponent({
   float: right;
 }
 .info-entry {
-  height: 30px;
-  padding: 0px;
+  min-height: 30px;
+  padding: 0px 10px;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  margin: 10px 0px;
   vertical-align: baseline;
 }
+
+.info-entry .key {
+  font-weight: bold;
+  display: inline-block;
+  min-width: 130px;
+}
+
 h1 {
   font-size: 24px;
   margin: 0px;
@@ -1535,7 +1756,10 @@ div.name-color.current {
   font-size: 12px;
   border: 1px #555 solid;
   border-radius: 3px;
-  padding: 2px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  margin-left: 5px;
+  height: 25px;
 }
 .name-field {
   font-size: 16px;
@@ -1616,5 +1840,27 @@ div.poster-entry {
 .is-6 {
   margin-top: 10px;
   margin-bottom: 0px;
+}
+
+.input-profile {
+  width: calc(100% - 300px);
+}
+
+.show-profile {
+  word-break: break-all;
+}
+
+.profile-row {
+  min-height: 30px;
+}
+
+.profile-title {
+  display: inline-block;
+  width: 100px;
+  font-weight: bold;
+}
+
+.profile-value {
+  word-break: break-all;
 }
 </style>

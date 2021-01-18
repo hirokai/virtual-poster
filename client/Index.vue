@@ -83,6 +83,7 @@ import { deleteUserInfoOnLogout } from "./util"
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import io from "socket.io-client"
+import { RoomId } from "@/api/@types"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -97,13 +98,15 @@ const debug_token: string | undefined =
 const logged_in = !!JSON.parse(url.searchParams.get("logged_in") || "false")
 export default defineComponent({
   setup() {
+    const access_code = new URL(location.href).searchParams.get("code")
+
     const name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
     const email = localStorage["virtual-poster:email"]
     const admin = localStorage["virtual-poster:admin"] == "1"
     if (!name || !user_id || !email) {
       console.warn("Not logged in.", user_id, email, name)
-      location.href = "/login"
+      location.href = "/login" + (access_code ? "?code=" + access_code : "")
     }
     const dark_local_storage =
       localStorage["virtual-poster:" + user_id + ":config:dark_mode"]
@@ -133,7 +136,9 @@ export default defineComponent({
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
-    onMounted(() => {
+    const client = api(axiosClient(axios))
+
+    onMounted(async () => {
       axios.interceptors.request.use(config => {
         if (debug_as && debug_token) {
           config.params = config.params || {}
@@ -144,102 +149,116 @@ export default defineComponent({
           return config
         }
       })
-      const client = api(axiosClient(axios))
-      ;(async () => {
-        console.log("User:", state.user)
-        if (debug_as && debug_token) {
-          console.log("Initializing debug mode...", debug_as)
-          state.myUserId = debug_as
+      console.log("User:", state.user)
+      if (debug_as && debug_token) {
+        console.log("Initializing debug mode...", debug_as)
+        state.myUserId = debug_as
+        state.rooms = await client.maps.$get()
+        state.loggedIn = "Yes"
+        const data = await client.id_token.$post({
+          body: { token: "DEBUG_BYPASS", debug_from: "Index" },
+        })
+        console.log("/id_token result", data)
+
+        state.myUserId = data.user_id || null
+        if (data.ok) {
+          state.admin = data.admin || false
           state.rooms = await client.maps.$get()
-          state.loggedIn = "Yes"
-          const data = await client.id_token.$post({
-            body: { token: "DEBUG_BYPASS", debug_from: "Index" },
-          })
-          console.log("/id_token result", data)
-
-          state.myUserId = data.user_id || null
-          if (data.ok) {
-            state.admin = data.admin || false
-            state.rooms = await client.maps.$get()
-            state.logged_in = true
-          } else {
-            state.registered = false
-            console.log("User auth failed")
-            location.reload()
-          }
-          return
-        }
-        if (!state.user) {
-          state.loggedIn = "No"
-          location.href = "/login"
-        } else {
-          state.socket = io("/", {
-            transports: ["websocket"],
-          })
-          state.socket.on("Room", (d: RoomUpdateSocketData) => {
-            const room = state.rooms.find(r => r.id == d.id)
-            if (room) {
-              if (d.allow_poster_assignment != undefined) {
-                room.allow_poster_assignment = d.allow_poster_assignment
-              }
-              if (d.poster_count != undefined) {
-                room.poster_count = d.poster_count
-              }
-              if (d.num_people_joined != undefined) {
-                room.num_people_joined = d.num_people_joined
-              }
-              if (d.num_people_active != undefined) {
-                room.num_people_active = d.num_people_active
-              }
-            }
-          })
-          const onConnected = () => {
-            const socket = state.socket!
-            console.log("Socket connected")
-            state.socket_active = true
-            socket.emit("Active", {
-              room: "::index",
-              user: state.myUserId,
-            })
-            // socket.emit("Subscribe", {
-            //   channel: "::index",
-            // })
-          }
-          state.socket.on("connection", onConnected)
-          state.socket.on("connect", onConnected)
-          state.loggedIn = "Yes"
-          console.log("Already registered", state.user)
-          state.myUserId = state.user.user_id
-          if (state.myUserId) {
-            localStorage["virtual-poster:user_id"] = state.myUserId
-          }
-          state.rooms = await client.maps.$get().catch(err => {
-            console.log(err)
-            if (err.response.status == 403) {
-              location.href = "/login"
-            }
-            return []
-          })
-          const data = await client.public_key.$get()
-          console.log("/public_key result", data)
-
-          await encryption.setupEncryption(
-            axios,
-            state.myUserId,
-            data.public_key
-          )
           state.logged_in = true
+        } else {
+          state.registered = false
+          console.log("User auth failed")
+          location.reload()
+        }
+        return
+      }
+      if (!state.user) {
+        state.loggedIn = "No"
+        location.href = "/login" + (access_code ? "?code=" + access_code : "")
+      } else {
+        state.socket = io("/", {
+          transports: ["websocket"],
+        })
+        state.socket.on("Room", (d: RoomUpdateSocketData) => {
+          const room = state.rooms.find(r => r.id == d.id)
+          if (room) {
+            if (d.allow_poster_assignment != undefined) {
+              room.allow_poster_assignment = d.allow_poster_assignment
+            }
+            if (d.poster_count != undefined) {
+              room.poster_count = d.poster_count
+            }
+            if (d.num_people_joined != undefined) {
+              room.num_people_joined = d.num_people_joined
+            }
+            if (d.num_people_active != undefined) {
+              room.num_people_active = d.num_people_active
+            }
+          }
+        })
+        const onConnected = () => {
+          const socket = state.socket!
+          console.log("Socket connected")
+          state.socket_active = true
+          socket.emit("Active", {
+            room: "::index",
+            user: state.myUserId,
+          })
+          // socket.emit("Subscribe", {
+          //   channel: "::index",
+          // })
+        }
+        state.socket.on("connection", onConnected)
+        state.socket.on("connect", onConnected)
+        state.loggedIn = "Yes"
+        console.log("Already registered", state.user)
+        state.myUserId = state.user.user_id
+        if (state.myUserId) {
+          localStorage["virtual-poster:user_id"] = state.myUserId
+        }
+        let access_code_added: RoomId[] | undefined = undefined
+        if (access_code) {
+          const r = await client.people
+            ._userId(user_id)
+            .access_code.$post({ body: { access_code } })
+          access_code_added = r.added
+        }
+        state.rooms = await client.maps.$get().catch(err => {
+          console.log(err)
+          if (err.response.status == 403) {
+            location.href =
+              "/login" + (access_code ? "?code=" + access_code : "")
+          }
+          return []
+        })
+        const data = await client.public_key.$get()
+        console.log("/public_key result", data)
 
-          /*
+        await encryption.setupEncryption(axios, state.myUserId, data.public_key)
+        state.logged_in = true
+        /*
+        if (access_code_added) {
+          if (access_code_added.length > 0) {
+            alert(
+              "アクセスコードにより，部屋へのアクセスが追加されました：" +
+                access_code_added
+                  .map(rid => state.rooms.find(r => r.id == rid)?.name)
+                  .filter(Boolean)
+                  .join("，")
+            )
+          } else {
+            alert("何も追加されませんでした。")
+          }
+        }
+        */
+
+        /*
           const shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" })
           shaObj.update(idToken)
           const jwt_hash = shaObj.getHash("HEX")
           localStorage["virtual-poster:jwt_hash"] = jwt_hash
           */
-        }
-      })().catch(err => {
-        console.log(err)
-      })
+      }
     })
 
     const signOut = async () => {

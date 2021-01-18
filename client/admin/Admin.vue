@@ -20,9 +20,9 @@
         <h1>アナウンス</h1>
         <select name="" id="" v-model="announceRoom">
           <option value="">部屋を選択</option>
-          <option :value="room.id" v-for="room in rooms" :key="room.id">{{
-            room.name
-          }}</option>
+          <option :value="room.id" v-for="room in rooms" :key="room.id">
+            {{ room.name }}
+          </option>
           <option value="">----</option>
           <option value="__all__">すべての部屋</option>
         </select>
@@ -250,6 +250,7 @@ export default defineComponent({
         last_updated: d.last_updated,
         avatar: d.avatar || p.avatar,
         stats: d.stats || p.stats,
+        profiles: d.profiles || p.profiles,
         public_key: d.public_key || p.public_key,
         email: p.email,
         connected: d.connected != undefined ? d.connected : p.connected,

@@ -20,11 +20,64 @@
               <h3>{{ room.name }}</h3>
               <div>{{ room.description || "" }}</div>
             </div>
-            <div style="clear:both"></div>
+            <div
+              class="room-kind-entry"
+              :class="{
+                active: roomKind == 'custom',
+                dragover: dragoverCustom,
+              }"
+              @click="selectKind('custom')"
+              @dragover.prevent
+              @drop.prevent="onDrop"
+              @dragover="dragoverCustom = true"
+              @dragleave="dragoverCustom = false"
+            >
+              <h3>カスタム</h3>
+              <div>
+                自作のレイアウトをドラッグ＆ドロップでアップロードします
+              </div>
+            </div>
+            <div style="clear: both"></div>
+          </div>
+          <div>
+            <h2>レイアウト</h2>
+            <div v-if="room_info">
+              <div>
+                横{{ room_info.numCols }} x 縦{{ room_info.numRows }} （計{{
+                  room_info.numCells
+                }}マス）
+              </div>
+              <div>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>セル名</th>
+                      <th>種類</th>
+                      <th>カスタム画像</th>
+                      <th>URL</th>
+                      <th>マスの数</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(v, k) in room_info.cellTable" :key="k">
+                      <td>{{ k }}</td>
+                      <td>{{ v.kind }}</td>
+                      <td>{{ v.custom_image }}</td>
+                      <td>{{ v.link_url }}</td>
+                      <td>{{ numCellsByCellTypeId(k) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <span v-else-if="roomKind == 'custom'"
+              >（ファイルを上記の枠内にドラッグすると情報が表示されます）</span
+            >
+            <span v-else>情報がありません</span>
           </div>
           <div>
             <h2>会場の名前</h2>
-            <input type="text" ref="roomName" />
+            <input type="text" ref="roomName" style="margin-left: 10px" />
           </div>
           <div>
             <h2>設定</h2>
@@ -33,19 +86,20 @@
               name=""
               id="new-room-config-allow-self-assign-poster"
               v-model="allowPosterAssignment"
+              style="margin-left: 10px"
             />
             <label for="new-room-config-allow-self-assign-poster"
               >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
             >
           </div>
           <div>
-            <h3>注意</h3>
+            <h3>備考</h3>
             <ul>
               <li>
-                部屋の作成者のメールアドレスは，部屋の参加者に対して表示されます。
+                部屋の作成者のメールアドレスが，部屋の参加者に対して表示されます。
               </li>
               <li>
-                作成した会場の削除はマイページの「マップ」タブから可能です。
+                作成した会場の削除や設定変更はマイページの「マップ」タブから可能です。
               </li>
             </ul>
             <button class="btn" id="submit" @click="submit">作成する</button>
@@ -82,7 +136,7 @@
 <script lang="ts">
 import { defineComponent, reactive, onMounted, toRefs, ref } from "vue"
 
-import { Room, UserId } from "../@types/types"
+import { Cell, CellType, Room, UserId } from "../@types/types"
 
 import axios from "axios"
 import * as encryption from "./encryption"
@@ -90,6 +144,8 @@ import { deleteUserInfoOnLogout } from "./util"
 
 import axiosClient from "@aspida/axios"
 import api from "../api/$api"
+import { loadCustomMapCsv } from "@/common/maps"
+import { flatten } from "@/common/util"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -110,17 +166,52 @@ type RoomTemplate = {
 const logged_in = !!JSON.parse(url.searchParams.get("logged_in") || "false")
 export default defineComponent({
   setup() {
-    const name = localStorage["virtual-poster:name"]
+    const user_name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
     const email = localStorage["virtual-poster:email"]
     const admin = localStorage["virtual-poster:admin"] == "1"
-    if (!name || !user_id || !email) {
+    if (!user_name || !user_id || !email) {
       console.warn("Not logged in.", user_id, email, name)
       location.href = "/login"
     }
+
+    const roomInfoTable: {
+      [name: string]: {
+        numCols: number
+        numRows: number
+        numCells: number
+        cellTable: {
+          [name: string]: { kind: CellType; custom_image?: string }
+        }
+        cells: (Cell & { cell_type_id: string })[][]
+      }
+    } = {
+      small: {
+        numCols: 20,
+        numRows: 20,
+        numCells: 20 * 20,
+        cellTable: {},
+        cells: [],
+      }, //FIXME: cell data needs to be filled
+      medium: {
+        numCols: 55,
+        numRows: 42,
+        numCells: 55 * 42,
+        cellTable: {},
+        cells: [],
+      },
+      large: {
+        numCols: 161,
+        numRows: 82,
+        numCells: 161 * 82,
+        cellTable: {},
+        cells: [],
+      },
+    }
+
     const state = reactive({
       myUserId: null as string | null,
-      user: { name, user_id, email, admin } as {
+      user: { name: user_name, user_id, email, admin } as {
         name: string
         email: string
         user_id: string
@@ -153,6 +244,19 @@ export default defineComponent({
       roomKind: "small",
       allowPosterAssignment: true,
       result: { ok: undefined as boolean | undefined, message: "" },
+      dragoverCustom: false,
+      csv_str: undefined as string | undefined,
+      room_info: roomInfoTable["small"] as
+        | {
+            numCols: number
+            numRows: number
+            numCells: number
+            cellTable: {
+              [name: string]: { kind: CellType; custom_image?: string }
+            }
+            cells: (Cell & { cell_type_id: string })[][]
+          }
+        | undefined,
     })
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
@@ -233,6 +337,13 @@ export default defineComponent({
 
     const selectKind = (kind: string) => {
       state.roomKind = kind
+      state.room_info = roomInfoTable[kind]
+    }
+
+    const numCellsByCellTypeId = (cell_type_id: string) => {
+      return flatten(state.room_info?.cells || []).filter(
+        c => c.cell_type_id == cell_type_id
+      ).length
     }
 
     const roomName = ref<HTMLInputElement>()
@@ -247,7 +358,8 @@ export default defineComponent({
       const r = await client.maps.$post({
         body: {
           name,
-          template: state.roomKind,
+          template: state.roomKind == "custom" ? undefined : state.roomKind,
+          data: state.roomKind == "custom" ? state.csv_str : undefined,
           allow_poster_assignment: state.allowPosterAssignment,
         },
       })
@@ -281,6 +393,62 @@ export default defineComponent({
       location.href = "/room?room_id=" + room_id
     }
 
+    const onDrop = async (event: any) => {
+      state.dragoverCustom = false
+      state.roomKind = "custom"
+      const client = api(axiosClient(axios))
+      const fileList: File[] = event.target.files
+        ? event.target.files
+        : event.dataTransfer.files
+      if (fileList.length == 0) {
+        return false
+      }
+      const files: File[] = []
+      for (let i = 0; i < fileList.length; i++) {
+        files.push(fileList[i])
+      }
+      console.log(files)
+
+      const file = files[0]
+      if (!file) {
+        console.error("File not found")
+      } else if (file.type != "text/csv") {
+        console.error("File type invalid")
+        alert("ファイルはCSVファイルのみです")
+      } else if (file.size >= 10e6) {
+        alert("ファイルが10 MB以下にしてください")
+      } else {
+        const fileReader = new FileReader()
+        fileReader.onload = async event => {
+          const csv_str = event.target!.result as string
+          const r = loadCustomMapCsv(csv_str)
+          console.log(r)
+          if (r) {
+            if (r.name) {
+              roomName.value!.value = r.name
+            }
+            if (r.allowPosterAssignment != undefined) {
+              state.allowPosterAssignment = r.allowPosterAssignment
+            }
+            roomInfoTable["custom"] = {
+              numRows: r.numRows,
+              numCols: r.numCols,
+              numCells: r.numCells,
+              cellTable: r.cell_table,
+              cells: r.cells,
+            }
+            state.room_info = roomInfoTable["custom"]
+
+            state.csv_str = csv_str
+            // await client.maps.$post({
+            //   body: { name, data: csv_str },
+            // })
+          }
+        }
+        fileReader.readAsText(file)
+      }
+    }
+
     return {
       ...toRefs(state),
       signOut,
@@ -290,6 +458,8 @@ export default defineComponent({
       submit,
       selectKind,
       roomName,
+      numCellsByCellTypeId,
+      onDrop,
     }
   },
 })
@@ -355,6 +525,10 @@ body {
 
 .room-kind-entry.active {
   border: 2px solid blue;
+}
+
+.room-kind-entry.dragover {
+  background: rgb(156, 191, 156);
 }
 
 input[type="text"] {

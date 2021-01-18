@@ -295,6 +295,15 @@ function onMoveSocket(d: MoveSocketData, socket: SocketIO.Socket, log: any) {
       if (result.group_removed) {
         emit.channel(d.room).groupRemove(result.group_removed)
       }
+      if (result.poster_left) {
+        emit.channel(d.room).peopleUpdate([
+          {
+            id: result.user,
+            last_updated: Date.now(),
+            poster_viewing: null,
+          },
+        ])
+      }
     }
     log.debug("Moved", d.room, d.user, d.x, d.y)
     userLog({
@@ -319,11 +328,15 @@ function addHandler(
   })
 }
 
-export function setupSocketHandlers(io: SocketIO.Server, log: bunyan): void {
+export function setupSocketHandlers(
+  io: SocketIO.Server,
+  log: bunyan,
+  instance_id?: string
+): void {
   io.on("connection", async (socket: SocketIO.Socket) => {
     log.info("Connected:", socket.id)
     socket.emit("Greeting", {
-      worker: cluster && cluster.worker ? cluster.worker.id : -1,
+      instance_id,
     })
 
     const cookie_str: string | undefined = socket.handshake.headers.cookie

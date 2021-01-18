@@ -408,8 +408,11 @@ export default defineComponent({
             const sy = s
             const c = props.cells[y][x]
             if (c.kind == "grass") {
-              const img = imgs[c.custom_image || "kusa.png"]
-              // console.log("img kusa", img)
+              const img_bg = imgs["kusa.png"]
+              if (img_bg) {
+                ctx.drawImage(img_bg, +x * sx, +y * sy)
+              }
+              const img = c.custom_image ? imgs[c.custom_image] : undefined
               if (img) {
                 ctx.drawImage(img, +x * sx, +y * sy)
               }
@@ -420,17 +423,29 @@ export default defineComponent({
                 ctx.drawImage(img, +x * sx, +y * sy)
               }
             } else if (c.kind == "water") {
-              const img = imgs[c.custom_image || "water.png"]
+              const img_bg = imgs["water.png"]
+              if (img_bg) {
+                ctx.drawImage(img_bg, +x * sx, +y * sy)
+              }
+              const img = c.custom_image ? imgs[c.custom_image] : undefined
               if (img) {
                 ctx.drawImage(img, +x * sx, +y * sy)
               }
             } else if (c.kind == "poster_seat") {
-              const img = imgs[c.custom_image || "kusa_red.png"]
+              const img_bg = imgs["kusa_red.png"]
+              if (img_bg) {
+                ctx.drawImage(img_bg, +x * sx, +y * sy)
+              }
+              const img = c.custom_image ? imgs[c.custom_image] : undefined
               if (img) {
                 ctx.drawImage(img, +x * sx, +y * sy)
               }
             } else if (c.kind == "mud") {
-              const img = imgs[c.custom_image || "mud.png"]
+              const img_bg = imgs["mud.png"]
+              if (img_bg) {
+                ctx.drawImage(img_bg, +x * sx, +y * sy)
+              }
+              const img = c.custom_image ? imgs[c.custom_image] : undefined
               if (img) {
                 ctx.drawImage(img, +x * sx, +y * sy)
               }

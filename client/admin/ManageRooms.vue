@@ -178,6 +178,7 @@
             >
               削除
             </button>
+            <div>URL: <input id='access-code-url' type="text" readonly :value="accessCodeUrl || '（なし）'"></div>
           </div>
           <input
             type="checkbox"
@@ -246,6 +247,29 @@
       <div>
         <button class="button is-primary" @click="clearMapCache">キャッシュをクリア</button>
         </div> 
+        <div>
+          <svg :width="48 * ((mapCells && mapCells[0]) ? mapCells[0].length : 0)" :height="48 * (mapCells ? mapCells.length : 0)">
+            <g v-for='(row,yi) in mapCells' :key="yi" :transform="'translate(0 '+(yi*48)+')'">
+    
+    <MapCell
+        v-for="(cell, xi) in row"
+        :cell="cell"
+        :myself="people[myUserId]"
+        :people="people"
+        :key="'' + xi + '.' + yi"
+        :selected="
+          !!selectedMapPos && cell.x == selectedMapPos.x && cell.y == selectedMapPos.y
+        "
+        :left="(cell.x) * 48"
+        :top="0"
+        :visualStyle="'default'"
+        @select="selectMapCell"
+        @hover-cell="hoverCell"
+      />
+     
+                  </g>
+          </svg>
+        </div>
     </section>
     <section v-if="room && room_subpage == 'chat'">
       <h1>チャットグループ一覧</h1>
@@ -446,7 +470,6 @@ import {
   PersonWithEmailRooms,
   AccessRule,
   PersonWithMapAccess,
-  RoomUpdateSocketData,
 } from "@/@types/types"
 import axiosDefault from "axios"
 import { AxiosStatic } from "axios"
@@ -474,11 +497,13 @@ import {
   UserId,
 } from "@/api/@types"
 import ManageRoomPosters from "./ManageRoomPosters.vue"
+import MapCell from "../room/MapCell.vue"
 import { findUser } from "../util"
 
 export default defineComponent({
   components: {
     ManageRoomPosters,
+    MapCell,
   },
   props: {
     admin_page: {
@@ -555,11 +580,18 @@ export default defineComponent({
         register?: boolean
         enter?: boolean
       }[],
+      mapCells: undefined as Cell[][] | undefined,
+      selectedMapPos: undefined as { x: number; y: number } | undefined,
     })
 
     const chatGroupsSorted = computed(() => {
       return sortBy(Object.values(state.chatGroups), g => g.timestamp)
     })
+
+    const loadMapCells = async (room_id: RoomId) => {
+      const cells = (await client.maps._roomId(room_id).$get()).cells
+      state.mapCells = cells
+    }
 
     const loadPeopleInMap = async () => {
       const room_id = props.room?.id
@@ -663,6 +695,9 @@ export default defineComponent({
         await loadChatGroups()
         await loadPeopleInMap()
         await loadPosterLocations(room.id)
+        await loadMapCells(room.id)
+      } else {
+        console.error("Room ID empty")
       }
     }
 
@@ -1076,6 +1111,23 @@ export default defineComponent({
       }
     )
 
+    const accessCodeUrl = computed(() => {
+      const code = props.room?.access_code?.code
+      if (code) {
+        return new URL(location.href).origin + "/?code=" + code
+      } else {
+        return undefined
+      }
+    })
+
+    const hoverCell = () => {
+      //
+    }
+
+    const selectMapCell = () => {
+      //
+    }
+
     return {
       ...toRefs(state),
       deleteRoom,
@@ -1108,6 +1160,9 @@ export default defineComponent({
       onUserBatchFileChanged,
       assignUserBatch,
       clearMapCache,
+      accessCodeUrl,
+      hoverCell,
+      selectMapCell,
     }
   },
 })
@@ -1143,9 +1198,10 @@ div.table-column-tool {
   font-weight: bold;
   cursor: default;
 }
+
 span.access-code {
   display: inline-block;
-  width: 150px;
+  width: 250px;
 }
 
 #user-list-tools {
@@ -1168,5 +1224,11 @@ span.access-code {
 }
 #chat-groups:nth-child(2) {
   width: 100px;
+}
+
+#access-code-url {
+  width: 400px;
+  height: 30px;
+  font-size: 14px;
 }
 </style>

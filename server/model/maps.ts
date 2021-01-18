@@ -11,7 +11,6 @@ import {
   TryToMoveResult,
   MapCellRDB,
   Direction,
-  ChatGroupId,
   PersonInMap,
 } from "../../@types/types"
 import shortid from "shortid"
@@ -19,6 +18,11 @@ import { redis, log, db, pgp, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
 import _ from "lodash"
 import { mkKey, calcDirection, isOpenCell } from "../../common/util"
+import {
+  getCellOpenFromString,
+  getCellKindFromString,
+  mkKindString,
+} from "../../common/maps"
 import cluster from "cluster"
 import * as Posters from "./posters"
 import { config } from "../config"
@@ -26,13 +30,11 @@ import { emit } from "../socket"
 import { promisify } from "util"
 import fs from "fs"
 import path from "path"
-import { NullableBoolean } from "aws-sdk/clients/xray"
 const readFile = promisify(fs.readFile)
 
 const USE_S3_CDN = config.aws.s3.via_cdn
 const S3_BUCKET = config.aws.s3.bucket
 const CDN_DOMAIN = config.aws.cloud_front.domain
-const DEFAULT_ROOMS = config.default_rooms
 
 function adjacentCells(
   cells: Cell[][],
@@ -82,7 +84,7 @@ export class MapModel {
   }
   static async mkNewRoom(
     name: string,
-    map_data: string,
+    map_data: string | { cells: Cell[][]; numRows: number; numCols: number },
     allow_poster_assignment: boolean,
     owner?: UserId
   ): Promise<{ map?: MapModel; error?: string }> {
@@ -99,11 +101,13 @@ export class MapModel {
       [room_id, name, owner, allow_poster_assignment]
     )
     const m = new MapModel(room_id, name)
-    const res = await m.importMapString(map_data)
+    const res =
+      typeof map_data == "string" ? MapModel.parseMapString(map_data) : map_data
     if (!res) {
       await db.query(`DELETE FROM room WHERE id=$1`, [room_id])
       return { error: "Import failed" }
     }
+    await m.importMapData(res)
     model.maps[room_id] = m
     return { map: m }
   }
@@ -400,7 +404,8 @@ export class MapModel {
     }
     return null
   }
-  static loadMapString(
+
+  static parseMapString(
     str: string
   ): {
     cells: Cell[][]
@@ -416,15 +421,15 @@ export class MapModel {
         const rs: Cell[] = _.map(_.range(numCols), x => {
           const id = MapModel.genMapCellId()
           if (map_rows[y][x] == ".") {
-            return { id, x, y, kind: "grass" }
+            return { id, x, y, kind: "grass", open: true }
           } else if (map_rows[y][x] == "W") {
-            return { id, x, y, kind: "wall" }
+            return { id, x, y, kind: "wall", open: false }
           } else if (map_rows[y][x] == "P") {
-            return { id, x, y, kind: "poster" }
+            return { id, x, y, kind: "poster", open: false }
           } else if (map_rows[y][x] == "M") {
-            return { id, x, y, kind: "mud" }
+            return { id, x, y, kind: "mud", open: true }
           } else if (map_rows[y][x] == "{") {
-            return { id, x, y, kind: "water" }
+            return { id, x, y, kind: "water", open: false }
           } else {
             throw "Invalid map element." + map_rows[y][x]
           }
@@ -452,36 +457,54 @@ export class MapModel {
     }
   }
 
-  async importMapString(
-    str: string
-  ): Promise<{ cells: Cell[][]; numRows: number; numCols: number } | null> {
-    // Import and overwrite the map with string data.
-    const map = MapModel.loadMapString(str)
-    if (!map) {
-      return null
-    }
+  async importMapData(map: {
+    cells: Cell[][]
+    numRows: number
+    numCols: number
+  }): Promise<{ cells: Cell[][]; numRows: number; numCols: number } | null> {
     let poster_number = 0
-    for (const cs of _.chunk(_.flatten(map.cells), 1000)) {
-      const dataMulti = cs.map(c => {
-        if (c.kind == "poster") {
-          poster_number += 1
-        }
-        return {
-          id: c.id,
-          room: this.room_id,
-          x: c.x,
-          y: c.y,
-          kind: c.kind,
-          poster_number: c.kind == "poster" ? poster_number : null,
-        }
-      })
-      await db.none(
-        pgp.helpers.insert(
-          dataMulti,
-          ["id", "room", "x", "y", "kind", "poster_number"],
-          "map_cell"
+    try {
+      await db.query("BEGIN")
+      for (const cs of _.chunk(_.flatten(map.cells), 1000)) {
+        const dataMulti = cs.map(c => {
+          if (c.kind == "poster") {
+            poster_number += 1
+          }
+          return {
+            id: c.id,
+            room: this.room_id,
+            x: c.x,
+            y: c.y,
+            kind: mkKindString(c.kind, c.open),
+            poster_number: c.kind == "poster" ? poster_number : null,
+            custom_image: c.custom_image,
+            link_url: c.link_url,
+            no_initial_position: c.no_initial_position,
+          }
+        })
+
+        await db.none(
+          pgp.helpers.insert(
+            dataMulti,
+            [
+              "id",
+              "room",
+              "x",
+              "y",
+              "kind",
+              "poster_number",
+              "custom_image",
+              "link_url",
+              "no_initial_position",
+            ],
+            "map_cell"
+          )
         )
-      )
+      }
+      await db.query("COMMIT")
+    } catch (err) {
+      log.error("DB error", err)
+      await db.query("ROLLBACK")
     }
     //Reload Redis cache
     await this.writeRedisCache()
@@ -548,7 +571,7 @@ export class MapModel {
     status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
   }> {
     log.debug("assignUserPosition()", user_id)
-    const user = await model.people.get(user_id, true)
+    const user = await model.people.get(user_id, undefined, true)
     if (!user) {
       return { ok: false, status: "DoesNotExist" }
     }
@@ -688,7 +711,8 @@ export class MapModel {
             room=$1
             AND (x,y) NOT IN
                 (SELECT x,y FROM person_position WHERE room=$1)
-            AND kind NOT IN ('water','wall','poster','poster_seat')
+            AND kind IN ('grass', 'mud', 'poster_seat', '+water', '+wall', '+poster')
+            AND (no_initial_position IS NULL OR no_initial_position='f')
         ORDER BY RANDOM()
         LIMIT 1
             RETURNING x,y;
@@ -815,9 +839,10 @@ export class MapModel {
     return rows.map(r => {
       const r2: Cell = {
         id: r.id,
+        open: getCellOpenFromString(r.kind),
         x: r.x,
         y: r.y,
-        kind: r.kind,
+        kind: getCellKindFromString(r.kind) || "grass",
       }
       if (r.poster_number != null) {
         r2.poster_number = r.poster_number
@@ -1074,6 +1099,14 @@ export class MapModel {
 
       await db.query(
         `
+      DELETE FROM room_access_code
+      WHERE room = $1
+      `,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
         DELETE FROM poster_viewer
         WHERE poster IN (
                 SELECT
@@ -1105,7 +1138,7 @@ export class MapModel {
       await db.query(
         `
       DELETE FROM chat_event
-      WHERE room = 'RCm0lk9Qqy'
+      WHERE room = $1
       `,
         [this.room_id]
       )
@@ -1138,6 +1171,7 @@ export class MapModel {
       await db.query(`DELETE from person_room_access where room=$1;`, [
         this.room_id,
       ])
+      await db.query(`DELETE FROM person_profile WHERE room=$1`, [this.room_id])
       await db.query(`DELETE from room where id=$1`, [this.room_id])
       await db.query("COMMIT")
       return true
@@ -1163,6 +1197,7 @@ export class MapModel {
       }
     }
   }
+
   static async getAllowedRoomsFromCode(
     code: string
   ): Promise<RoomId[] | undefined> {
@@ -1182,6 +1217,12 @@ export class MapModel {
         }
       }
     }
-    return rooms_ok.concat(DEFAULT_ROOMS)
+    return rooms_ok
+  }
+
+  static getDefaultRooms(): RoomId[] {
+    return config.default_rooms.filter(rid => {
+      return model.maps[rid]
+    })
   }
 }

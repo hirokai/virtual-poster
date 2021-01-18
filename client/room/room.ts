@@ -37,16 +37,18 @@ const debug_token: string | undefined =
   url.searchParams.get("debug_token") || undefined
 
 const bot_mode = url.searchParams.get("bot_mode") == "1"
+
+const user_id: string | undefined = localStorage["virtual-poster:user_id"]
 ;(async () => {
   const user = { emailVerified: true, email: "hoge" }
   // console.log("User:", user, debug_as)
-  if (debug_as) {
-    console.log("Initializing debug mode...", debug_as)
+  if (debug_token) {
+    console.log("Initializing debug mode...", debug_as, debug_token)
     const propsData = {
       room_id,
       debug_as,
       debug_token,
-      myUserId: debug_as,
+      myUserId: debug_as || user_id,
       user,
       bot_mode,
       idToken: "",
@@ -68,7 +70,6 @@ const bot_mode = url.searchParams.get("bot_mode") == "1"
       )
       location.href = "/"
     } else {
-      const user_id: string | undefined = localStorage["virtual-poster:user_id"]
       const jwt_hash_initial: string | undefined =
         localStorage["virtual-poster:jwt_hash"]
       const data = { ok: true, user_id }

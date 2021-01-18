@@ -191,7 +191,7 @@ async function routes(
       params: { userId },
     } = req
     const with_email = req["requester_type"] == "admin" && !!email
-    const p = await model.people.get(userId, with_email, true)
+    const p = await model.people.get(userId, undefined, with_email, true)
     if (p) {
       return p
     } else {
@@ -215,24 +215,23 @@ async function routes(
       body,
       params: { userId },
     } = req
-    const obj = _.pickBy(_.pick(body, ["name", "email", "avatar"]))
     const permitted =
       req["requester_type"] == "admin" || req["requester"] == userId
     if (!permitted) {
       throw { statusCode: 403 }
     } else {
-      fastify.log.debug(obj)
-      const modified = await model.people.update(userId, obj)
+      fastify.log.debug("person patch", body)
+      const modified = await model.people.update(userId, body)
       if (modified != null) {
         const u: PersonUpdate = {
           id: userId,
           last_updated: modified.update.last_updated,
         }
-        if (modified.keys.indexOf("avatar") != -1) {
-          u.avatar = obj.avatar
+        if (modified.update?.avatar) {
+          u.avatar = modified.update?.avatar
         }
-        if (modified.keys.indexOf("name") != -1) {
-          u.name = obj.name
+        if (modified.update?.name) {
+          u.name = modified.update?.name
         }
         console.log("patch person", modified.keys, u)
         const all_rooms = Object.keys(model.maps)
@@ -241,7 +240,7 @@ async function routes(
       } else {
         return {
           ok: false,
-          error: "Update failed. Wrong user ID, or email already exists.",
+          error: "Nothing was updated",
         }
       }
     }
@@ -263,14 +262,14 @@ async function routes(
     if (!rooms) {
       return { ok: false, error: "Access code is invalid" }
     }
-
+    const default_rooms = model.MapModel.getDefaultRooms()
     const avatar = model.people.randomAvatar()
     const r = await model.people.create(
       email,
       name,
       "user",
       avatar,
-      rooms,
+      rooms.concat(default_rooms),
       "reject"
     )
     if (r.ok && r.user) {
@@ -297,6 +296,7 @@ async function routes(
             chat_count: 0,
             chat_char_count: 0,
           },
+          profiles: {},
         }
         emit.channel(room.room_id).peopleNew([p])
       }
@@ -333,14 +333,30 @@ async function routes(
       const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
       const added_rooms: RoomId[] = []
       if (rooms) {
-        const p = await model.people.get(req["requester"], false, true)
+        req.log.debug({ rooms })
+        const p = await model.people.get(
+          req["requester"],
+          undefined,
+          false,
+          true
+        )
         console.log(p)
         const rooms_already = (p?.rooms || []).map(r => r.room_id)
         for (const rid of rooms) {
           if (rooms_already.indexOf(rid) != -1) {
             continue
           }
-          const r = await model.maps[rid].addUser(
+          const m = model.maps[rid]
+          if (!m) {
+            req.log.info({
+              info: "Room data not found",
+              rooms,
+              rid,
+              current: Object.keys(model.maps),
+            })
+            return { ok: false, error: "Room data not found" }
+          }
+          const r = await m.addUser(
             req["requester_email"],
             true,
             "user",
@@ -352,7 +368,9 @@ async function routes(
           }
           added_rooms.push(rid)
         }
-        return { ok: added_rooms.length > 0, added: added_rooms }
+        return added_rooms.length > 0
+          ? { ok: true, added: added_rooms }
+          : { ok: false, error: "Already added" }
       } else {
         return { ok: false, error: "Access code is invalid" }
       }
@@ -366,7 +384,7 @@ async function routes(
   fastify.delete<any>("/people/:userId", async req => {
     const userId: string = req.params.userId
     if (req["requester_type"] == "admin" || req["requester"] == userId) {
-      const u = await model.people.get(userId, true)
+      const u = await model.people.get(userId, undefined, true)
       if (!u) {
         throw {
           statusCode: 404,

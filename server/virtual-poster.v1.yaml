@@ -133,15 +133,7 @@ paths:
                 name:
                   type: string
                   minLength: 1
-                x:
-                  type: integer
-                  minimum: 0
-                "y":
-                  type: integer
-                  minimum: 0
                 avatar:
-                  type: string
-                "":
                   type: string
       tags:
         - people
@@ -344,7 +336,7 @@ paths:
       operationId: get-maps
       description: Get a list of rooms
     post:
-      summary: ""
+      summary: Create a new room
       operationId: post-maps-roomId
       responses:
         "200":
@@ -371,9 +363,10 @@ paths:
                   type: string
                 allow_poster_assignment:
                   type: boolean
+                data:
+                  type: string
               required:
                 - name
-                - template
       tags:
         - map
   "/maps/{roomId}":
@@ -2713,11 +2706,26 @@ components:
           type: string
         stats:
           $ref: "#/components/schemas/PersonStat"
+        profiles:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              last_updated:
+                type: integer
+              content:
+                type: string
+              metadata:
+                type: object
+            required:
+              - last_updated
+              - content
       required:
         - id
         - name
         - last_updated
         - stats
+        - profiles
     Cell:
       title: Cell
       type: object

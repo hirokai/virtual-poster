@@ -128,8 +128,21 @@ async function workerInitData(): Promise<void> {
 
 // let server: https.Server | http.Server
 
+let aws_instance_id: string | undefined = undefined
+
 workerInitData()
   .then(() => {
+    axios
+      .get<string>("http://169.254.169.254/latest/meta-data/instance-id", {
+        timeout: 500,
+      })
+      .then(res => {
+        aws_instance_id = res.data
+      })
+      .catch(() => {
+        //
+      })
+
     if (RUN_CLUSTER > 0 && cluster.isMaster) {
       const workers: number = RUN_CLUSTER // require('os').cpus().length
       log.info("Master node run")
@@ -234,6 +247,17 @@ workerInitData()
             root: path.join(process.cwd(), PRODUCTION ? "dist" : "public"),
             extensions: ["html"],
             maxAge: 1000 * 60 * 60 * 24,
+          })
+
+          server.addHook("onSend", async (req, reply) => {
+            const token = (reply.request.query as any)["debug_token"]
+            if (token && token == config.debug_token) {
+              const instance_id =
+                (aws_instance_id ? aws_instance_id : "") +
+                  (cluster.worker?.id ? "#" + cluster.worker?.id : "") ||
+                "default"
+              await reply.header("X-Instance-Id", instance_id)
+            }
           })
 
           server.get(

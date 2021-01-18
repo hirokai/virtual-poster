@@ -73,6 +73,15 @@ export function mapValues<A, B>(
   return res
 }
 
+export function removeUndefined<T>(obj: T): T {
+  const newObj = {} as T
+  Object.keys(obj).forEach(key => {
+    if (obj[key] === Object(obj[key])) newObj[key] = removeUndefined(obj[key])
+    else if (obj[key] !== undefined) newObj[key] = obj[key]
+  })
+  return newObj
+}
+
 export const mkKey = (room_id: RoomId, x: number, y: number): string => {
   return room_id + ":" + x + "." + y
 }
@@ -90,7 +99,8 @@ export const getPos = (
 }
 
 export function isOpenCell(c: Cell) {
-  return c.kind == "grass" || c.kind == "poster_seat" || c.kind == "mud"
+  return c.open
+  // return c.kind == "grass" || c.kind == "poster_seat" || c.kind == "mud"
 }
 
 export function encodeMoved(d: PersonPos, room = false): string {
@@ -278,11 +288,7 @@ export function mkRouteGraph(
       x++
     ) {
       const a = staticMap[y][x]
-      if (
-        a &&
-        ["mud", "grass", "poster_seat"].includes(a.kind) &&
-        !people_map.has("" + x + "." + y)
-      ) {
+      if (a && isOpenCell(a) && !people_map.has("" + x + "." + y)) {
         vertices.push(f(a))
         const ds = [
           [-1, 0],
@@ -312,10 +318,7 @@ export function mkRouteGraph(
             return false
           }
           const c = staticMap[y][x]
-          return (
-            ["mud", "grass", "poster_seat"].includes(c.kind) &&
-            !people_map.has("" + x + "." + y)
-          )
+          return isOpenCell(c) && !people_map.has("" + x + "." + y)
         }).forEach(d => {
           const x = a.x + d[0]
           const y = a.y + d[1]
@@ -702,5 +705,30 @@ export function decodeNotificationData(
     return { room: data.room, user: data.user, typing: data.typing }
   } else {
     return null
+  }
+}
+
+export const showProfileKind = (key: string, p: { metadata: any }): string => {
+  console.log("showProfileKind", p)
+  if (key == "url") {
+    return "URL"
+  } else if (key == "display_name_short") {
+    return "表示名（短縮）"
+  } else if (key == "display_name_full") {
+    return "表示名（フル）"
+  } else if (key == "affiliation") {
+    return "所属"
+  } else if (key == "email") {
+    return "Email"
+  } else if (key == "avatar") {
+    return "アバター"
+  } else if (key == "url") {
+    return "URL"
+  } else if (key == "url2") {
+    return "URL 2"
+  } else if (key == "url3") {
+    return "URL 3"
+  } else {
+    return p.metadata?.key_display_name || key
   }
 }

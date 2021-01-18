@@ -45,9 +45,10 @@
         :chat="!!chatGroupOfUser[person.id]"
         :typing="!!people_typing[person.id]"
         :selected="
-          !!selectedPos &&
-          person.x == selectedPos.x &&
-          person.y == selectedPos.y
+          (!!selectedPos &&
+            person.x == selectedPos.x &&
+            person.y == selectedPos.y) ||
+          personInFront?.id == person.id
         "
         :selectedUser="selectedUsers.has(person.id)"
         :chat_color="
@@ -164,6 +165,9 @@ export default defineComponent({
     },
     selectedPos: {
       type: Object as PropType<{ x: number; y: number }>,
+    },
+    personInFront: {
+      type: Object as PropType<PersonInMap>,
     },
     center: {
       type: Object as PropType<{ x: number; y: number }>,

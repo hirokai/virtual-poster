@@ -38,6 +38,8 @@ DROP TABLE IF EXISTS stat_encountered;
 
 DROP TABLE IF EXISTS token;
 
+DROP TABLE IF EXISTS person_profile;
+
 DROP TABLE IF EXISTS room;
 
 DROP TABLE IF EXISTS person;
@@ -82,6 +84,16 @@ CREATE TABLE room (
     allow_poster_assignment boolean NOT NULL
 );
 
+CREATE TABLE person_profile (
+    person text REFERENCES person (id),
+    last_updated bigint NOT NULL,
+    "key" text NOT NULL,
+    content text,
+    metadata jsonb,
+    room text REFERENCES room (id),
+    UNIQUE (person, room, "key")
+);
+
 CREATE TABLE room_access_code (
     code text NOT NULL,
     room text REFERENCES room (id) NOT NULL,
@@ -104,6 +116,7 @@ CREATE TABLE map_cell (
     x integer NOT NULL,
     y integer NOT NULL,
     kind text NOT NULL,
+    no_initial_position boolean,
     poster_number integer,
     custom_image text,
     link_url text,

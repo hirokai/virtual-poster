@@ -15,14 +15,17 @@
           :disabled="loginReady"
         />
         <br />
-        <label for="access-code">アクセスコード</label>
+        <label for="access-code" style="display: none">アクセスコード</label>
         <input
           type="text"
           id="access-code"
           v-model="access_code"
           :disabled="loginReady"
+          style="display: none"
         />
-        <button @click="submitRegistration" :disabled="loginReady">登録</button>
+        <button id="submit" @click="submitRegistration" :disabled="loginReady">
+          登録
+        </button>
         <transition name="fade">
           <div v-if="loginReady" id="register-done">登録が完了しました</div>
         </transition>
@@ -101,7 +104,7 @@ export default defineComponent({
       verifyStatus: "",
       nextAction: undefined as "register" | "verify" | undefined,
       register_name: localStorage["virtual-poster:name"] || "",
-      access_code: "",
+      access_code: new URL(location.href).searchParams.get("code") || "",
       show_key: false,
       loginReady: localStorage["virtual-poster:user_id"] != undefined,
       prv_mnemonic: undefined as string | undefined,
@@ -166,7 +169,7 @@ export default defineComponent({
           "このEmailアドレスのアカウントは既に登録されています。ホーム画面に移動します。"
         )
         location.href = "/"
-      } else if (data.error?.indexOf("Access code is invalid")) {
+      } else if (data.error?.indexOf("Access code is invalid") != -1) {
         alert(
           "アクセスコードが正しくありません。修正するか，アクセスコード無しで登録してください。"
         )
@@ -291,6 +294,11 @@ label {
 
 #explain-key {
   font-size: 18px;
+}
+
+#submit {
+  margin-top: 10px;
+  margin-left: 382px;
 }
 
 .fade-enter-active,

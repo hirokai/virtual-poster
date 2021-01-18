@@ -21,6 +21,7 @@ import { AppNotification } from "../@types/types"
 import dotenv from "dotenv"
 import { config } from "./config"
 import bodyParser from "body-parser"
+import axios from "axios"
 
 dotenv.config()
 
@@ -50,10 +51,34 @@ if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
   })
 }
 
+let aws_instance_id: string | undefined = undefined
+
+axios
+  .get<string>("http://169.254.169.254/latest/meta-data/instance-id", {
+    timeout: 500,
+  })
+  .then(res => {
+    aws_instance_id = res.data
+  })
+  .catch(() => {
+    //
+  })
+
 const app = express()
 
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
+
+app.use(function(req, res, next) {
+  const token = req.query["debug_token"]
+  if (token && token == config.debug_token) {
+    const instance_id =
+      (aws_instance_id ? aws_instance_id : "") +
+        (cluster.worker?.id ? "#" + cluster.worker?.id : "") || "default"
+    res.setHeader("X-Instance-Id", instance_id)
+  }
+  next()
+})
 
 app.get("/ping", (req, res) => {
   log.info("ping received")
@@ -138,7 +163,11 @@ function run() {
     io.adapter(adapter)
 
     registerSocket(io)
-    setupSocketHandlers(io, log)
+    const instance_id =
+      (aws_instance_id ? aws_instance_id : "") +
+        (cluster.worker?.id ? "#" + cluster.worker?.id : "") || "default"
+
+    setupSocketHandlers(io, log, instance_id)
     server.listen(PORT, () => {
       log.info("Socket.IO server is listening on port: " + PORT)
     })

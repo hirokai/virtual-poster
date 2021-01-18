@@ -7,10 +7,13 @@ import {
   UserId,
   Room,
   RoomUpdateSocketData,
+  Cell,
 } from "../../@types/types"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
 import { config } from "../config"
+import { loadCustomMapCsv } from "../../common/maps"
+import crypto from "crypto"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 const RUST_WS_SERVER = config.socket_server.system == "Rust"
@@ -124,31 +127,56 @@ async function maps_api_routes(
 
   fastify.post<any>("/maps", async req => {
     const name: string = req.body.name
-    const template: string = req.body.template
-    const allow_poster_assignment: boolean =
-      req.body.allow_poster_assignment != false
+    const template: string | undefined = req.body.template
+    const csv_str: string | undefined = req.body.data
+    let allow_poster_assignment: boolean | undefined =
+      req.body.allow_poster_assignment == undefined
+        ? undefined
+        : req.body.allow_poster_assignment
 
-    const { map_data } = await model.MapModel.loadTemplate(template)
-    if (!map_data) {
-      return { ok: false, error: "Template not found" }
-    } else {
-      const { map: mm, error } = await model.MapModel.mkNewRoom(
-        name,
-        map_data,
-        allow_poster_assignment,
-        req["requester"]
-      )
-      if (!mm) {
-        return { ok: false, error }
+    const { map_data } = template
+      ? await model.MapModel.loadTemplate(template)
+      : { map_data: undefined }
+
+    if (!map_data && !csv_str) {
+      return {
+        ok: false,
+        error: "CSV data or valid template name has to be specified",
       }
-      await model.maps[mm.room_id].addUser(
-        req["requester_email"],
-        true,
-        "admin",
-        req["requester"]
-      )
-      return { ok: true, room: { id: mm.room_id, name } }
     }
+    let cells: Cell[][] = []
+    let numRows = 0
+    let numCols = 0
+    if (csv_str) {
+      const r = loadCustomMapCsv(csv_str, model.MapModel.genMapCellId)
+      if (r) {
+        cells = r.cells
+        req.log.debug(cells)
+        allow_poster_assignment =
+          allow_poster_assignment == undefined
+            ? r.allowPosterAssignment
+            : allow_poster_assignment
+        numRows = r.numRows
+        numCols = r.numCols
+      }
+    }
+    const { map: mm, error } = await model.MapModel.mkNewRoom(
+      name,
+      map_data || { cells, numRows, numCols },
+      allow_poster_assignment || false,
+      req["requester"]
+    )
+    if (!mm) {
+      return { ok: false, error }
+    }
+
+    await model.maps[mm.room_id].addUser(
+      req["requester_email"],
+      true,
+      "admin",
+      req["requester"]
+    )
+    return { ok: true, room: { id: mm.room_id, name } }
   })
 
   fastify.get<any>("/maps/:roomId", async (req, res) => {
@@ -241,10 +269,13 @@ async function maps_api_routes(
     N = N
       ? N
       : MIN_LENGTH + Math.floor(Math.random() * (MAX_LENGTH - MIN_LENGTH))
-    const S = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    return Array.from(Array(N))
-      .map(() => S[Math.floor(Math.random() * S.length)])
-      .join("")
+    return crypto
+      .randomBytes(N)
+      .toString("base64")
+      .substring(0, N)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "")
   }
 
   fastify.delete<any>("/maps/:roomId/access_code", async (req, res) => {
@@ -309,7 +340,7 @@ async function maps_api_routes(
       return res.status(403).send("Not an owner or admin")
     }
     try {
-      const code = random_str(10)
+      const code = random_str(20)
       await model.db.query(`BEGIN`)
       const r1 = await model.db.query(
         `SELECT active FROM room_access_code WHERE room=$1`,

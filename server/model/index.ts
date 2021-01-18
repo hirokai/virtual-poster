@@ -17,7 +17,6 @@ import { config } from "../config"
 import fs from "fs"
 import cluster from "cluster"
 import { join as joinPath } from "path"
-import { emit } from "../socket"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 

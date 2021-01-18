@@ -18,6 +18,7 @@ export interface Config {
   aws: Aws
   firebase_auth_credential: string
   user_registration: boolean
+  profile_keys: string[]
   cookie_expires: number
   debug_token: string
 }
@@ -60,18 +61,6 @@ export interface SocketServer {
   debug_log: boolean
 }
 
-// Converts JSON strings to/from your types
-// and asserts the results of JSON.parse at runtime
-export class Convert {
-  public static toConfig(json: string): Config {
-    return cast(JSON.parse(json), r("Config"))
-  }
-
-  public static configToJson(value: Config): string {
-    return JSON.stringify(uncast(value, r("Config")), null, 2)
-  }
-}
-
 function invalidValue(typ: any, val: any, key: any = ""): never {
   if (key) {
     throw Error(
@@ -85,24 +74,98 @@ function invalidValue(typ: any, val: any, key: any = ""): never {
   )
 }
 
-function jsonToJSProps(typ: any): any {
-  if (typ.jsonToJS === undefined) {
-    const map: any = {}
-    typ.props.forEach((p: any) => (map[p.json] = { key: p.js, typ: p.typ }))
-    typ.jsonToJS = map
-  }
-  return typ.jsonToJS
+function a(typ: any) {
+  return { arrayItems: typ }
 }
 
-function jsToJSONProps(typ: any): any {
-  if (typ.jsToJSON === undefined) {
-    const map: any = {}
-    typ.props.forEach((p: any) => (map[p.js] = { key: p.json, typ: p.typ }))
-    typ.jsToJSON = map
-  }
-  return typ.jsToJSON
+function u(...typs: any[]) {
+  return { unionMembers: typs }
 }
 
+function o(props: any[], additional: any) {
+  return { props, additional }
+}
+
+function m(additional: any) {
+  return { props: [], additional }
+}
+
+function r(name: string) {
+  return { ref: name }
+}
+
+const typeMap: any = {
+  Config: o(
+    [
+      { json: "domain", js: "domain", typ: "" },
+      { json: "api_server", js: "api_server", typ: r("APIServer") },
+      { json: "socket_server", js: "socket_server", typ: r("SocketServer") },
+      { json: "default_rooms", js: "default_rooms", typ: a("") },
+      { json: "certificate_folder", js: "certificate_folder", typ: "" },
+      { json: "postgresql", js: "postgresql", typ: "" },
+      { json: "redis", js: "redis", typ: "" },
+      { json: "aws", js: "aws", typ: r("Aws") },
+      {
+        json: "firebase_auth_credential",
+        js: "firebase_auth_credential",
+        typ: "",
+      },
+      { json: "user_registration", js: "user_registration", typ: true },
+      { json: "profile_keys", js: "profile_keys", typ: a("") },
+      { json: "cookie_expires", js: "cookie_expires", typ: 0 },
+      { json: "debug_token", js: "debug_token", typ: "" },
+    ],
+    false
+  ),
+  APIServer: o(
+    [
+      { json: "port", js: "port", typ: 0 },
+      { json: "tls", js: "tls", typ: true },
+      { json: "http2", js: "http2", typ: true },
+      { json: "cluster", js: "cluster", typ: 0 },
+      { json: "debug_log", js: "debug_log", typ: true },
+    ],
+    false
+  ),
+  Aws: o(
+    [
+      { json: "access_key_id", js: "access_key_id", typ: "" },
+      { json: "secret_access_key", js: "secret_access_key", typ: "" },
+      { json: "region", js: "region", typ: "" },
+      { json: "s3", js: "s3", typ: r("S3") },
+      { json: "cloud_front", js: "cloud_front", typ: r("CloudFront") },
+    ],
+    false
+  ),
+  CloudFront: o(
+    [
+      { json: "id", js: "id", typ: "" },
+      { json: "domain", js: "domain", typ: "" },
+      { json: "key_pair_id", js: "key_pair_id", typ: "" },
+      { json: "private_key", js: "private_key", typ: "" },
+    ],
+    false
+  ),
+  S3: o(
+    [
+      { json: "upload", js: "upload", typ: true },
+      { json: "bucket", js: "bucket", typ: "" },
+      { json: "via_cdn", js: "via_cdn", typ: true },
+    ],
+    false
+  ),
+  SocketServer: o(
+    [
+      { json: "system", js: "system", typ: "" },
+      { json: "port", js: "port", typ: 0 },
+      { json: "tls", js: "tls", typ: true },
+      { json: "http2", js: "http2", typ: true },
+      { json: "cluster", js: "cluster", typ: 0 },
+      { json: "debug_log", js: "debug_log", typ: true },
+    ],
+    false
+  ),
+}
 function transform(val: any, typ: any, getProps: any, key: any = ""): any {
   function transformPrimitive(typ: string, val: any): any {
     if (typeof typ === typeof val) return val
@@ -193,6 +256,24 @@ function transform(val: any, typ: any, getProps: any, key: any = ""): any {
   return transformPrimitive(typ, val)
 }
 
+function jsonToJSProps(typ: any): any {
+  if (typ.jsonToJS === undefined) {
+    const map: any = {}
+    typ.props.forEach((p: any) => (map[p.json] = { key: p.js, typ: p.typ }))
+    typ.jsonToJS = map
+  }
+  return typ.jsonToJS
+}
+
+function jsToJSONProps(typ: any): any {
+  if (typ.jsToJSON === undefined) {
+    const map: any = {}
+    typ.props.forEach((p: any) => (map[p.js] = { key: p.json, typ: p.typ }))
+    typ.jsToJSON = map
+  }
+  return typ.jsToJSON
+}
+
 function cast<T>(val: any, typ: any): T {
   return transform(val, typ, jsonToJSProps)
 }
@@ -201,94 +282,14 @@ function uncast<T>(val: T, typ: any): any {
   return transform(val, typ, jsToJSONProps)
 }
 
-function a(typ: any) {
-  return { arrayItems: typ }
-}
+// Converts JSON strings to/from your types
+// and asserts the results of JSON.parse at runtime
+export class Convert {
+  public static toConfig(json: string): Config {
+    return cast(JSON.parse(json), r("Config"))
+  }
 
-function u(...typs: any[]) {
-  return { unionMembers: typs }
-}
-
-function o(props: any[], additional: any) {
-  return { props, additional }
-}
-
-function m(additional: any) {
-  return { props: [], additional }
-}
-
-function r(name: string) {
-  return { ref: name }
-}
-
-const typeMap: any = {
-  Config: o(
-    [
-      { json: "domain", js: "domain", typ: "" },
-      { json: "api_server", js: "api_server", typ: r("APIServer") },
-      { json: "socket_server", js: "socket_server", typ: r("SocketServer") },
-      { json: "default_rooms", js: "default_rooms", typ: a("") },
-      { json: "certificate_folder", js: "certificate_folder", typ: "" },
-      { json: "postgresql", js: "postgresql", typ: "" },
-      { json: "redis", js: "redis", typ: "" },
-      { json: "aws", js: "aws", typ: r("Aws") },
-      {
-        json: "firebase_auth_credential",
-        js: "firebase_auth_credential",
-        typ: "",
-      },
-      { json: "user_registration", js: "user_registration", typ: true },
-      { json: "cookie_expires", js: "cookie_expires", typ: 0 },
-      { json: "debug_token", js: "debug_token", typ: "" },
-    ],
-    false
-  ),
-  APIServer: o(
-    [
-      { json: "port", js: "port", typ: 0 },
-      { json: "tls", js: "tls", typ: true },
-      { json: "http2", js: "http2", typ: true },
-      { json: "cluster", js: "cluster", typ: 0 },
-      { json: "debug_log", js: "debug_log", typ: true },
-    ],
-    false
-  ),
-  Aws: o(
-    [
-      { json: "access_key_id", js: "access_key_id", typ: "" },
-      { json: "secret_access_key", js: "secret_access_key", typ: "" },
-      { json: "region", js: "region", typ: "" },
-      { json: "s3", js: "s3", typ: r("S3") },
-      { json: "cloud_front", js: "cloud_front", typ: r("CloudFront") },
-    ],
-    false
-  ),
-  CloudFront: o(
-    [
-      { json: "id", js: "id", typ: "" },
-      { json: "domain", js: "domain", typ: "" },
-      { json: "key_pair_id", js: "key_pair_id", typ: "" },
-      { json: "private_key", js: "private_key", typ: "" },
-    ],
-    false
-  ),
-  S3: o(
-    [
-      { json: "upload", js: "upload", typ: true },
-      { json: "bucket", js: "bucket", typ: "" },
-      { json: "via_cdn", js: "via_cdn", typ: true },
-    ],
-    false
-  ),
-  SocketServer: o(
-    [
-      { json: "system", js: "system", typ: "" },
-      { json: "port", js: "port", typ: 0 },
-      { json: "tls", js: "tls", typ: true },
-      { json: "http2", js: "http2", typ: true },
-      { json: "cluster", js: "cluster", typ: 0 },
-      { json: "debug_log", js: "debug_log", typ: true },
-    ],
-    false
-  ),
+  public static configToJson(value: Config): string {
+    return JSON.stringify(uncast(value, r("Config")), null, 2)
+  }
 }

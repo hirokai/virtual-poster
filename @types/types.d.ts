@@ -23,6 +23,14 @@ export type Person = {
   connected?: boolean
   stats: PersonStat
   public_key?: string
+  email?: string
+  profiles?: {
+    [key: string]: {
+      last_updated: number
+      content: string
+      metadata?: any
+    }
+  }
 }
 
 export type PersonInMap = Person & {
@@ -69,6 +77,13 @@ export type PersonUpdate = {
   connected?: boolean
   poster_viewing?: PosterId | null
   stats?: PersonStat
+  profiles?: {
+    [key: string]: {
+      last_updated: number
+      content: string
+      metadata?: any
+    }
+  }
   public_key?: string
 }
 
@@ -161,6 +176,14 @@ type RoomAppState = {
   message: {
     text?: string
     hide: boolean
+    color?: string
+    timer?: number
+  }
+
+  personInfo: {
+    person?: Person
+    hide: boolean
+    color?: string
     timer?: number
   }
 
@@ -278,10 +301,12 @@ export type Cell = {
   x: number
   y: number
   kind: CellType
+  open: boolean
   name?: string
   poster_number?: number
   custom_image?: string
   link_url?: string
+  no_initial_position?: boolean
 }
 
 type PosterCell = Cell & {

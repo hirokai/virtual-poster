@@ -29,7 +29,7 @@ brew services stop redis
 
 ## Setting environmental variables
 
-Set `.env` file. See `example.env` file for details.
+Set `app_config.yaml` file. See `app_config.example.yaml` file for details.
 
 ## Testing
 

@@ -67,6 +67,7 @@ export default defineComponent({
     }
 
     onMounted(() => {
+      const access_code = new URL(location.href).searchParams.get("code")
       firebase.initializeApp(props.firebaseConfig)
       const uiConfig: firebaseui.auth.Config = {
         callbacks: {
@@ -99,7 +100,9 @@ export default defineComponent({
                       if (data.registered == "can_register") {
                         state.nextAction = "register"
                         localStorage["virtual-poster:email"] = email
-                        location.href = "/register"
+                        location.href =
+                          "/register" +
+                          (access_code ? "?code=" + access_code : "")
                       } else if (
                         data.registered == "registered" &&
                         data.user_id &&
@@ -108,7 +111,8 @@ export default defineComponent({
                         state.nextAction = undefined
                         setUserInfo(data.user_id, email, data.admin)
                         localStorage["virtual-poster:name"] = data.name
-                        location.href = "/"
+                        location.href =
+                          "/" + (access_code ? "?code=" + access_code : "")
                       } else {
                         console.warn("Cannot register by user", data)
                         alert(

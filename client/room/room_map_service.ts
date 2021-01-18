@@ -7,6 +7,8 @@ import {
   personAt,
   posterAt,
   isUserId,
+  isOpenCell,
+  lookingAt,
 } from "@/common/util"
 import {
   startChat,
@@ -37,6 +39,8 @@ import {
   MySocketObject,
   PosDir,
   PosterId,
+  PersonWithEmail,
+  Person,
 } from "@/@types/types"
 
 import { getClosestAdjacentPoints, isAdjacent, range } from "@/common/util"
@@ -55,6 +59,19 @@ export const posterLooking: (
 ) =>
   computed(() => {
     return state.people[props.myUserId]?.poster_viewing
+  })
+
+export const personInFront: (
+  props: RoomAppProps,
+  state: RoomAppState
+) => ComputedRef<PersonInMap | undefined> = (
+  props: RoomAppProps,
+  state: RoomAppState
+) =>
+  computed(() => {
+    const me = state.people[props.myUserId]
+    const p = me ? lookingAt(me) : undefined
+    return p ? personAt(state.people, p) : undefined
   })
 
 export const playBGM = (props: RoomAppProps, state: RoomAppState) => () => {
@@ -85,10 +102,13 @@ export const stopBGM = (state: RoomAppState) => () => {
 }
 
 export function showMessage(props: RoomAppProps, state: RoomAppState) {
-  return (msg: string, timeout = 5000): void => {
-    //Vue.set
+  return (
+    msg: string,
+    timeout = 5000,
+    color: string | undefined = undefined
+  ): void => {
     state.message.text = msg
-    //Vue.set
+    state.message.color = color
     state.message.hide = false
     if (state.message.timer) {
       window.clearTimeout(state.message.timer)
@@ -110,6 +130,30 @@ export function showMessage(props: RoomAppProps, state: RoomAppState) {
   }
 }
 
+export function showPersonInfo(props: RoomAppProps, state: RoomAppState) {
+  return (
+    person: Person,
+    timeout = 5000,
+    color: string | undefined = undefined
+  ): void => {
+    state.personInfo.person = person
+    state.personInfo.color = color
+    state.personInfo.hide = false
+    if (state.personInfo.timer) {
+      window.clearTimeout(state.personInfo.timer)
+      state.personInfo.timer = undefined
+    }
+    if (timeout > 0) {
+      state.personInfo.timer = window.setTimeout(() => {
+        if (state.personInfo) {
+          state.personInfo.hide = true
+          state.personInfo.person = undefined
+        }
+      }, timeout)
+    }
+  }
+}
+
 export const enterPoster = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
@@ -119,7 +163,7 @@ export const enterPoster = (
     const bm = state.batchMove
     if (!bm) {
       const _adjacentPoster = adjacentPoster(props, state)
-      const pid = _adjacentPoster.value?.id
+      const pid = _adjacentPoster.value?.id || null
       resolve(pid)
     } else {
       let count = 0
@@ -385,11 +429,7 @@ export const moveTo = (
   const toCell = state.hallMap[to.y][to.x]
   const person = personAt(state.people, to)
   const poster = posterAt(state.posters, to)
-  if (
-    (person && person.connected) ||
-    poster ||
-    ["wall", "water", "poster"].includes(toCell.kind)
-  ) {
+  if ((person && person.connected) || poster || !isOpenCell(toCell)) {
     console.info("Destination not open", { toCell, person, poster })
     return false
   }
@@ -509,6 +549,7 @@ export const moveByArrow = (
   }
   const x = me.x
   const y = me.y
+  const old_direction = me.direction
   if (key == "ArrowRight" || key == "l") {
     dx = 1
     dy = 0
@@ -544,15 +585,13 @@ export const moveByArrow = (
   }
   const nx = x + dx
   const ny = y + dy
+  const la = { x: nx, y: ny }
+  const la_person: PersonInMap | undefined = personAt(state.people, la)
+  const la_poster: Poster | undefined = posterAt(state.posters, la)
   if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
-    const la = { x: nx, y: ny }
-    const la_person: PersonInMap | undefined = la
-      ? personAt(state.people, la)
-      : undefined
-    const la_poster: Poster | undefined = la
-      ? posterAt(state.posters, la)
-      : undefined
-    if ((!la_person || !la_person.connected) && !la_poster) {
+    if (la_poster || (la_person && old_direction != me.direction)) {
+      moved = false
+    } else {
       if (state.people_typing[props.myUserId]) {
         const d: TypingSocketSendData = {
           user: me.id,
@@ -570,13 +609,6 @@ export const moveByArrow = (
         { x: nx, y: ny },
         localStorage["virtual-poster:jwt_hash"]
       )
-    } else {
-      const d = {
-        user: props.myUserId,
-        direction: me.direction,
-      }
-      console.log(d)
-      moved = false
     }
   }
   if (!moved) {
@@ -757,6 +789,7 @@ export const dblClickHandler = (
               state.encryption_possible_in_chat =
                 !!state.privateKey && d.encryption_possible
               state.selectedUsers.clear()
+              showMessage(props, state)("会話を開始しました")
             }
             //
           })

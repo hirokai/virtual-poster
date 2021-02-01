@@ -69,13 +69,17 @@ export function deleteUserInfoOnLogout(): void {
   localStorage.removeItem("virtual-poster:jwt_hash")
 }
 
-export function formatTime(timestamp: number): string {
+export function formatTime(
+  timestamp: number,
+  locale: "ja" | "en" = "ja"
+): string {
   const t = new Date(timestamp)
   const now = new Date()
   const is_today =
     t.getFullYear() == now.getFullYear() &&
     t.getMonth() == now.getMonth() &&
     t.getDate() == now.getDate()
+
   return (
     (!is_today ? "" + (t.getMonth() + 1) + "/" + t.getDate() + " " : "") +
     t.getHours().toString() +

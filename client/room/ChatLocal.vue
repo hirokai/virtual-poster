@@ -7,13 +7,21 @@
       width: isMobile
         ? 'calc(100vw - 20px)'
         : poster
-        ? 'calc(100% - ' + posterContainerWidth + 'px - 569px)'
-        : 'calc(100% - 570px)',
+        ? 'calc(100% - ' +
+          posterContainerWidth +
+          'px - ' +
+          (mapCellSize * 11 + 41) +
+          'px)'
+        : 'calc(100% - ' + (mapCellSize * 11 + 42) + 'px)',
       left: isMobile
         ? '10px'
         : poster
-        ? 'calc(550px + ' + posterContainerWidth + 'px)'
-        : '550px',
+        ? 'calc(' +
+          (mapCellSize * 11 + 28) +
+          'px + ' +
+          posterContainerWidth +
+          'px)'
+        : '' + (mapCellSize * 11 + 28) + 'px',
       top: isMobile ? '-10px' : undefined,
       height: isMobile ? 'calc(100% - 20vw)' : undefined,
     }"
@@ -34,7 +42,7 @@
         @keydown.enter="onKeyDownEnterChatInput($event)"
         @focus="$emit('on-focus-input', true)"
         @blur="$emit('on-focus-input', false)"
-        placeholder="Shift+Enterで送信"
+        :placeholder="lang('shift_enter_send')"
         :disabled="
           !replying && !editingOld && (!chatGroup || chatGroup.length == 0)
         "
@@ -81,9 +89,14 @@
             alt="保存"
             v-if="editingOld"
           />
-          <img class="icon" src="/img/icon/right-arrow.png" alt="送信" v-else />
+          <img
+            class="icon"
+            src="/img/icon/right-arrow.png"
+            :alt="lang('send')"
+            v-else
+          />
         </button>
-        <div class="tooltip">送信</div>
+        <div class="tooltip">{{ lang("send") }}</div>
       </span>
 
       <span
@@ -151,7 +164,7 @@
         class="chat-tool-button"
         @click="replying = undefined"
       >
-        返信中止
+        {{ lang("abort_reply") }}
       </button>
       <h2>
         <div
@@ -159,7 +172,8 @@
           v-if="!replying && chatGroup && chatGroup.length > 0"
         >
           <span :style="{ color: editingOld ? 'red' : 'black' }"
-            >{{ editingOld ? "編集中" : "" }} 会話の参加者：
+            >{{ editingOld ? (locale == "ja" ? "編集中" : "Editing") : "" }}
+            {{ lang("participants") }}
           </span>
           <span
             class="person-in-local"
@@ -173,7 +187,7 @@
           </span>
         </div>
         <div id="participants" v-else-if="!!replying">
-          <span>返信あて先： </span>
+          <span>{{ lang("reply_to") }}</span>
           <span
             class="person-in-local"
             v-for="t in notSender(myself.id, comments[replying.id].texts)"
@@ -183,7 +197,7 @@
             {{ people[t.to] ? people[t.to].name : "" }}
           </span>
         </div>
-        <div id="participants" v-else>会話に参加していません</div>
+        <div id="participants" v-else>{{ lang("not_in_chat") }}</div>
       </h2>
     </div>
     <div
@@ -216,6 +230,7 @@
         /> -->
         <MyPicker
           v-if="showEmojiPicker && showEmojiPicker == c.id"
+          :locale="locale"
           @select="emoji => selectEmoji(c, emoji)"
           @close-emoji-picker="showEmojiPicker = undefined"
         />
@@ -226,7 +241,7 @@
         <div v-if="c.event == 'event'" class="chat_event">
           <span>
             <span v-if="c.event_type == 'new'">
-              {{ formatTime(c.timestamp) }}: チャットが開始されました：
+              {{ formatTime(c.timestamp, locale) }}: {{ lang("started") }}：
               {{
                 [c.event_data.from_user]
                   .concat(c.event_data.to_users)
@@ -236,17 +251,17 @@
               }}
             </span>
             <span v-else-if="c.event_type == 'dissolve'">
-              {{ formatTime(c.timestamp) }}: チャットは解散しました
+              {{ formatTime(c.timestamp, locale) }}: {{ lang("dissolved") }}
             </span>
             <span
               v-else-if="
                 c.event_type == 'join' && c.event_data?.from_user == myself.id
               "
             >
-              {{ formatTime(c.timestamp) }}: チャットに参加しました
+              {{ formatTime(c.timestamp, locale) }}: {{ lang("joined") }}
             </span>
             <span v-else-if="c.event_type == 'join'" class="gray">
-              {{ formatTime(c.timestamp) }}: チャットに{{
+              {{ formatTime(c.timestamp, locale) }}: チャットに{{
                 people[c.event_data.from_user]?.name
               }}が加わりました
             </span>
@@ -256,11 +271,11 @@
               "
               class="gray"
             >
-              {{ formatTime(c.timestamp) }}:
+              {{ formatTime(c.timestamp, locale) }}:
               {{ people[c.event_data.to_user].name }}をチャットに加えました
             </span>
             <span v-else-if="c.event_type == 'add'" class="gray">
-              {{ formatTime(c.timestamp) }}:
+              {{ formatTime(c.timestamp, locale) }}:
               {{ people[c.event_data.to_user].name }}が{{
                 people[c.event_data.from_user].name
               }}によりチャットに加えられました
@@ -270,22 +285,22 @@
                 c.event_type == 'leave' && c.event_data.left_user == myself.id
               "
             >
-              {{ formatTime(c.timestamp) }}: チャットから離脱しました
+              {{ formatTime(c.timestamp, locale) }}: チャットから離脱しました
             </span>
             <span v-else-if="c.event_type == 'leave'" class="gray">
-              {{ formatTime(c.timestamp) }}:
+              {{ formatTime(c.timestamp, locale) }}:
               {{
                 people[c.event_data.left_user].name
               }}がチャットから離脱しました
             </span>
             <span v-else-if="c.event_type == 'kick'" class="gray">
-              {{ formatTime(c.timestamp) }}:
+              {{ formatTime(c.timestamp, locale) }}:
               {{ people[c.event_data.left_user].name }}が{{
                 people[c.person].name
               }}によりチャットから退出されられました
             </span>
             <span v-else>
-              {{ formatTime(c.timestamp) }}: （不明なイベント
+              {{ formatTime(c.timestamp, locale) }}: （不明なイベント
               {{ c.event_type }}）</span
             >
           </span>
@@ -302,7 +317,9 @@
             <span class="comment-name">
               {{ people[c.person] ? people[c.person].name : null }}
             </span>
-            <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
+            <span class="comment-time">{{
+              formatTime(c.timestamp, locale)
+            }}</span>
             <span class="comment-recipients">
               &#x27a1;
               <span
@@ -325,24 +342,24 @@
               v-if="c.__depth <= 3"
               class="comment-entry-tool"
               @click="startReply(c)"
-              >返信</span
+              >{{ lang("reply") }}</span
             >
             <span
               class="comment-entry-tool"
               @click="speechText(c.text_decrypted || '')"
-              >読み上げ</span
+              >{{ lang("dictate") }}</span
             >
             <span
               v-if="myself && c.person == myself.id"
               class="comment-entry-tool comment-delete"
               @click="$emit('delete-comment', c.id)"
-              >削除</span
+              >{{ lang("delete") }}</span
             >
             <span
               v-if="myself && c.person == myself.id"
               class="comment-entry-tool comment-edit"
               @click="startUpdateComment(c.id)"
-              >編集</span
+              >{{ lang("edit") }}</span
             >
           </div>
           <div class="local-entry-content">
@@ -430,6 +447,10 @@ export default defineComponent({
     "read-comment",
   ],
   props: {
+    locale: {
+      type: String as PropType<"ja" | "en">,
+      required: true,
+    },
     axios: {
       type: Function as PropType<AxiosInstance>,
       required: true,
@@ -482,6 +503,10 @@ export default defineComponent({
       type: Boolean,
       required: true,
     },
+    mapCellSize: {
+      type: Number,
+      required: true,
+    },
     darkMode: {
       type: Boolean,
       required: true,
@@ -520,7 +545,66 @@ export default defineComponent({
         ] != "0",
       initialScrollDone: false,
     })
-    const client = api(axiosClient(props.axios))
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        started: {
+          ja: "チャットが開始されました",
+          en: "Chat started",
+        },
+        dissolved: {
+          ja: "チャットは解散しました",
+          en: "Chat finished",
+        },
+        joined: {
+          ja: "チャットに参加しました",
+          en: "Joined a chat",
+        },
+        reply: {
+          ja: "返信",
+          en: "Reply",
+        },
+        dictate: {
+          ja: "読み上げ",
+          en: "Read",
+        },
+        delete: {
+          ja: "削除",
+          en: "Delete",
+        },
+        edit: {
+          ja: "編集",
+          en: "Edit",
+        },
+        send: {
+          ja: "送信",
+          en: "Send",
+        },
+        shift_enter_send: {
+          ja: "Shift+Enterで送信",
+          en: "Shift+Enter to send",
+        },
+        not_in_chat: {
+          ja: "会話に参加していません",
+          en: "Not joined a chat",
+        },
+        participants: {
+          ja: "会話の参加者：",
+          en: "Participants: ",
+        },
+        reply_to: {
+          ja: "返信あて先： ",
+          en: "Reply to:",
+        },
+        abort_reply: {
+          ja: "返信中止",
+          en: "Abort reply",
+        },
+      }
+      return message[key][props.locale]
+    }
 
     const ChatInput = ref<HTMLTextAreaElement>()
 
@@ -656,7 +740,7 @@ export default defineComponent({
       if (comments_and_events.length > 0) {
         comments_with_date.push({
           event: "new_date",
-          date_str: formatDate(comments_and_events[0].timestamp),
+          date_str: formatDate(comments_and_events[0].timestamp, props.locale),
         } as DateEvent)
       }
       let prev_toplevel = 0
@@ -680,7 +764,10 @@ export default defineComponent({
           d.setMilliseconds(0)
           comments_with_date.push({
             event: "new_date",
-            date_str: formatDate(comments_and_events[i].timestamp),
+            date_str: formatDate(
+              comments_and_events[i].timestamp,
+              props.locale
+            ),
             timestamp: d.valueOf(),
           } as DateEvent)
         }
@@ -752,7 +839,7 @@ export default defineComponent({
       const recognition = new SpeechRecognition()
       state.recognition = recognition
       recognition.interimResults = true
-      recognition.lang = "ja-JP"
+      recognition.lang = props.locale == "ja" ? "ja-JP" : "en-US"
 
       state.voiceRecognitionResultTime = Date.now()
 
@@ -768,7 +855,7 @@ export default defineComponent({
         }
         ta.value = state.inputTextWithoutDictation + text
         if (event.results[0].isFinal) {
-          ta.value += "。"
+          ta.value += props.locale == "ja" ? "。" : "."
         }
         console.log(event.results[0][0].transcript, event.results[0])
       }
@@ -1043,6 +1130,7 @@ export default defineComponent({
       clickSubmit,
       startReply,
       inRange,
+      lang,
     }
   },
 })

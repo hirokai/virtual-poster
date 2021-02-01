@@ -37,13 +37,13 @@ export async function getGroup(
 ): Promise<ChatGroup | null> {
   const row: ChatGroupRDB = (
     await db.query(
-      `SELECT g.*,string_agg(pcg.person,'::::') as users FROM chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat WHERE id=$1 and room=$2 GROUP BY g.id`,
+      `SELECT g.*,array_agg(pcg.person) as users FROM chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat WHERE id=$1 and room=$2 GROUP BY g.id`,
       [group_id, room_id]
     )
   )[0]
   return {
     ...row,
-    users: row.users?.split("::::") || [],
+    users: row.users || [],
     color: row.color || "blue",
     last_updated: +row.last_updated,
   }

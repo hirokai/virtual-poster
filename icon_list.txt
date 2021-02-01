@@ -17,3 +17,4 @@ notification.png    https://www.flaticon.com/free-icon/notification_633816?term=
 music.png   https://www.flaticon.com/free-icon/music_876817?term=music&page=1&position=2&related_item_id=876817
 harunouta.mp3   http://www.ne.jp/asahi/music/myuu/wave/wave.htm
 montagu.mp3   http://www.ne.jp/asahi/music/myuu/wave/wave.htm
+edit.png    https://www.flaticon.com/free-icon/edit_3597088?term=pencil&related_id=3597088

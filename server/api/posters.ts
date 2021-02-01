@@ -2,7 +2,7 @@ import * as model from "../model"
 import { FastifyInstance } from "fastify"
 import { Poster, PosterId, PosterCommentDecrypted } from "../../@types/types"
 import _ from "lodash"
-import { protectedRoute } from "../auth"
+import { protectedRoute, manageRoom } from "../auth"
 import { userLog } from "../model"
 import { emit } from "../socket"
 import multer from "fastify-multer"
@@ -11,7 +11,6 @@ import fs from "fs"
 import path from "path"
 import AWS from "aws-sdk"
 import { config } from "../config"
-import { TIMEOUT } from "dns"
 
 const readFile = promisify(fs.readFile)
 const deleteFile = promisify(fs.unlink)
@@ -145,6 +144,7 @@ async function routes(
     const author_online_only = req.body.author_online_only as
       | boolean
       | undefined
+    const watermark = req.body.watermark as number | null | undefined
     const p = await model.posters.get(poster_id)
     if (!p) {
       throw { statusCode: 404 }
@@ -165,39 +165,16 @@ async function routes(
     if (author_online_only != undefined) {
       p.author_online_only = author_online_only
     }
+    req.log.debug("poster PATCH watermark", JSON.stringify(watermark))
+    if (watermark != undefined) {
+      p.watermark = watermark
+    }
     p.last_updated = Date.now()
     const r = await model.posters.set(p)
     emit.channels([p.room, req["requester"], p.author]).poster(p)
     return { ok: r }
   })
-  /*
-  fastify.post<any>(
-    "/maps/:roomId/people/:userId/poster/file",
-    { preHandler: upload },
-    async req => {
-      const { userId, roomId } = req.params
-      const room = await model.maps[roomId].getMetadata()
-      const permitted =
-        req["requester_type"] == "admin" ||
-        (room.allow_poster_assignment && req["requester"] == userId)
-      if (!permitted) {
-        throw { statusCode: 403 }
-      } else {
-        const poster = await model.posters.getOfUser(roomId, userId)
-        if (!poster) {
-          return { ok: false, error: "Poster not found" }
-        } else {
-          poster.last_updated = Date.now()
-          const r = await model.posters.updatePosterFile(poster, req["file"])
-          if (r.ok) {
-            emit.channels([userId, poster.room]).poster(poster)
-          }
-          return r
-        }
-      }
-    }
-  )
-  */
+
   fastify.get<any>("/posters/:posterId/file", async (req, res) => {
     const posterId: string = req.params.posterId
     const poster = await model.posters.get(posterId)
@@ -252,6 +229,74 @@ async function routes(
       }
       poster.last_updated = Date.now()
       const r = await model.posters.updatePosterFile(poster, req["file"])
+      if (r.ok) {
+        const new_poster = await model.posters.get(poster_id)
+        if (new_poster) {
+          emit.channels([new_poster.author, new_poster.room]).poster(new_poster)
+        }
+        return { ...r, poster: new_poster || undefined }
+      } else {
+        return r
+      }
+    }
+  )
+
+  fastify.get<any>(
+    "/posters/:posterId/file_upload_url",
+    async (
+      req
+    ): Promise<{
+      ok: boolean
+      error?: string
+      url?: string
+      target?: "s3" | "api_server"
+    }> => {
+      const poster_id = req.params.posterId
+      const mime_type: string = req.query.mime_type
+      const poster = await model.posters.get(poster_id)
+
+      const target = config.aws.s3.upload ? "s3" : "api_server"
+
+      if (!poster) {
+        return { ok: false, error: "Poster not found" }
+      }
+      const room = await model.maps[poster.room]?.getMetadata()
+      const permitted =
+        req["requester_type"] == "admin" ||
+        (room?.allow_poster_assignment && req["requester"] == poster.author)
+      if (!permitted) {
+        throw { statusCode: 403 }
+      }
+      const url = config.aws.s3.upload
+        ? await model.posters.get_signed_url_for_upload(poster.id, mime_type)
+        : "/posters/" + poster_id + "/file"
+      if (url) {
+        return { ok: true, url, target }
+      } else {
+        return { ok: false, error: "Failed to get a URL" }
+      }
+    }
+  )
+
+  fastify.post<any>(
+    "/posters/:posterId/file_upload_done",
+    async (req): Promise<{ ok: boolean; error?: string; poster?: Poster }> => {
+      const poster_id: PosterId = req.params.posterId
+      const poster = await model.posters.get(poster_id)
+      const mime_type = req.body.mime_type
+
+      if (!poster) {
+        return { ok: false, error: "Poster not found" }
+      }
+      const room = await model.maps[poster.room]?.getMetadata()
+      const permitted =
+        req["requester_type"] == "admin" ||
+        (room?.allow_poster_assignment && req["requester"] == poster.author)
+      if (!permitted) {
+        throw { statusCode: 403 }
+      }
+      poster.last_updated = Date.now()
+      const r = await model.posters.updatePosterFileFromS3(poster, mime_type)
       if (r.ok) {
         const new_poster = await model.posters.get(poster_id)
         if (new_poster) {
@@ -331,7 +376,11 @@ async function routes(
         req["requester_type"] == "admin" ||
         (await model.posters.isViewing(req["requester"], poster.id))
       ) {
-        const r = (await model.posters.get_signed_url(posterId)) || undefined
+        const r =
+          (await model.posters.get_signed_url(
+            posterId,
+            config.aws.s3.via_cdn ? "cloudfront" : "s3"
+          )) || undefined
         return r ? { ok: true, url: r.url } : { ok: false }
       } else {
         throw { statusCode: 403 }
@@ -482,15 +531,9 @@ async function routes(
 
   fastify.post<any>(
     "/maps/:roomId/posters/refresh_files",
-    async (req, reply) => {
+    { preHandler: manageRoom },
+    async req => {
       const roomId = req.params.roomId
-      const owner = model.maps[roomId]?.getOwner()
-      if (
-        req["requester_type"] != "admin" &&
-        (!owner || req["requester"] != owner)
-      ) {
-        return await reply.code(403).send("Not admin")
-      }
       // await sleepAsync(1000) // For testing UI
       const r = await model.posters.refreshFiles(roomId)
       for (const p of r.updated || []) {

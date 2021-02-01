@@ -1,4 +1,4 @@
-import { computed, ComputedRef } from "vue"
+import { computed, ComputedRef, nextTick } from "vue"
 import {
   calcDirection,
   inRange,
@@ -9,6 +9,7 @@ import {
   isUserId,
   isOpenCell,
   lookingAt,
+  updateMapCell,
 } from "@/common/util"
 import {
   startChat,
@@ -39,8 +40,9 @@ import {
   MySocketObject,
   PosDir,
   PosterId,
-  PersonWithEmail,
   Person,
+  MapUpdateSocketData,
+  MapReplaceSocketData,
 } from "@/@types/types"
 
 import { getClosestAdjacentPoints, isAdjacent, range } from "@/common/util"
@@ -72,6 +74,29 @@ export const personInFront: (
     const me = state.people[props.myUserId]
     const p = me ? lookingAt(me) : undefined
     return p ? personAt(state.people, p) : undefined
+  })
+
+export const objectCellInFront: (
+  props: RoomAppProps,
+  state: RoomAppState
+) => ComputedRef<Cell | undefined> = (
+  props: RoomAppProps,
+  state: RoomAppState
+) =>
+  computed(() => {
+    const me = state.people[props.myUserId]
+    const p = me ? lookingAt(me) : undefined
+    const c = p
+      ? state.hallMap[p.y]
+        ? state.hallMap[p.y][p.x]
+        : undefined
+      : undefined
+    if (c) {
+      if (c.link_url || c.poster_number) {
+        return c
+      }
+    }
+    return undefined
   })
 
 export const playBGM = (props: RoomAppProps, state: RoomAppState) => () => {
@@ -154,6 +179,35 @@ export function showPersonInfo(props: RoomAppProps, state: RoomAppState) {
   }
 }
 
+export function showObjectInfo(props: RoomAppProps, state: RoomAppState) {
+  return (
+    cell: Cell,
+    timeout = 5000,
+    color: string | undefined = undefined
+  ): void => {
+    state.objectInfo.url = cell.link_url || ""
+    state.objectInfo.text =
+      cell.kind == "poster"
+        ? "ポスター板：番号" +
+          (cell.poster_number == undefined ? "不明" : cell.poster_number)
+        : ""
+    state.objectInfo.color = color
+    state.objectInfo.hide = false
+    if (state.objectInfo.timer) {
+      window.clearTimeout(state.objectInfo.timer)
+      state.objectInfo.timer = undefined
+    }
+    if (timeout > 0) {
+      state.objectInfo.timer = window.setTimeout(() => {
+        if (state.objectInfo) {
+          state.objectInfo.hide = true
+          state.objectInfo.text = ""
+        }
+      }, timeout)
+    }
+  }
+}
+
 export const enterPoster = (
   axios: AxiosStatic | AxiosInstance,
   props: RoomAppProps,
@@ -189,7 +243,6 @@ export const enterPoster = (
     ._roomId(props.room_id)
     .posters._posterId(pid)
     .enter.$post()
-  console.log("Enter poster result", r)
   if (!r.ok) {
     console.warn("Cannot start viewing a poster", r.error)
     return
@@ -201,7 +254,6 @@ export const enterPoster = (
 
   if (props.isMobile) {
     location.hash = "poster"
-    state.mobilePane = "poster"
   }
   state.socket?.emit("Subscribe", {
     channel: pid,
@@ -449,7 +501,6 @@ export const moveTo = (
           room: props.room_id,
           user: props.myUserId,
         }
-    // console.log("Move emitting", d)
     state.socket?.emit("Move", d)
     state.move_emitted = performance.now()
     return true
@@ -486,8 +537,6 @@ moveOneStep = (
   if (p.x == to.x && p.y == to.y && p.direction == direction) {
     return false
   }
-  // console.log("moveOneStep()", to.x, to.y, direction)
-  // Vue.set
   if (p.id == props.myUserId) {
     state.center = {
       x: inRange(
@@ -660,10 +709,18 @@ const on_socket_move = (
     pos.y >= state.hallMap.length ||
     pos.x >= state.hallMap[0].length
   ) {
-    console.log("move rejecting")
     return
   }
   if (pos.user == props.myUserId && state.move_emitted) {
+    const max_y = Math.min(state.rows - 1, pos.y + state.viewDistance)
+    const max_x = Math.min(state.cols - 1, pos.x + state.viewDistance)
+    for (let y = Math.max(0, pos.y - state.viewDistance); y <= max_y; y++) {
+      for (let x = Math.max(0, pos.x - state.viewDistance); x <= max_x; x++) {
+        state.cellVisibility[y][x] = "visible"
+      }
+    }
+    state.cellVisibility[pos.y][pos.x] = "visited"
+
     const latency =
       Math.round((performance.now() - state.move_emitted) * 100) / 100
     console.log("%c" + latency.toFixed(2) + "ms socket move", "color: green")
@@ -747,8 +804,6 @@ export const dblClickHandler = (
     }
     const poster_location = state.hallMap[p.y][p.x].poster_number
 
-    console.log("dblClicked", person, poster, poster_location)
-
     if (state.people_typing[props.myUserId]) {
       const d: TypingSocketSendData = {
         user: me.id,
@@ -759,19 +814,26 @@ export const dblClickHandler = (
     }
 
     if (!poster && poster_location != undefined) {
-      if (!state.allow_poster_assignment) {
-        alert("この会場では参加者によるポスターの確保はできません。")
+      if (!state.room?.allow_poster_assignment) {
+        alert(
+          state.locale == "ja"
+            ? "この会場では参加者によるポスターの確保はできません。"
+            : "You cannot take a poster board in this room."
+        )
         return
       }
-      const r = confirm("このポスター板を確保しますか？")
+      const r = confirm(
+        state.locale == "ja"
+          ? `このポスター板（${poster_location}番）を確保しますか？`
+          : `Do you want to take this poster board (#${poster_location})?`
+      )
       if (!r) {
         return
       }
-      const data = await client.maps
+      await client.maps
         ._roomId(props.room_id)
         .poster_slots._posterNumber(poster_location)
         .$post({ body: {} })
-      console.log("take poster result", data)
     }
 
     if (!person && !poster) {
@@ -789,7 +851,10 @@ export const dblClickHandler = (
               state.encryption_possible_in_chat =
                 !!state.privateKey && d.encryption_possible
               state.selectedUsers.clear()
-              showMessage(props, state)("会話を開始しました")
+              showMessage(
+                props,
+                state
+              )(state.locale == "ja" ? "会話を開始しました。" : "Started chat.")
             }
             //
           })
@@ -843,13 +908,15 @@ export const initMapService = async (
   props: RoomAppProps,
   state: RoomAppState
 ): Promise<boolean> => {
-  const client = api(axiosClient(axios))
   socket.on("Room", (data: RoomUpdateSocketData) => {
     if (data.id != props.room_id) {
       return
     }
     if (data.allow_poster_assignment != undefined) {
-      state.allow_poster_assignment = data.allow_poster_assignment
+      state.room!.allow_poster_assignment = data.allow_poster_assignment
+    }
+    if (data.minimap_visibility != undefined) {
+      state.room!.minimap_visibility = data.minimap_visibility
     }
   })
   socket.on("Moved", data => {
@@ -875,16 +942,75 @@ export const initMapService = async (
     }
   })
   socket.on("MoveRequest", async d => {
-    console.log("MoveRequest", d)
     const p = state.posters[d.to_poster]
     await dblClickHandler(props, state, axios)({ x: p.x, y: p.y })
   })
-  const data = await client.maps._roomId(props.room_id).$get()
+
+  socket.on("MapUpdate", async (d: MapUpdateSocketData) => {
+    if (d.room == props.room_id) {
+      for (const c of d.changes) {
+        const obj = state.hallMap[c.y][c.x]
+        updateMapCell(obj, c)
+      }
+    }
+    await nextTick(() => {
+      if (d.message) {
+        alert(d.message)
+      }
+    })
+  })
+
+  const client = api(axiosClient(axios))
+
+  socket.on("MapReplace", async (d: MapReplaceSocketData) => {
+    if (d.room == props.room_id) {
+      const data = await client.maps._roomId(props.room_id).cells.$get()
+      state.hallMap = data.cells
+      state.cols = data.numCols
+      state.rows = data.numRows
+    }
+    if (d.message) {
+      alert(d.message)
+    }
+  })
+
+  const [data_meta, data] = await Promise.all([
+    client.maps._roomId(props.room_id).$get(),
+    client.maps._roomId(props.room_id).cells.$get(),
+  ])
+  state.room = {
+    allow_poster_assignment: data_meta.allow_poster_assignment,
+    move_log: data_meta.move_log,
+    minimap_visibility: data_meta.minimap_visibility,
+    name: data_meta.name,
+  }
   state.hallMap = data.cells
+
   state.cols = data.numCols
   state.rows = data.numRows
-  state.allow_poster_assignment = data.allow_poster_assignment
-  state.roomName = data.name
+  state.viewDistance = 5
+
+  state.cellVisibility = data.cells.map(row => {
+    return row.map(() => {
+      return "not_visited"
+    })
+  })
+
+  for (const row of data.cells) {
+    for (const c of row) {
+      if (c.visited == "visited") {
+        const max_y = Math.min(state.rows - 1, c.y + state.viewDistance)
+        const max_x = Math.min(state.cols - 1, c.x + state.viewDistance)
+        for (let y = Math.max(0, c.y - state.viewDistance); y <= max_y; y++) {
+          for (let x = Math.max(0, c.x - state.viewDistance); x <= max_x; x++) {
+            state.cellVisibility[y][x] = "visible"
+          }
+        }
+        state.cellVisibility[c.y][c.x] = "visited"
+      }
+    }
+  }
+
   state.notifications = await client.maps
     ._roomId(props.room_id)
     .notifications.$get()

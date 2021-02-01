@@ -3,7 +3,7 @@ import Login from "./Login.vue"
 import axiosDefault from "axios"
 
 axiosDefault
-  .get("/firebaseConfig.json")
+  .get("/api/firebaseConfig.json")
   .then(({ data }) => {
     const propsData = {
       firebaseConfig: data,

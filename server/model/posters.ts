@@ -41,9 +41,19 @@ const cloudfront = new AWS.CloudFront({
 })
 
 export async function get(poster_id: PosterId): Promise<Poster | null> {
-  log.debug(poster_id)
   const rows = await db.query(
-    `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id where p.id=$1;`,
+    `SELECT
+          p.*,
+          c.room,
+          c.x,
+          c.y,
+          c.poster_number,
+          c.custom_image
+      FROM
+          poster AS p
+          JOIN map_cell AS c ON p.location = c.id
+      WHERE
+          p.id = $1;`,
     [poster_id]
   )
   const d = rows[0]
@@ -71,6 +81,7 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
     access_log: d.access_log,
     author_online_only: d.author_online_only,
     poster_number: d.poster_number,
+    watermark: d.watermark == null ? undefined : d.watermark,
   }
 }
 
@@ -95,9 +106,24 @@ export async function set(
   file_size?: number
 ): Promise<boolean> {
   const file_uploaded = file_size != undefined
+  log.debug("poster.set", poster)
   if (file_uploaded) {
     await db.query(
-      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_uploaded=$8,file_size=$9 where id=$7;`,
+      `UPDATE
+            poster
+        SET
+            LOCATION = $1,
+            title = $2,
+            author = $3,
+            last_updated = $4,
+            access_log = $5,
+            author_online_only = $6,
+            file_uploaded = $8,
+            file_size = $9,
+            watermark = $10
+        WHERE
+            id = $7;
+  `,
       [
         poster.location,
         poster.title,
@@ -108,11 +134,24 @@ export async function set(
         poster.id,
         file_uploaded,
         file_size,
+        poster.watermark,
       ]
     )
   } else {
     await db.query(
-      `UPDATE poster set location=$1,title=$2,author=$3,last_updated=$4,access_log=$5,author_online_only=$6,file_size=$8 where id=$7;`,
+      `UPDATE
+            poster
+        SET
+            LOCATION = $1,
+            title = $2,
+            author = $3,
+            last_updated = $4,
+            access_log = $5,
+            author_online_only = $6,
+            file_size = $8,
+            watermark = $9
+        WHERE
+            id = $7;`,
       [
         poster.location,
         poster.title,
@@ -122,6 +161,7 @@ export async function set(
         poster.author_online_only,
         poster.id,
         file_size,
+        poster.watermark,
       ]
     )
   }
@@ -155,13 +195,14 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
       room: d.room,
       x: d.x,
       y: d.y,
-      last_updated: d.last_updated,
+      last_updated: +d.last_updated,
       location: d.location,
       file_url,
       file_size: d.file_size,
       access_log: d.access_log,
       author_online_only: d.author_online_only,
       poster_number: d.poster_number,
+      watermark: d.watermark,
     }
   })
 }
@@ -184,21 +225,43 @@ export async function getAllOfUser(user_id: UserId): Promise<Poster[] | null> {
 function getSignedUrlAsync(
   keypairId: string,
   privateKey: string,
-  options: any
+  options: { path: string; expires: number },
+  target: "cloudfront" | "s3" | "s3_put"
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const signer = new AWS.CloudFront.Signer(keypairId, privateKey)
-    signer.getSignedUrl(options, (err, url) => {
-      if (err) {
-        reject(err)
-      }
-      resolve(url)
-    })
+    if (target == "s3" || target == "s3_put") {
+      s3.getSignedUrl(
+        target == "s3_put" ? "putObject" : "getObject",
+        {
+          Bucket: S3_BUCKET,
+          Key: options.path,
+          Expires: options.expires,
+        },
+        (err, url) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve(url)
+          }
+        }
+      )
+    } else {
+      const url = "https://" + config.domain + options.path
+      const signer = new AWS.CloudFront.Signer(keypairId, privateKey)
+      signer.getSignedUrl({ url, expires: options.expires }, (err, url) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(url)
+        }
+      })
+    }
   })
 }
 
 export async function get_signed_url(
-  poster_id: PosterId
+  poster_id: PosterId,
+  source: "cloudfront" | "s3"
 ): Promise<{ url: string; file_size: number } | null> {
   try {
     const headCode = await s3
@@ -208,20 +271,75 @@ export async function get_signed_url(
       })
       .promise()
     log.debug({ headCode })
-    const keyPairId = config.aws.cloud_front.key_pair_id
-    const privateKey = await readFileAsync(
-      config.aws.cloud_front.private_key,
-      "utf-8"
-    )
-    const image_url = await getSignedUrlAsync(keyPairId, privateKey, {
-      url: "https://" + config.domain + "/files/" + poster_id + ".png",
-      expires: Math.floor(Date.now() / 1000) + 60,
-    }).catch(err => {
+    const file_size = headCode.ContentLength
+    if (source == "cloudfront") {
+      const keyPairId = config.aws.cloud_front.key_pair_id
+      const privateKey = await readFileAsync(
+        config.aws.cloud_front.private_key,
+        "utf-8"
+      )
+      const image_url = await getSignedUrlAsync(
+        keyPairId,
+        privateKey,
+        {
+          path: "/files/" + poster_id + ".png",
+          expires: Math.floor(Date.now() / 1000) + 60,
+        },
+        "cloudfront"
+      ).catch(err => {
+        log.error(err)
+        return null
+      })
+      return image_url && file_size ? { url: image_url, file_size } : null
+    } else {
+      const image_url = await getSignedUrlAsync(
+        "",
+        "",
+        {
+          path: "files/" + poster_id + ".png",
+          expires: 60,
+        },
+        "s3"
+      ).catch(err => {
+        log.error(err)
+        return null
+      })
+      return image_url && file_size ? { url: image_url, file_size } : null
+    }
+  } catch (err) {
+    log.debug({ err })
+    // if (err.code == "NotFound") {
+    return null
+    // }
+  }
+}
+
+export async function get_signed_url_for_upload(
+  poster_id: PosterId,
+  mime_type: string
+): Promise<string | null> {
+  try {
+    const ext: string | undefined = {
+      "image/png": "png",
+      "application/pdf": "pdf",
+      "image/jpeg": "jpg",
+    }[mime_type]
+    if (!ext) {
+      return null
+    }
+    const image_url = await getSignedUrlAsync(
+      "",
+      "",
+      {
+        path: "files/" + poster_id + "." + ext,
+        expires: 60, // 1 minute
+      },
+      "s3_put"
+    ).catch(err => {
       log.error(err)
       return null
     })
-    const file_size = headCode.ContentLength
-    return image_url && file_size ? { url: image_url, file_size } : null
+    return image_url
   } catch (err) {
     log.debug({ err })
     // if (err.code == "NotFound") {
@@ -286,7 +404,11 @@ export async function startViewing(
     )
     let image_url: string | undefined = undefined
     if (config.aws.s3.upload) {
-      const r = (await get_signed_url(poster.id)) || undefined
+      const r =
+        (await get_signed_url(
+          poster.id,
+          config.aws.s3.via_cdn ? "cloudfront" : "s3"
+        )) || undefined
       image_url = r ? r.url : undefined
     }
 
@@ -396,11 +518,10 @@ export async function getViewHistory(
   }
 }
 
-async function uploadFileToS3(file_path: string): Promise<string> {
+async function uploadFileToS3(file_path: string, key: string): Promise<string> {
   if (!config.aws.s3.bucket) {
     throw "S3 bucket not set"
   }
-  const key = "files/" + path.basename(file_path)
   const invalidate_items = ["/" + key]
 
   if (config.aws.cloud_front.id && config.aws.s3.via_cdn) {
@@ -436,6 +557,7 @@ async function uploadFileToS3(file_path: string): Promise<string> {
   // call S3 to retrieve upload file to specified bucket
   const data = await s3.upload(uploadParams).promise()
   log.info("Uploaded:", data)
+  console.log("Uploaded:", data)
   return data.Location
 }
 
@@ -472,7 +594,8 @@ export async function updatePosterFile(
     }
     await set(poster, file_size)
     if (config.aws.s3.upload && config.aws.s3.bucket) {
-      const _s3_url = await uploadFileToS3(out_path)
+      const key = `files/${poster.id}.png`
+      const _s3_url = await uploadFileToS3(out_path, key)
       await deleteFile(out_path)
     }
     return { ok: true }
@@ -510,8 +633,8 @@ export async function updatePosterFile(
     })
     log.debug("imagemagick result", code2)
     if (code2 != 0) {
-      await set(poster)
-      return { ok: true } // PNG file reduction is not necessary, so NO error
+      // await set(poster)
+      // return { ok: true } // PNG file reduction is not necessary, so NO error
       // return { ok: false, error: "PNG file reduction error" }
     } else {
       await deleteFile(out_path1)
@@ -523,24 +646,165 @@ export async function updatePosterFile(
       log.error(err)
       return { ok: false }
     }
+    await set(poster, file_size)
     if (config.aws.s3.upload && config.aws.s3.bucket) {
       log.info("Uploading to S3.")
       try {
-        await uploadFileToS3(file_to_upload)
+        const key = "files/" + poster.id + ".png"
+        await uploadFileToS3(file_to_upload, key)
         await deleteFile(file_to_upload)
         log.info("Uploaded PDF to S3 and deleted a local file.")
       } catch (err) {
         log.error(err)
+        console.log(err)
         await set(poster)
       }
     } else {
-      await set(poster, file_size)
       if (code2 != 0) {
         await copyFileAsync(out_path1, out_path)
         await deleteFile(out_path1)
       }
     }
     return { ok: true }
+  }
+}
+
+export async function updatePosterFileFromS3(
+  poster: Poster,
+  mime_type: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const ext: "png" | "pdf" | "jpg" | undefined = {
+      "image/png": "png",
+      "application/pdf": "pdf",
+      "image/jpeg": "jpg",
+    }[mime_type]
+
+    if (!ext) {
+      return { ok: false, error: "MIME type invalid: " + mime_type }
+    }
+
+    const Key = "files/" + poster.id + "." + ext
+
+    const downloaded_path = `db/posters/tmp-${
+      poster.id
+    }-${shortid.generate()}.${ext}`
+
+    const file_stream = fs.createWriteStream(downloaded_path)
+
+    console.log(`Downloading ${Key} to ${downloaded_path}, ${poster}`)
+
+    const s3_stream = s3
+      .getObject({ Bucket: S3_BUCKET, Key })
+      .createReadStream()
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        // Listen for errors returned by the service
+        s3_stream.on("error", function(err) {
+          // NoSuchKey: The specified key does not exist
+          console.error(err)
+          file_stream.destroy()
+          reject(err)
+        })
+
+        s3_stream
+          .pipe(file_stream)
+          .on("error", function(err) {
+            // capture any errors that occur when writing data to the file
+            console.error("File Stream:", err)
+            reject(err)
+          })
+          .on("close", function() {
+            resolve()
+          })
+      })
+    } catch (err) {
+      log.error(err)
+      return { ok: false, error: "Could not download a file" }
+    }
+
+    let file_to_upload = ""
+    if (mime_type == "image/png") {
+      const out_path = `db/posters/${poster.id}.png`
+      const child_magick = spawn("magick", [
+        "convert",
+        "-resize",
+        "6237000@>", //  = 2100*2970
+        downloaded_path,
+        out_path,
+      ])
+      const code_magick = await waitForChild(child_magick).catch(err => {
+        log.error(err)
+        return -1
+      })
+      console.log("ImageMagick result for PNG resize", code_magick)
+      file_to_upload = code_magick == 0 ? out_path : downloaded_path
+      if (code_magick == 0) {
+        await deleteFile(downloaded_path)
+      }
+    } else if (mime_type == "application/pdf") {
+      const png_tmp_path = `db/posters/tmp-${
+        poster.id
+      }-${shortid.generate()}.png`
+      const child_gs = spawn("gs", [
+        "-sDEVICE=png16m",
+        "-dLastPage=1",
+        "-r300",
+        "-dGraphicsAlphaBits=4",
+        "-o",
+        png_tmp_path,
+        downloaded_path,
+      ])
+      const code_gs = await waitForChild(child_gs).catch(() => -1)
+      if (code_gs != 0) {
+        return { ok: false, error: "PDF conversion error" }
+      }
+      await deleteFile(downloaded_path)
+      console.log("Conversion PNG -> PDF was OK.")
+      const magick_out_path = `db/posters/${poster.id}.png`
+      const child_magick = spawn("magick", [
+        "convert",
+        "-resize",
+        "6237000@>", //  = 2100*2970
+        png_tmp_path,
+        magick_out_path,
+      ])
+      const code_magick = await waitForChild(child_magick).catch(err => {
+        log.error(err)
+        return -1
+      })
+      console.log("Resizing PNG by ImageMagick: ", code_magick)
+      if (code_magick == 0) {
+        await deleteFile(png_tmp_path)
+      }
+      file_to_upload = code_magick == 0 ? magick_out_path : png_tmp_path
+    }
+    let file_size: number
+
+    try {
+      file_size = (await statAsync(file_to_upload)).size
+    } catch (err) {
+      log.error(err)
+      console.log("file size fail to get", file_to_upload)
+      return { ok: false, error: "Failed to get file size" }
+    }
+    console.log("Uploading to S3.", file_to_upload, file_size)
+    try {
+      const key = "files/" + poster.id + ".png"
+      await uploadFileToS3(file_to_upload, key)
+      await deleteFile(file_to_upload)
+      console.log("Uploaded PDF to S3 and deleted a local file.", file_size)
+      await set(poster, file_size)
+    } catch (err) {
+      log.error(err)
+      console.log("Error on upload.", err)
+      await set(poster)
+    }
+    return { ok: true }
+  } catch (err) {
+    console.log(err)
+    return { ok: false, error: err }
   }
 }
 
@@ -586,7 +850,10 @@ export async function refreshFiles(
       let e: boolean
       let file_size: number | undefined
       if (config.aws.s3.upload) {
-        const r = await get_signed_url(poster_id)
+        const r = await get_signed_url(
+          poster_id,
+          config.aws.s3.via_cdn ? "cloudfront" : "s3"
+        )
         if (r) {
           // file_size = await getFileSize(r.url, true)
           file_size = r.file_size

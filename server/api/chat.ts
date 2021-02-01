@@ -23,56 +23,59 @@ async function routes(
     return model.chat.getAllComments(req.params.roomId, req["requester"])
   })
 
-  fastify.post<any>("/maps/:roomId/groups/:groupId/comments", async req => {
-    const comments_encrypted: CommentEncryptedEntry[] = req.body as CommentEncryptedEntry[]
-    const roomId: string = req.params.roomId
-    const groupId: string = req.params.groupId
-    const requester: string = req["requester"]
-    const timestamp = Date.now()
-    userLog({
-      userId: requester,
-      operation: "comment.new",
-      data: { text: comments_encrypted },
-    })
-    const group = await model.chat.getGroupOfUser(roomId, requester)
-    if (!group) {
-      throw { statusCode: 400, message: "Not in a chat group" }
-    }
-    if (group.id != groupId) {
-      throw { statusCode: 400, message: "Chat group is wrong" }
-    }
-    const pos = await model.people.getPos(requester, roomId)
-    if (!pos) {
-      throw { statusCode: 400, message: "User position not found" }
-    }
-    const map = model.maps[roomId]
-    if (!map) {
-      throw { statusCode: 400, message: "Room not found" }
-    }
+  fastify.post<any>(
+    "/maps/:roomId/chat_groups/:groupId/comments",
+    async req => {
+      const comments_encrypted: CommentEncryptedEntry[] = req.body as CommentEncryptedEntry[]
+      const roomId: string = req.params.roomId
+      const groupId: string = req.params.groupId
+      const requester: string = req["requester"]
+      const timestamp = Date.now()
+      userLog({
+        userId: requester,
+        operation: "comment.new",
+        data: { text: comments_encrypted },
+      })
+      const group = await model.chat.getGroupOfUser(roomId, requester)
+      if (!group) {
+        throw { statusCode: 400, message: "Not in a chat group" }
+      }
+      if (group.id != groupId) {
+        throw { statusCode: 400, message: "Chat group is wrong" }
+      }
+      const pos = await model.people.getPos(requester, roomId)
+      if (!pos) {
+        throw { statusCode: 400, message: "User position not found" }
+      }
+      const map = model.maps[roomId]
+      if (!map) {
+        throw { statusCode: 400, message: "Room not found" }
+      }
 
-    const to_users = comments_encrypted.map(c => c.to)
-    if (!_.isEqual(group.users.sort(), to_users.sort())) {
-      emit.channel(requester).group(group) // Emit correct group info
-      throw { statusCode: 400, message: "Chat recipients are invalid" }
-    }
+      const to_users = comments_encrypted.map(c => c.to)
+      if (!_.isEqual(group.users.sort(), to_users.sort())) {
+        emit.channel(requester).group(group) // Emit correct group info
+        throw { statusCode: 400, message: "Chat recipients are invalid" }
+      }
 
-    const e: ChatComment = {
-      id: model.chat.genCommentId(),
-      person: requester,
-      room: roomId,
-      x: pos.x,
-      y: pos.y,
-      texts: comments_encrypted,
-      timestamp,
-      last_updated: timestamp,
-      kind: "person",
+      const e: ChatComment = {
+        id: model.chat.genCommentId(),
+        person: requester,
+        room: roomId,
+        x: pos.x,
+        y: pos.y,
+        texts: comments_encrypted,
+        timestamp,
+        last_updated: timestamp,
+        kind: "person",
+      }
+      const r = await model.chat.addCommentEncrypted(e)
+      if (r) {
+        emit.comment(e)
+      }
+      return { ok: r }
     }
-    const r = await model.chat.addCommentEncrypted(e)
-    if (r) {
-      emit.comment(e)
-    }
-    return { ok: r }
-  })
+  )
 
   fastify.delete<any>("/posters/:posterId/comments/:commentId", async req => {
     const posterId: PosterId = req.params.posterId

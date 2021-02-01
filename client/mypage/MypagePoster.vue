@@ -1,12 +1,12 @@
 <template>
   <div class="tab-content">
-    <h1>自分のポスター一覧</h1>
-    <div v-if="!posters">ポスターがありません。</div>
+    <h5 class="title is-5"></h5>
+    <div v-if="!posters">{{ lang("no_poster") }}</div>
     <div class="box" v-for="poster in posters" :key="poster.id">
       <div class="columns is-desktop">
         <div class="column is-one-third">
           <div
-            v-if="!!poster && rooms[poster.room].allow_poster_assignment"
+            v-if="!!poster && rooms[poster.room]?.allow_poster_assignment"
             class="poster-img"
             :class="{ 'drag-hover': dragover[poster.id] }"
             @dragover.prevent
@@ -20,26 +20,40 @@
                 :src="dataURI[poster.id]"
                 alt="Image"
               />
-              <span
+              <div
+                class="poster-upload-progress"
                 v-else-if="
-                  uploadProgress &&
-                  uploadProgress.file_type == 'application/pdf' &&
-                  uploadProgress.loaded == uploadProgress.total
+                  uploadingPosterId == poster.id &&
+                  posterUploadProgress &&
+                  (posterUploadProgress.loaded < posterUploadProgress.total ||
+                    posterUploadProgress.file_type == 'image/png')
                 "
-                >PDFからPNGへの変換処理中</span
               >
-              <span v-else-if="uploadProgress"
-                >{{ uploadProgress.loaded }} / {{ uploadProgress.total }} ({{
-                  Math.floor(
-                    (uploadProgress.loaded / uploadProgress.total) * 100
+                {{ posterUploadProgress.loaded }} /
+                {{ posterUploadProgress.total }} バイト（{{
+                  Math.round(
+                    (posterUploadProgress.loaded / posterUploadProgress.total) *
+                      100
                   )
-                }}%)</span
+                }}%）
+              </div>
+              <div
+                class="poster-upload-progress"
+                v-else-if="
+                  uploadingPosterId == poster.id &&
+                  posterUploadProgress &&
+                  posterUploadProgress.loaded == posterUploadProgress.total &&
+                  posterUploadProgress.file_type == 'application/pdf'
+                "
               >
-              <span v-else>画像なし</span>
+                {{ lang("converting") }}...
+              </div>
+
+              <span v-else>{{ lang("no_image") }}</span>
             </figure>
           </div>
           <div
-            v-if="!!poster && !rooms[poster.room].allow_poster_assignment"
+            v-if="!!poster && !rooms[poster.room]?.allow_poster_assignment"
             class="poster-img"
           >
             <figure class="image is-3x5">
@@ -48,17 +62,17 @@
                 :src="dataURI[poster.id]"
                 alt="Image"
               />
-              <span v-else>画像なし</span>
+              <span v-else>{{ lang("no_image") }}</span>
             </figure>
           </div>
           <small
             class="poster-image-note"
-            v-if="rooms[poster.room].allow_poster_assignment"
-            >枠内にドラッグ＆ドロップでポスターを掲載（10 MB以内）</small
+            v-if="rooms[poster.room]?.allow_poster_assignment"
+            >{{ lang("drop_image") }}</small
           >
-          <small class="poster-image-note" v-else
-            >会場のオーナーの設定により，画像やタイトルの変更はできません</small
-          >
+          <small class="poster-image-note" v-else>{{
+            lang("cannot_change")
+          }}</small>
         </div>
         <div class="column is-two-thirds">
           <div class="poster_title">
@@ -83,12 +97,12 @@
               <button
                 v-if="
                   editingTitle != poster.id &&
-                  rooms[poster.room].allow_poster_assignment
+                  rooms[poster.room]?.allow_poster_assignment
                 "
                 @click="onClickEditTitle(poster)"
                 class="button is-primary is-small"
               >
-                タイトルを変更
+                {{ lang("change_title") }}
               </button>
               <button
                 v-if="editingTitle == poster.id"
@@ -101,9 +115,6 @@
           </div>
           <div class="poster-settings">
             <div>
-              <label :for="'only-online-' + poster.id"
-                >自分がオフラインの時にポスター画像を隠す</label
-              >
               <input
                 type="checkbox"
                 name=""
@@ -117,11 +128,11 @@
                   )
                 "
               />
+              <label :for="'only-online-' + poster.id">{{
+                lang("hide_offline")
+              }}</label>
             </div>
             <div>
-              <label :for="'access-log-' + poster.id"
-                >足あと（閲覧記録）を記録・公開する</label
-              >
               <input
                 type="checkbox"
                 name=""
@@ -131,12 +142,29 @@
                   onChangeToggle('access_log', poster.id, $event.target.checked)
                 "
               />
+              <label :for="'access-log-' + poster.id">{{
+                lang("visit_history")
+              }}</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                name=""
+                :id="'watermark-' + poster.id"
+                v-model="hasWatermark[poster.id]"
+                @change="
+                  onChangeToggle('watermark', poster.id, $event.target.checked)
+                "
+              />
+              <label :for="'watermark-' + poster.id">{{
+                lang("watermark")
+              }}</label>
             </div>
           </div>
 
           <div class="poster-logs">
             <h5 class="title is-5" style="margin-bottom: 3px">
-              ポスターの閲覧履歴
+              {{ lang("history") }}
             </h5>
             <div class="poster-logs-entries">
               <ul>
@@ -154,16 +182,16 @@
             class="remove-poster button is-danger"
             @click="removePosterFile(poster.id)"
             :disabled="!poster.file_url"
-            v-if="rooms[poster.room].allow_poster_assignment"
+            v-if="rooms[poster.room]?.allow_poster_assignment"
           >
-            画像を削除
+            {{ lang("delete_image") }}
           </button>
           <button
-            v-if="rooms[poster.room].allow_poster_assignment"
+            v-if="rooms[poster.room]?.allow_poster_assignment"
             class="release-poster-slot button is-danger"
             @click="releasePosterSlot(poster)"
           >
-            ポスター枠を開放
+            {{ lang("release_slot") }}
           </button>
         </div>
       </div>
@@ -187,6 +215,8 @@ import { formatTime } from "../util"
 import axiosDefault from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
+import { doUploadPoster } from "../room/room_poster_service"
+import { Person } from "@/api/@types"
 const API_ROOT = "/api"
 const axios = axiosDefault.create()
 axios.defaults.baseURL = API_ROOT
@@ -194,12 +224,17 @@ const client = api(axiosClient(axios))
 
 export default defineComponent({
   props: {
+    locale: {
+      type: String,
+      enum: ["ja", "en"],
+      required: true,
+    },
     posters: {
       type: Array as PropType<Poster[]>,
       required: true,
     },
     people: { type: Object as PropType<{ [index: string]: PersonWithEmail }> },
-
+    myself: { type: Object as PropType<Person>, required: true },
     rooms: {
       type: Object as PropType<{ [room_id: string]: Room }>,
       required: true,
@@ -220,14 +255,95 @@ export default defineComponent({
       dragover: {} as { [poster_id: string]: boolean },
       dataURI: {} as { [poster_id: string]: string },
       editingTitle: null as PosterId | null,
-      uploadProgress: undefined as
+
+      posterUploadProgress: undefined as
         | {
-            file_type: "application/pdf" | "image/png"
+            file_type: "image/png" | "application/pdf"
             loaded: number
             total: number
           }
         | undefined,
+      uploadingPosterId: undefined as string | undefined,
+      hasWatermark: {} as { [poster_id: string]: boolean },
     })
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        no_poster: {
+          ja: "ポスターがありません。",
+          en: "You have no poster.",
+        },
+        converting: {
+          ja: "PDFからPNGへの変換中",
+          en: "Converting from PDF to PNG",
+        },
+        no_image: {
+          ja: "画像なし",
+          en: "No image",
+        },
+        change_title: {
+          ja: "タイトルを変更",
+          en: "Change title",
+        },
+        delete_image: {
+          ja: "画像を削除",
+          en: "Delete image",
+        },
+        release_slot: {
+          ja: "ポスター枠を開放",
+          en: "Release poster slot",
+        },
+        drop_image: {
+          ja:
+            "枠内にPNG（推奨）あるいはPDFをドラッグ＆ドロップでポスターを掲載（10 MB以内）",
+          en:
+            "Drag and drop a poster PNG (recommended) or PDF file (up to 10 MB) into the frame",
+        },
+        cannot_change: {
+          ja: "会場のオーナーの設定により，画像やタイトルの変更はできません",
+          en:
+            "The room owner does not allow users to change images and titles.",
+        },
+        hide_offline: {
+          ja: "自分がオフラインの時にポスター画像を隠す",
+          en: "Hide the poster image when you are offline",
+        },
+        visit_history: {
+          ja: "足あと（閲覧記録）を記録・公開する",
+          en: "Record and disclose the access log",
+        },
+        watermark: {
+          ja: "閲覧時に透かしを表示させる",
+          en: "Show watermarks",
+        },
+        history: {
+          ja: "ポスターの閲覧履歴",
+          en: "Access log",
+        },
+        file_type: {
+          ja: "ファイル形式はPDFあるいはPNGのみ対応しています。",
+          en: "Only PDF and PNG files are supported.",
+        },
+        file_size: {
+          ja: "ファイルサイズを10MB以下にしてください。",
+          en: "File size must be less than 10 MB.",
+        },
+        uploaded: {
+          ja: "ポスター画像をアップロードしました。",
+          en: "Poster image was uploaded.",
+        },
+      }
+      return message[key][props.locale]
+    }
+
+    for (const p of props.posters) {
+      console.log(p)
+      if (p.watermark) {
+        state.hasWatermark[p.id] = true
+      }
+    }
 
     const inputTitle = ref<HTMLInputElement>()
     const setTitle = async (poster: Poster) => {
@@ -276,10 +392,10 @@ export default defineComponent({
         console.error("File not found")
       } else if (file.type != "image/png" && file.type != "application/pdf") {
         console.error("File type invalid")
-        alert("ファイル形式はPDFあるいはPNGのみ対応しています。")
+        alert(lang("file_type"))
       } else if (file.size >= 10e6) {
         console.error("File size loo large")
-        alert("ファイルサイズを10MB以下にしてください。")
+        alert(lang("file_size"))
       } else {
         const fd = new FormData() //★②
         fd.append("file", file)
@@ -291,64 +407,79 @@ export default defineComponent({
           file_url: undefined,
         })
 
-        const { data } = await axios.post(
-          "/posters/" + poster_id + "/file",
-          fd,
-          {
-            onUploadProgress: progress => {
-              state.uploadProgress = {
-                file_type: file.type as "image/png" | "application/pdf",
-                loaded: progress.loaded,
-                total: progress.total,
-              }
-              console.log("onUploadProgress", progress)
-            },
-          }
+        state.uploadingPosterId = poster_id
+        const data = await doUploadPoster(
+          props.myself.id,
+          axios,
+          state,
+          file,
+          poster_id
         )
-        console.log(data)
-        state.uploadProgress = undefined
-        context.emit("set-poster", poster_id, data.poster)
-        alert("ポスターをアップロードしました。")
+        state.uploadingPosterId = undefined
+        const url = (await client.posters._posterId(poster_id).file_url.$get())
+          .url
+
+        context.emit("set-poster", poster_id, {
+          ...props.posters[poster_id],
+          file_url: url,
+          last_updated: Date.now(),
+        })
+        if (url) {
+          state.dataURI[poster_id] = url
+        }
+
+        alert(lang("uploaded"))
       }
     }
 
     const loadPosterImages = async () => {
+      let loaded_any = false
       for (const poster of Object.values(props.posters)) {
-        if (props.lastLoaded > poster.last_updated) {
-          continue
-        }
+        console.log(
+          "loadPosterImages",
+          poster,
+          props.lastLoaded,
+          poster.last_updated
+        )
+        // if (props.lastLoaded > poster.last_updated) {
+        //   continue
+        // }
+        loaded_any = true
+        console.log("Loading poster")
         let url: string | undefined = poster.file_url
         if (url == "not_disclosed") {
           url = (await client.posters._posterId(poster.id).file_url.$get()).url
         }
-        if (!url) {
-          url = "/api/posters/" + poster.id + "/file"
-        }
+        // if (!url) {
+        //   url = "/api/posters/" + poster.id + "/file"
+        // }
         console.log("get poster ", poster.id, url)
-        /*
-        const { data } = await axiosDefault({
-          method: "GET",
-          responseType: "arraybuffer",
-          url,
-        })
-        const image = btoa(
-          new Uint8Array(data).reduce(
-            (d, byte) => d + String.fromCharCode(byte),
-            ""
-          )
-        )
-        state.dataURI[poster.id] = "data:image/png;base64," + image
-        */
-        state.dataURI[poster.id] = url
+        if (url) {
+          state.dataURI[poster.id] = url
+        }
       }
-      context.emit("update-last-loaded", Date.now())
+      if (loaded_any) {
+        context.emit("update-last-loaded", Date.now())
+      }
     }
 
     onMounted(async () => {
       await loadPosterImages()
     })
 
-    watch(() => props.posters, loadPosterImages)
+    watch(
+      () => props.posters,
+      async () => {
+        for (const p of props.posters) {
+          console.log(p)
+          if (p.watermark) {
+            state.hasWatermark[p.id] = true
+          }
+        }
+
+        await loadPosterImages()
+      }
+    )
 
     const removePosterFile = async (poster_id: PosterId) => {
       const data = await client.posters._posterId(poster_id).file.$delete()
@@ -381,14 +512,16 @@ export default defineComponent({
     }
 
     const onChangeToggle = async (
-      key: "access_log" | "author_online_only",
+      key: "access_log" | "author_online_only" | "watermark",
       pid,
       flag
     ) => {
       const body =
         key == "access_log"
           ? { access_log: flag }
-          : { author_online_only: flag }
+          : key == "author_online_only"
+          ? { author_online_only: flag }
+          : { watermark: flag ? 7 : 0 }
       await client.posters._posterId(pid).patch({
         body,
       })
@@ -404,6 +537,7 @@ export default defineComponent({
       setTitle,
       releasePosterSlot,
       onChangeToggle,
+      lang,
     }
   },
 })

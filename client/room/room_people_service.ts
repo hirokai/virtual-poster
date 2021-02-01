@@ -21,7 +21,6 @@ const updatePerson = (
   state: RoomAppState,
   d: PersonUpdate
 ) => {
-  console.log("updatePerson", d)
   const p = state.people[d.id]
   if (!p) {
     console.warn("User not found (probably new user)")
@@ -52,6 +51,7 @@ const updatePerson = (
         : d.poster_viewing != undefined
         ? d.poster_viewing
         : p.poster_viewing,
+    role: d.role || p.role,
   }
   if (d.id == props.myUserId && person.poster_viewing) {
     const client = api(axiosClient(axios))
@@ -65,8 +65,6 @@ const updatePerson = (
         //
       })
   }
-  console.log("Setting person", person)
-  //Vue.set
   state.people[d.id] = person
 }
 
@@ -78,32 +76,25 @@ export const initPeopleService = async (
 ): Promise<boolean> => {
   socket.on("PersonNew", (ps: PersonInMap[]) => {
     for (const p of ps) {
-      console.log("socket PersonNew", p)
-      //Vue.set
       state.people[p.id] = p
     }
   })
   socket.on("PersonUpdate", (ps: PersonUpdate[]) => {
     for (const p of ps) {
-      // console.log("socket PersonUpdate", p)
       updatePerson(axios, props, state, p)
     }
   })
   socket.on("PersonRemove", (uids: UserId[]) => {
-    console.log({ msg: "PersonRemove", uids })
     for (const uid of uids) {
-      //Vue.delete
       delete state.people[uid]
     }
   })
   socket.on("person_multi", ds => {
-    // console.log("socket people", ds)
     for (const d of ds) {
       updatePerson(axios, props, state, d)
     }
   })
   socket.on("ActiveUsers", (ds: ActiveUsersSocketData) => {
-    // console.log("ActiveUsers socket", ds)
     for (const d of ds.users) {
       const p = state.people[d.user]
       if (p) {
@@ -118,12 +109,10 @@ export const initPeopleService = async (
   })
 
   socket.on("ChatTyping", (d: TypingSocketData) => {
-    console.log("ChatTyping socket", d)
     if (d.room == props.room_id) {
       //Vue.set
       state.people_typing[d.user] = d.typing
     }
-    console.log("ChatTyping", state.people_typing)
   })
 
   const [r_people, { data: r_avatars }]: [

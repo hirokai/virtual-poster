@@ -14,8 +14,8 @@
     :data-y="cell.y"
     :transform="'translate (' + left + ' ' + top + ')'"
     :style="{
-      width: 48 + 'px',
-      height: 48 + 'px',
+      width: cellSize + 'px',
+      height: cellSize + 'px',
     }"
     @dblclick="$emit('dbl-click', { x: cell.x, y: cell.y })"
     @click="$emit('select', { x: cell.x, y: cell.y, event: $event })"
@@ -24,54 +24,54 @@
   >
     <image
       xlink:href="/img/map/kusa.png"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       v-if="pictureStyle && cell.kind == 'grass'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       xlink:href="/img/map/kusa_red.png"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       v-if="pictureStyle && cell.kind == 'poster'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       :xlink:href="'/img/map/' + cell.custom_image"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       v-if="pictureStyle && cell.custom_image"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       class="poster-name"
       v-if="cell.kind == 'poster' && abstractStyle"
-      width="46px"
-      y="28px"
-      height="18px"
+      :y="'' + (cellSize * 28) / 48 + 'px'"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize * 18) / 48 + 'px'"
       opacity="0.4"
       fill="white"
     />
     <image
       v-if="cell.kind == 'poster_seat' && pictureStyle"
       xlink:href="/img/map/kusa_red.png"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'poster_seat' && pictureStyle && cell.custom_image"
       :xlink:href="'/img/map/' + cell.custom_image"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'poster_seat' && abstractStyle"
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#A8A735"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
@@ -83,8 +83,8 @@
       "
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#7E7353"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
@@ -97,9 +97,9 @@
         poster.author &&
         pictureStyle
       "
-      width="46px"
-      y="4px"
-      height="30px"
+      :width="'' + (cellSize - 2) + 'px'"
+      :y="'' + cellSize / 12 + 'px'"
+      :height="'' + cellSize / 1.6 + 'px'"
       opacity="0.4"
       fill="white"
     />
@@ -112,18 +112,18 @@
         pictureStyle
       "
       :xlink:href="'/img/map/' + (cell.custom_image || 'post.png')"
-      width="80px"
-      height="80px"
-      x="-16px"
-      y="-20px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
+      x="0px"
+      y="0px"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="poster && myself && poster.author == myself.id && dragOver"
       x="1"
       y="1"
-      width="46"
-      height="46"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize - 2) + 'px'"
       stroke="red"
       stroke-width="2"
       fill="none"
@@ -133,10 +133,10 @@
       :class="{ poster_self: true, drag_over: dragOver }"
       v-if="poster && myself && poster.author == myself.id && pictureStyle"
       xlink:href="/img/map/post.png"
-      width="80px"
-      height="80px"
-      x="-16px"
-      y="-20px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
+      x="0px"
+      y="0px"
       @dragover.prevent="onDragOverMyPoster"
       @dragleave.prevent="onDragLeaveMyPoster"
       @drop.prevent="poster ? onDropMyPoster($event, poster.id) : ''"
@@ -145,8 +145,8 @@
     <rect
       :class="{ poster_self: true, drag_over: dragOver }"
       v-if="poster && myself && poster.author == myself.id && abstractStyle"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#7E7353"
       @dragover.prevent="onDragOverMyPoster"
       @dragleave.prevent="onDragLeaveMyPoster"
@@ -162,11 +162,11 @@
         poster.author &&
         people[poster.author]
       "
-      x="24px"
-      y="32px"
+      :x="'' + cellSize / 2 + 'px'"
+      :y="'' + cellSize / 1.5 + 'px'"
       :style="{
         'font-family': '\'Helvetica\', sans-serif',
-        'font-size': '28px',
+        'font-size': '' + (cellSize * 28) / 48 + 'px',
         'font-weight': 'bolder',
       }"
       dominant-baseline="bottom"
@@ -177,70 +177,70 @@
       v-if="cell.kind == 'grass' && abstractStyle"
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#8DAC4B"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'water' && pictureStyle"
       xlink:href="/img/map/water.png"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'water' && pictureStyle && cell.custom_image"
       :xlink:href="'/img/map/' + cell.custom_image"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'water' && abstractStyle"
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#6D8793"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'mud' && pictureStyle"
       :xlink:href="'/img/map/' + (cell.custom_image || 'mud.png')"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'mud' && abstractStyle"
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#8D894E"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'wall' && pictureStyle"
       :xlink:href="'/img/map/kusa.png'"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <image
       v-if="cell.kind == 'wall' && pictureStyle"
       :xlink:href="'/img/map/' + (cell.custom_image || 'yama.png')"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
     <rect
       v-if="cell.kind == 'wall' && abstractStyle"
       x="0"
       y="0"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       fill="#959174"
       @click="cell.link_url ? clickLink(cell.link_url) : null"
     />
@@ -282,6 +282,10 @@ export default defineComponent({
       required: true,
     },
     top: {
+      type: Number,
+      required: true,
+    },
+    cellSize: {
       type: Number,
       required: true,
     },

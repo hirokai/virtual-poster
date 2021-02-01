@@ -19,8 +19,8 @@ paths:
           type: string
         name: roomId
         in: path
-        required: true
         description: Room ID
+        required: true
     get:
       summary: Get a list of people
       tags:
@@ -44,6 +44,11 @@ paths:
           in: query
           name: email
           description: Return email address of each user. Only valid for app admin and room owner.
+        - schema:
+            type: boolean
+          in: query
+          name: groups
+          description: Return user groups in the room. Only valid for app admin and room owner. Note that this group is different from chat groups
       description: Get all people in the room. Only returns who entered the room already.
   "/people/{userId}":
     parameters:
@@ -312,18 +317,41 @@ paths:
                       type: integer
                     num_people_with_access:
                       type: integer
-                    access_code:
-                      type: object
-                      properties:
-                        code:
-                          type: string
-                        active:
-                          type: boolean
-                      required:
-                        - code
-                        - active
+                    access_codes:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          code:
+                            type: string
+                          active:
+                            type: boolean
+                          access_granted:
+                            type: array
+                            items:
+                              type: string
+                          timestamp:
+                            type: number
+                        required:
+                          - code
+                          - active
+                          - access_granted
+                          - timestamp
                     allow_poster_assignment:
                       type: boolean
+                    move_log:
+                      type: boolean
+                    minimap_visibility:
+                      type: string
+                      enum:
+                        - all_initial
+                        - map_initial
+                        - all_only_visited
+                        - map_only_visited
+                    admins:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/UserId"
                   required:
                     - numCols
                     - numRows
@@ -333,6 +361,8 @@ paths:
                     - poster_count
                     - owner
                     - allow_poster_assignment
+                    - minimap_visibility
+                    - admins
       operationId: get-maps
       description: Get a list of rooms
     post:
@@ -350,6 +380,8 @@ paths:
                     type: boolean
                   error:
                     type: string
+                  room_id:
+                    type: string
       description: Create a new map
       requestBody:
         content:
@@ -365,6 +397,13 @@ paths:
                   type: boolean
                 data:
                   type: string
+                minimap_visibility:
+                  type: string
+                  enum:
+                    - all_initial
+                    - all_only_visited
+                    - map_initial
+                    - map_only_visited
               required:
                 - name
       tags:
@@ -397,22 +436,62 @@ paths:
                     type: integer
                   numRows:
                     type: integer
-                  cells:
-                    type: array
-                    items:
-                      type: array
-                      items:
-                        $ref: "#/components/schemas/Cell"
                   allow_poster_assignment:
                     type: boolean
                   name:
                     type: string
+                  move_log:
+                    type: boolean
+                  minimap_visibility:
+                    type: string
+                    enum:
+                      - all_initial
+                      - map_initial
+                      - all_only_visited
+                      - map_only_visited
+                  access_codes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                        active:
+                          type: boolean
+                        access_granted:
+                          type: array
+                          items:
+                            type: string
+                        timestamp:
+                          type: number
+                      required:
+                        - code
+                        - active
+                        - access_granted
+                        - timestamp
+                  people_groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        user_count:
+                          type: integer
+                      required:
+                        - id
+                        - name
                 required:
                   - numCols
                   - numRows
-                  - cells
                   - allow_poster_assignment
                   - name
+                  - move_log
+                  - minimap_visibility
       operationId: get-maps-roomId
       description: Get room information
     delete:
@@ -476,6 +555,13 @@ paths:
                       - allow
                 access_rules_active:
                   type: boolean
+                minimap_visibility:
+                  type: string
+                  enum:
+                    - all_initial
+                    - map_initial
+                    - all_only_visited
+                    - map_only_visited
             examples:
               example-1:
                 value:
@@ -529,7 +615,7 @@ paths:
         - debugAs: []
         - debugToken: []
       description: Enter a room
-  "/maps/{roomId}/groups/{groupId}/join":
+  "/maps/{roomId}/chat_groups/{groupId}/join":
     post:
       summary: Join a chat
       operationId: "post-maps-:room_id-groups-:group_id-join"
@@ -569,7 +655,7 @@ paths:
         name: groupId
         in: path
         required: true
-  "/maps/{roomId}/groups/{groupId}/leave":
+  "/maps/{roomId}/chat_groups/{groupId}/leave":
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -608,7 +694,7 @@ paths:
       security:
         - debugAs: []
         - debugToken: []
-  "/maps/{roomId}/groups/{groupId}/people":
+  "/maps/{roomId}/chat_groups/{groupId}/people":
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -689,7 +775,7 @@ paths:
       tags:
         - chat
       description: "Kick out a member from chat  "
-  "/maps/{roomId}/groups":
+  "/maps/{roomId}/chat_groups":
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -756,7 +842,7 @@ paths:
       security:
         - debugAs: []
         - debugToken: []
-  /groups:
+  /chat_groups:
     get:
       summary: Get chat groups
       tags:
@@ -778,7 +864,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
-  "/maps/{roomId}/people/{userId}/groups":
+  "/maps/{roomId}/people/{userId}/chat_groups":
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -1793,7 +1879,7 @@ paths:
           in: query
           name: message
       description: "Verify blind signature  "
-  "/maps/{roomId}/groups/{groupId}/comments":
+  "/maps/{roomId}/chat_groups/{groupId}/comments":
     parameters:
       - $ref: "#/components/parameters/debug_token"
       - $ref: "#/components/parameters/debug_as"
@@ -1892,6 +1978,8 @@ paths:
                     type: array
                     items:
                       type: string
+                  primary_room:
+                    type: string
                 required:
                   - ok
       operationId: post-people-userId-access_code
@@ -2251,11 +2339,16 @@ paths:
         - debugAs: []
         - debugToken: []
       description: "Get a signed URL of   a poster image. This is only allowed when the user is viewing poster.  "
-  "/maps/{roomId}/access_code/renew":
+  "/maps/{roomId}/access_code/{accessCode}/renew":
     parameters:
       - schema:
           type: string
         name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: accessCode
         in: path
         required: true
     post:
@@ -2281,7 +2374,7 @@ paths:
                 required:
                   - ok
       operationId: post-maps-roomId-access_code-renew
-      description: Renew access code. Only callable by the owner
+      description: "Renew access code.  "
   "/maps/{roomId}/people/{userId}":
     parameters:
       - schema:
@@ -2314,17 +2407,9 @@ paths:
                   - ok
       operationId: delete-maps-roomId-people-userId
       description: Delete person's room access
-  "/maps/{roomId}/access_code":
-    parameters:
-      - schema:
-          type: string
-        name: roomId
-        in: path
-        required: true
-    delete:
-      summary: Delete the access code
-      tags:
-        - map
+    patch:
+      summary: ""
+      operationId: patch-maps-roomId-people-userId
       responses:
         "200":
           description: OK
@@ -2335,14 +2420,77 @@ paths:
                 properties:
                   ok:
                     type: boolean
-                  deleted_code:
-                    type: string
                   error:
                     type: string
                 required:
                   - ok
-      operationId: delete-maps-roomId-access_code
-      description: Delete the (default) access code. Currently only one access code is created for each room.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum:
+                    - admin
+                    - user
+              required:
+                - role
+  "/maps/{roomId}/access_code":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    post:
+      summary: Create a new access code
+      operationId: post-maps-roomId-access_code
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  access_code:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      access_granted:
+                        type: array
+                        items:
+                          type: string
+                      active:
+                        type: boolean
+                      timestamp:
+                        type: number
+                    required:
+                      - code
+                      - access_granted
+                      - active
+                      - timestamp
+      description: Create a new access code
+      tags:
+        - auth
+        - map
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_granted:
+                  type: array
+                  items:
+                    type: string
+                active:
+                  type: boolean
   "/maps/{roomId}/access_code/{accessCode}":
     parameters:
       - schema:
@@ -2357,7 +2505,8 @@ paths:
         required: true
     patch:
       summary: Update access code property
-      tags: []
+      tags:
+        - map
       responses:
         "200":
           description: OK
@@ -2379,8 +2528,28 @@ paths:
               properties:
                 active:
                   type: boolean
-              required:
-                - active
+                access_granted:
+                  type: array
+                  items:
+                    type: string
+    delete:
+      summary: Delete room access code
+      operationId: delete-maps-roomId-access_code-accessCode
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: "Delete room access code  "
   "/maps/{roomId}/posters/refresh_files":
     parameters:
       - schema:
@@ -2647,6 +2816,228 @@ paths:
                 required:
                   - ok
       operationId: post-maps-roomId-reset_cache
+  "/posters/{posterId}/file_upload_url":
+    parameters:
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    get:
+      summary: Get a URL for uploading a poster file on S3
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  url:
+                    type: string
+                  target:
+                    type: string
+                    enum:
+                      - s3
+                      - api_server
+                required:
+                  - ok
+      operationId: get-posters-posterId-file_upload_url
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: mime_type
+          required: true
+  "/posters/{posterId}/file_upload_done":
+    parameters:
+      - schema:
+          type: string
+        name: posterId
+        in: path
+        required: true
+    post:
+      summary: Notify the server completing the upload
+      tags: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+      operationId: post-posters-posterId-file_upload_done
+      description: "Notify the server completion of upload  "
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mime_type:
+                  type: string
+              required:
+                - mime_type
+  "/maps/{roomId}/cells":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+    patch:
+      summary: Modify map layout
+      tags:
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: patch-maps-roomId-cells
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                changes:
+                  type: array
+                  items: {}
+                message:
+                  type: string
+      description: Modify map layout
+    put:
+      summary: Replace all map cells at once
+      operationId: put-maps-roomId-cells
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      description: Replace all map cells at once
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: string
+                message:
+                  type: string
+              required:
+                - data
+      tags:
+        - map
+    get:
+      summary: Get map cells
+      operationId: get-maps-roomId-cells
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  numCols:
+                    type: integer
+                  numRows:
+                    type: integer
+                  cells:
+                    type: array
+                    required: true
+                    items:
+                      type: array
+                      required: true
+                      items:
+                        $ref: "#/components/schemas/Cell"
+                        required: true
+                required:
+                  - numCols
+                  - numRows
+                  - cells
+      tags:
+        - map
+      description: Get map layout of the room
+  "/maps/{roomId}/people_groups":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+        description: Room ID
+    post:
+      summary: Add a people group
+      tags:
+        - people
+        - map
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: post-maps-roomId-people_groups
+      description: "Add a people group placeholder.  "
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                groups:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                    required:
+                      - name
+              required:
+                - groups
+      parameters: []
 components:
   parameters:
     debug_token:
@@ -2757,6 +3148,11 @@ components:
         link_url:
           type: string
           format: uri
+        visited:
+          type: string
+          enum:
+            - visited
+            - seen
       required:
         - id
         - x
@@ -3054,6 +3450,16 @@ components:
           $ref: "#/components/schemas/PosterId"
         email:
           type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - admin
+            - user
+        people_groups:
+          type: array
+          items:
+            type: string
       required:
         - id
         - room

@@ -67,6 +67,7 @@
       </div>
       <ManageRooms
         v-if="tab == 'rooms'"
+        :locale="locale"
         :admin_page="true"
         :myUserId="myUserId"
         :axios="axios"
@@ -81,12 +82,15 @@
         @change-room="changeRoom"
         @make-announcement="doSubmitAnnouncement"
         @ask-reload="askReload"
+        @create-access-code="createAccessCode"
         @renew-access-code="renewAccessCode"
         @delete-access-code="deleteAccessCode"
+        @reload-room-metadata="reloadRoomMetadata"
       />
       <ManageUsers
         class="tab-content"
         v-if="tab == 'people'"
+        :locale="locale"
         :axios="axios"
         :idToken="idToken"
         :people="people"
@@ -138,8 +142,14 @@ import {
 import ManageRooms from "./ManageRooms.vue"
 import ManageUsers from "./ManageUsers.vue"
 
+import {
+  createAccessCode,
+  deleteAccessCode,
+  reloadRoomMetadata,
+  renewAccessCode,
+} from "./admin_room_service"
+
 import { keyBy } from "@/common/util"
-import io from "socket.io-client"
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
 
@@ -166,7 +176,8 @@ export default defineComponent({
   setup(props) {
     const client = api(axiosClient(axios))
 
-    if (!localStorage["virtual-poster:user_id"]) {
+    const myUserId: string | undefined = localStorage["virtual-poster:user_id"]
+    if (!myUserId) {
       location.href = "/login"
     }
 
@@ -180,7 +191,7 @@ export default defineComponent({
       inputText: "",
       rooms: {} as { [room_id: string]: Room },
       loggedIn: false,
-      myUserId: localStorage["virtual-poster:user_id"] as UserId,
+      myUserId,
       idToken: null as string | null,
       user: {} as { name?: string; user_id?: string; email?: string },
       axios: axios as AxiosInstance,
@@ -200,6 +211,8 @@ export default defineComponent({
         { id: "socket", name: "通信" },
       ] as { id: string; name: string }[],
       announceRoom: "" as RoomId,
+      locale: (localStorage[`virtual-poster:${myUserId}:config:locale`] ||
+        "ja") as "ja" | "en",
     })
 
     const announceText = ref<HTMLInputElement>()
@@ -426,39 +439,6 @@ export default defineComponent({
       delete state.rooms[room_id]
     }
 
-    const renewAccessCode = async (room_id: RoomId) => {
-      if (
-        state.rooms[room_id].access_code &&
-        !confirm(
-          "アクセスコードを更新しますか？ 古いコードは使えなくなります。"
-        )
-      ) {
-        return
-      }
-      const r = await client.maps._roomId(room_id).access_code.renew.$post()
-      if (r.code && r.active != undefined) {
-        state.rooms[room_id].access_code = { code: r.code, active: r.active }
-      }
-    }
-
-    const deleteAccessCode = async (room_id: RoomId) => {
-      if (
-        !confirm(
-          "アクセスコードを削除しますか？ 削除するとコードは使えなくなります。"
-        )
-      ) {
-        return
-      }
-      const r = await client.maps._roomId(room_id).access_code.$delete()
-      if (r.ok) {
-        state.rooms[room_id].access_code = undefined
-        alert("アクセスコードを削除しました")
-      } else {
-        console.error(r.error)
-        alert("アクセスコードの削除に失敗しました")
-      }
-    }
-
     return {
       API_ROOT,
       ...toRefs(state),
@@ -469,8 +449,10 @@ export default defineComponent({
       announceText,
       askReload,
       changeRoom,
-      renewAccessCode,
-      deleteAccessCode,
+      createAccessCode: createAccessCode(state),
+      renewAccessCode: renewAccessCode(state),
+      deleteAccessCode: deleteAccessCode(state),
+      reloadRoomMetadata: reloadRoomMetadata(state),
       reloadRooms,
       deleteRoom,
     }

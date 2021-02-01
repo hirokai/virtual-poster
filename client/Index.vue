@@ -1,16 +1,49 @@
 <template>
-  <div id="app" v-cloak v-show="logged_in" :class="{ dark: darkMode }">
+  <div
+    id="app"
+    class="container"
+    v-cloak
+    v-show="logged_in"
+    :class="{ dark: darkMode }"
+  >
     <div style="margin: 15px">
       <div id="login-info" v-if="!!user">
-        {{ user.name }}({{ user.email }})としてログイン
-        <button class="btn" @click="location.href = '/mypage'">
-          マイページ
-        </button>
-        <button class="btn" @click="signOut">ログアウト</button>
+        {{
+          locale == "ja"
+            ? `${user.name} (${user.email})としてログイン`
+            : `Logged in as ${user.name} (${user.email})`
+        }}
+        <div style="float: right">
+          <div
+            class="buttons has-addons"
+            style="float: left; margin-right: 10px"
+          >
+            <button
+              class="button is-small"
+              :class="{ 'is-primary': locale == 'en' }"
+              @click="changeLocale('en')"
+            >
+              English
+            </button>
+            <button
+              class="button is-small"
+              :class="{ 'is-primary': locale == 'ja' }"
+              @click="changeLocale('ja')"
+            >
+              日本語
+            </button>
+          </div>
+          <button class="button is-small" @click="location.href = '/mypage'">
+            {{ lang("mypage") }}
+          </button>
+          <button class="button is-small" @click="signOut">
+            {{ lang("logout") }}
+          </button>
+        </div>
       </div>
       <div v-if="registered">
         <div v-if="loggedIn == 'Yes'">
-          <h1>会場の一覧</h1>
+          <h1 class="is-h1 title">{{ lang("list") }}</h1>
           <div id="rooms">
             <a
               v-for="room in rooms"
@@ -23,31 +56,54 @@
               </h2>
               <img src="/img/field_thumbnail.png" alt="会場サムネイル" />
               <div style="margin-left: 30px">
-                参加
                 {{
+                  locale == "ja"
+                    ? `参加
+                ${
                   room.num_people_joined == undefined
                     ? "N/A"
                     : room.num_people_joined
-                }}人，アクティブ {{ room.num_people_active }}人<br />ポスター
+                }人，アクティブ ${room.num_people_active}人`
+                    : `${
+                        room.num_people_joined == undefined
+                          ? "N/A"
+                          : room.num_people_joined
+                      } joined, ${room.num_people_active} active`
+                }}<br />
                 {{
+                  locale == "ja"
+                    ? `ポスター
+                ${
                   room.poster_count == undefined ? "N/A" : room.poster_count
-                }}枚 /
-                {{
+                }枚 /
+                ${
                   room.poster_location_count == undefined
                     ? "N/A"
                     : room.poster_location_count
-                }}枠
+                }枠`
+                    : `${
+                        room.poster_count == undefined
+                          ? "N/A"
+                          : room.poster_count
+                      } posters / ${
+                        room.poster_location_count == undefined
+                          ? "N/A"
+                          : room.poster_location_count
+                      } locations`
+                }}
               </div>
             </a>
           </div>
           <div style="clear: both"></div>
           <div style="margin-top: 30px" id="create-room">
-            <a v-if="user" href="/create_room" class="link"
-              >新しく会場を作成する</a
-            >
+            <a v-if="user" href="/create_room" class="link">{{
+              lang("create_room")
+            }}</a>
           </div>
           <div style="margin-top: 30px">
-            <a v-if="user && user.admin" href="/admin" class="link">管理画面</a>
+            <a v-if="user && user.admin" href="/admin" class="link">{{
+              lang("admin")
+            }}</a>
           </div>
         </div>
       </div>
@@ -133,7 +189,46 @@ export default defineComponent({
           ? false
           : window.matchMedia &&
             window.matchMedia("(prefers-color-scheme: dark)").matches,
+      locale: (navigator.language == "ja" ? "ja" : "en") as "en" | "ja",
     })
+
+    const changeLocale = (l: "en" | "ja") => {
+      state.locale = l
+      if (state.user) {
+        localStorage[`virtual-poster:${state.user.user_id}:config:locale`] = l
+      }
+    }
+
+    type ui_literals = "mypage" | "logout" | "list" | "create_room" | "admin"
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in ui_literals]: { [key in "ja" | "en"]: string }
+      } = {
+        mypage: {
+          ja: "マイページ",
+          en: "Preferences",
+        },
+        logout: {
+          ja: "ログアウト",
+          en: "Logout",
+        },
+        list: {
+          ja: "会場の一覧",
+          en: "List of Rooms",
+        },
+        create_room: {
+          ja: "新しく会場を作成する",
+          en: "Create a room",
+        },
+        admin: {
+          ja: "管理画面",
+          en: "Admin",
+        },
+      }
+      return message[key][state.locale]
+    }
+
     const isMobile = !!navigator.userAgent.match(/iPhone|Android.+Mobile/)
 
     const client = api(axiosClient(axios))
@@ -149,7 +244,6 @@ export default defineComponent({
           return config
         }
       })
-      console.log("User:", state.user)
       if (debug_as && debug_token) {
         console.log("Initializing debug mode...", debug_as)
         state.myUserId = debug_as
@@ -158,7 +252,6 @@ export default defineComponent({
         const data = await client.id_token.$post({
           body: { token: "DEBUG_BYPASS", debug_from: "Index" },
         })
-        console.log("/id_token result", data)
 
         state.myUserId = data.user_id || null
         if (data.ok) {
@@ -176,6 +269,15 @@ export default defineComponent({
         state.loggedIn = "No"
         location.href = "/login" + (access_code ? "?code=" + access_code : "")
       } else {
+        const locale_config =
+          localStorage[`virtual-poster:${state.user.user_id}:config:locale`]
+        if (locale_config) {
+          state.locale = locale_config
+        } else {
+          localStorage[`virtual-poster:${state.user.user_id}:config:locale`] =
+            state.locale
+        }
+
         state.socket = io("/", {
           transports: ["websocket"],
         })
@@ -217,11 +319,13 @@ export default defineComponent({
           localStorage["virtual-poster:user_id"] = state.myUserId
         }
         let access_code_added: RoomId[] | undefined = undefined
+        let primary_room: RoomId | undefined = undefined
         if (access_code) {
           const r = await client.people
             ._userId(user_id)
             .access_code.$post({ body: { access_code } })
           access_code_added = r.added
+          primary_room = r.primary_room
         }
         state.rooms = await client.maps.$get().catch(err => {
           console.log(err)
@@ -232,10 +336,13 @@ export default defineComponent({
           return []
         })
         const data = await client.public_key.$get()
-        console.log("/public_key result", data)
 
         await encryption.setupEncryption(axios, state.myUserId, data.public_key)
         state.logged_in = true
+
+        if (primary_room) {
+          location.href = "/room?room_id=" + primary_room
+        }
         /*
         if (access_code_added) {
           if (access_code_added.length > 0) {
@@ -303,7 +410,15 @@ export default defineComponent({
         mm.addListener(f)
       }
     })
-    return { ...toRefs(state), signOut, enterRoom, location, isMobile }
+    return {
+      ...toRefs(state),
+      signOut,
+      enterRoom,
+      location,
+      isMobile,
+      lang,
+      changeLocale,
+    }
   },
 })
 </script>
@@ -320,13 +435,12 @@ export default defineComponent({
 html {
   -webkit-box-sizing: border-box;
   box-sizing: border-box;
-  font-size: 62.5%;
 }
 
 .btn,
 a.btn,
 button.btn {
-  font-size: 1.6rem;
+  /* font-size: 1.6rem; */
   /* font-weight: 700; */
   line-height: 1.5;
   position: relative;
@@ -431,17 +545,16 @@ h1 {
   display: block;
 }
 
-#login-info button {
-  font-size: 14px;
-  margin-right: 10px;
-  vertical-align: 1px;
-}
-
 #create-room {
 }
 
 a.link:visited {
   color: rgb(218, 24, 218);
+}
+
+.btn-lang {
+  height: 28px;
+  font-size: 12px;
 }
 
 [v-cloak] {

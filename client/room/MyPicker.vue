@@ -1,7 +1,8 @@
 <template>
   <div class="my-emoji-picker" @blur="onBlur">
     <h2>
-      反応を選択 <span class="close-picker" @click="onBlur">&times;</span>
+      {{ locale == "ja" ? "反応を選択" : "Select reaction" }}
+      <span class="close-picker" @click="onBlur">&times;</span>
     </h2>
     <div v-for="(emoji, i) in emojis" :key="i" @click="clickEmoji(emoji)">
       {{ emoji.native }}
@@ -13,7 +14,12 @@
 import { defineComponent, PropType, reactive, toRefs } from "vue"
 
 export default defineComponent({
-  props: {},
+  props: {
+    locale: {
+      type: String as PropType<"ja" | "en">,
+      required: true,
+    },
+  },
   setup(props, context) {
     const state = reactive({
       emojis: ["👍", "👎", "✋", "🙏", "😄", "😅", "😎", "😱", "😡"].map(c => {

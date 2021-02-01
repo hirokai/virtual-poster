@@ -3,22 +3,22 @@
     <nav class="breadcrumb" aria-label="breadcrumbs">
       <ul>
         <li :class="{ 'is-active': !room && !new_room }">
-          <a href="#rooms" @click="changeRoom(null)">会場</a>
+          <a href="#rooms" @click="changeRoom(null)">{{lang("venue")}}</a>
         </li>
         <li v-if="room" :class="{ 'is-active': !room_subpage }">
           <a :href="'#rooms/' + room.id">{{ room.name }}</a>
         </li>
         <li v-if="room_subpage == 'chat'" :class="{ 'is-active': true }">
-          <a>チャット</a>
+          <a>{{lang('chat')}}</a>
         </li>
         <li v-if="room_subpage == 'posters'" :class="{ 'is-active': true }">
-          <a>ポスター</a>
+          <a>{{lang('posters')}}</a>
         </li>
         <li v-if="room_subpage == 'users'" :class="{ 'is-active': true }">
-          <a>ユーザー</a>
+          <a>{{lang('users')}}</a>
         </li>
         <li v-if="new_room" :class="{ 'is-active': true }">
-          <a>新規</a>
+          <a>{{lang('create')}}</a>
         </li>
       </ul>
     </nav>
@@ -47,10 +47,10 @@
     </table>
 
     <section id="room-list" v-if="!room && !new_room">
-      <h1>{{admin_page ? '' : 'アクセス可能な'}}会場の一覧</h1>
+            <h5 class="title is-5">{{locale == 'ja' ? `${(admin_page ? '' : 'アクセス可能な')}会場の一覧` : `List of ${admin_page ? '' : 'available '}rooms`}}</h5>
       <div>
         <!-- <button class="button is-primary" @click="newRoom">新規作成</button> -->
-              <a href="/create_room" class="button is-primary">新規作成</a>
+              <a href="/create_room" class="button is-primary">{{lang('create')}}</a>
 
       </div>
       <table class='table'>
@@ -58,28 +58,27 @@
           <tr>
             <th>ID</th>
             <th class="r1"></th>
-            <th>名前</th>
+            <th>{{lang('name')}}</th>
             <th></th>
-            <th>マップ</th>
-            <th>{{admin_page ? '参加者数（入場／参加資格者）' : '入場者数'}}</th>
-            <th>ポスター</th>
-            <th>オーナー</th>
+            <th>{{lang('map')}}</th>
+            <th>{{admin_page ?  lang('num_people_admin'): lang('num_people')}}</th>
+            <th>{{lang('posters')}}</th>
+            <th>{{lang('owner')}}</th>
           </tr>
         </thead>
         <tr v-for="room in rooms" :key="room.id">
-          <td>{{ room.id }}</td>
+          <td class='room-id'>{{ room.id }}</td>
           <td class="r1"></td>
           <td>
-                                  <a :href="'/room?room_id=' + room.id">{{
+            <a :href="'/room?room_id=' + room.id">{{
               room.name
             }}</a>
-            
           </td>
-                    <td>  
-            <button class='button is-small' v-if="room.owner == myUserId || admin_page" :href="'#rooms/' + room.id" @click="changeRoom(room.id)">設定</button>
-
-                      <button class='button is-small' v-if="room.owner == myUserId || admin_page" @click="deleteRoom(room.id)">削除</button></td>
-
+          <td v-if="room.owner == myUserId || room.admins?.indexOf(myUserId) >= 0 || admin_page" >  
+            <button class='button is-small' :href="'#rooms/' + room.id" @click="changeRoom(room.id)">設定</button>
+            <button class='button is-small' v-if="room.owner == myUserId || admin_page" @click="deleteRoom(room.id)">削除</button>
+          </td>
+          <td v-else></td>
           <td>
             {{ room.numCols * room.numRows }} マス（縦 {{ room.numCols }} x 横
             {{ room.numRows }}）
@@ -101,33 +100,34 @@
     </section>
 
     <div v-if="room" id="room-nav">
-      <a :href="'#rooms/' + room.id" :class="{ active: !room_subpage }">概要</a>
+      <a :href="'#rooms/' + room.id" :class="{ active: !room_subpage }">{{lang('general')}}</a>
       <a
         :href="'#rooms/' + room.id + '/map'"
         :class="{ active: room_subpage == 'map' }"
-        >マップ</a
+        >{{lang('map')}}</a
       >
       <a
         :href="'#rooms/' + room.id + '/users'"
         :class="{ active: room_subpage == 'users' }"
-        >ユーザー</a
+        >{{lang('users')}}</a
       >
       <a
         :href="'#rooms/' + room.id + '/posters'"
         :class="{ active: room_subpage == 'posters' }"
-        >ポスター</a
+        >{{lang('posters')}}</a
       >
       <a
         :href="'#rooms/' + room.id + '/chat'"
         :class="{ active: room_subpage == 'chat' }"
-        >チャット</a
+        >{{lang('chat')}}</a
       >
     </div>
 
     <div v-if="room && !room_subpage">
       <div>
         <section>
-          <h1>会場の概要</h1>
+           <h5 class='title is-5'>会場の概要</h5>
+          <h3>{{lang('owner')}}: {{people[room.owner].name}}（{{room.owner}}）</h3>
           <h3>
             マップ：{{ room.numCols * room.numRows }}（縦{{ room.numCols }} x
             横{{ room.numRows }}）
@@ -149,38 +149,9 @@
       </div>
       <div>
         <section>
-          <h1>設定</h1>
-
+           <h5 class='title is-5'>設定</h5>
           <div>
-            アクセスコード：
-            <span class="access-code">{{
-              room.access_code?.code || "(なし)"
-            }}</span>
             <input
-              type="checkbox"
-              name=""
-              id="access-code-active"
-              v-model="accessCodeActive"
-              :disabled="!room.access_code"
-            />
-            <label for="access-code-active">有効</label>
-            <button
-              class="button is-primary is-small"
-              @click="renewAccessCode(room.id)"
-              style="margin-right: 5px;"
-            >
-              {{ room.access_code ? "更新" : "作成" }}
-            </button>
-            <button
-              class="button is-danger is-small"
-              @click="deleteAccessCode(room.id)"
-              :disabled="!room.access_code"
-            >
-              削除
-            </button>
-            <div>URL: <input id='access-code-url' type="text" readonly :value="accessCodeUrl || '（なし）'"></div>
-          </div>
-          <input
             type="checkbox"
             name=""
             id="room-config-allow-self-assign-poster"
@@ -189,12 +160,66 @@
           <label for="room-config-allow-self-assign-poster"
             >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
           ><br />
+          <input
+            type="checkbox"
+            name=""
+            id="room-config-hide-unvisited"
+            v-model="roomConfig.hideUnvisited"
+          />
+                    <label for="room-config-hide-unvisited"
+            >マップの未探索の部分を隠す</label
+          ><br />
+          </div>
+
+          <div>
+            <h2 class='is-5'>アクセスコード</h2>
+             <button
+              class="button is-primary is-small"
+              @click="createAccessCode(room.id)"
+              style="margin-right: 5px;"
+            >
+              {{ lang('create_code') }}
+            </button>
+            <div class='access-code-entry' v-for="access_code in room.access_codes" :key="access_code.code">
+            <span class="access-code">{{
+              access_code.code || "(なし)"
+            }}</span>
+            <input
+              type="checkbox"
+              name=""
+              v-model="accessCodeActive[access_code.code]"
+              @change="onChangeCodeActive(access_code.code,$event)"
+            />
+            <label :for="'access-code-active-' + access_code.code">有効</label>
+           
+            <button
+              class="button is-danger is-small"
+              @click="deleteAccessCode(room.id, access_code.code)"
+            >
+              削除
+            </button>
+            <div>URL: <input class='access-code-url' type="text" readonly :value="accessCodeUrl(access_code.code) || '（なし）'"></div>
+            <div>付与するアクセス： <input v-if='editingCodeAccess == access_code.code' class='access-code-url' type="text" placeholder='ユーザーグループID，ユーザーグループ名などを;;で区切って入力' ref='inputCodeAccess'>
+            <span v-else>
+              <span class='code-right-entry' v-for='r in access_code.access_granted' :key='r' :class="{valid: !!peopleGroups[r]?.name}">{{peopleGroups[r]?.name || r}}</span>
+            </span>
+            <span v-if='editingCodeAccess == access_code.code'>
+            <button class="button is-default is-small"  @click='finishEditingCodeRights'>{{  '完了' }}</button>  
+            <button class="button is-default is-small"  @click='editingCodeAccess = undefined'>{{  'キャンセル' }}</button>  
+
+            </span>
+            <button class="button is-default is-small" v-else @click='startEditingCodeRights(access_code)'>{{  '編集' }}</button>  
+            </div>
+
+            </div>
+          </div>
+          
         </section>
       </div>
     </div>
 
     <section v-if="room && !room_subpage">
-      <h1>アナウンス</h1>
+           <h5 class='title is-5'>アナウンス</h5>
       <div>
         <small>※HTMLも送信可能（危険なリンクなどを送らないように注意）</small>
       </div>
@@ -238,18 +263,76 @@
       :poster_cells="poster_cells"
     />
     <section v-if="room && room_subpage == 'map'">
-      <h1>マップ</h1>
+           <h5 class='title is-5'>マップ</h5>
       <div>
-        {{ room.numCols * room.numRows }}（縦{{ room.numCols }} x 横{{
+        {{ room.numCols * room.numRows }} マス（縦{{ room.numCols }} x 横{{
           room.numRows
         }}）
       </div>
       <div>
-        <button class="button is-primary" @click="clearMapCache">キャッシュをクリア</button>
+        <div >
+        <div class="buttons has-addons" style='float: left;'>
+                <span style="margin-right: 10px; vertical-align: 20px">{{
+                  lang("preview_size")
+                }}</span>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': mapCellSize == 48 }"
+                  @click="mapCellSize= 48"
+                >
+                  {{ lang("large") }}
+                </button>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': mapCellSize == 32 }"
+                  @click="mapCellSize= 24"
+                >
+                  {{ lang("medium") }}
+                </button>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': mapCellSize == 16 }"
+                  @click="mapCellSize= 8"
+                >
+                  {{ lang("small") }}
+                </button>
+              </div>
+        <div>
+                  <button class="button is-primary" @click="clearMapCache" style='float: left;'>キャッシュをクリア</button>
+                  <div style='clear:both;'></div>
+                  </div>
+
+          <div class='columns mx-0'>
+            <div class="column is-two-thirds">
+          <span>マップ修正</span><br>
+          <textarea name="" id="input-patch" placeholder="JSON形式で入力" ref='mapPatchJsonTextArea' @input="onInputPatch"></textarea><br>
+
+
+            </div>
+            <div class="column is-one-third">
+<div id="drop-replace-map"
+        :class="{dragover: dragoverMapReplace}"
+                      @dragover.prevent
+              @drop.prevent="onDropReplaceMap"
+              @dragover="dragoverMapReplace = true"
+              @dragleave="dragoverMapReplace = false"
+
+>マップの差し替え</div>
+            </div>
+
+          </div>
+          <div class="columns mx-0">
+            <div class="column is-full">
+              <input type="text" placeholder='メッセージ' ref="inputMapChangeMessage" id='input-mapchange-message'>
+              <button class='button is-primary' @click='submitMapCellPatch' :disabled="!verifyInputPatch(inputPatchText)&& !replaceMapData">送信</button>
+            </div>
+          </div>
+        </div>
+        
         </div> 
         <div>
-          <svg :width="48 * ((mapCells && mapCells[0]) ? mapCells[0].length : 0)" :height="48 * (mapCells ? mapCells.length : 0)">
-            <g v-for='(row,yi) in mapCells' :key="yi" :transform="'translate(0 '+(yi*48)+')'">
+          <svg :width="mapCellSize * ((mapCells && mapCells[0]) ? mapCells[0].length : 0)" :height="mapCellSize * (mapCells ? mapCells.length : 0)">
+            <g v-for='(row,yi) in mapCells' :key="yi" :transform="'translate(0 '+(yi*mapCellSize)+')'">
     
     <MapCell
         v-for="(cell, xi) in row"
@@ -260,8 +343,9 @@
         :selected="
           !!selectedMapPos && cell.x == selectedMapPos.x && cell.y == selectedMapPos.y
         "
-        :left="(cell.x) * 48"
+        :left="(cell.x) * mapCellSize"
         :top="0"
+        :cellSize="mapCellSize"
         :visualStyle="'default'"
         @select="selectMapCell"
         @hover-cell="hoverCell"
@@ -272,7 +356,7 @@
         </div>
     </section>
     <section v-if="room && room_subpage == 'chat'">
-      <h1>チャットグループ一覧</h1>
+                 <h5 class='title is-5'>チャットグループ一覧</h5>
       <div v-if="chatGroupsSorted.length == 0">
         チャットなし
       </div>
@@ -294,8 +378,39 @@
       </div>
     </section>
     <section v-if="room && room_subpage == 'users'">
-      <h1>ユーザー一覧</h1>
+      <div>
+              <h5 class='title is-5'>{{lang('user_groups')}}</h5>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>名前</th>
+                    <th>人数</th>
+                    <th>説明</th>
+                  </tr>
+                </thead>
+                <tbody v-if='!room.people_groups || room.people_groups.length == 0'>
+                  <tr>
+                    <td>（グループなし）</td>
+                  </tr>
+                </tbody>
+                                <tbody v-else>
+                  <tr v-for='g in room.people_groups' :key='g.id'>
+                    <td>{{g.id}}</td>
+                    <td>{{g.name}}</td>
+                    <td></td>
+                    <td>{{g.description}}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+      </div>
+      <h5 class='title is-5'>{{lang('user_list')}}</h5>
       <div id="user-list-tools">
+        <div style='margin: 0px 0px 10px 0px'>
+        <button class="button is-primary is-small" @click='startAssignUserBatchDialog'>一括で追加</button>
+        <button class="button is-primary is-small" @click='startAssignUserDialog'>追加</button>
+        </div>
         <input
           type="text"
           id="search-user"
@@ -305,17 +420,21 @@
           @keydown.enter="inputSearchUser"
         />
         <span>{{ countSelected }}人を選択中</span>
-        <button class="button is-primary is-small" @click='startAssignUserBatchDialog'>一括で追加</button>
-        <button class="button is-primary is-small" @click='startAssignUserDialog'>追加</button>
         <button class="button is-danger is-small" @click="removeUser" :disabled="countSelected == 0">
           削除
+        </button>
+        <button class="button is-primary is-small" @click="assignRole('admin')" :disabled="countSelected == 0 || allAdmins">
+          管理者にする
+        </button>
+        <button class="button is-primary is-small" @click="assignRole('user')" :disabled="countSelected == 0 || allNonAdmins">
+          通常ユーザーにする
         </button>
       </div>
       <div v-if="peopleHavingAccess.length == 0">
         参加資格者なし
       </div>
       <div v-else>
-        <table>
+        <table id='user-table' class='table'>
           <thead>
             <th>
               <input
@@ -328,27 +447,36 @@
             </th>
             <th>Email</th>
             <th>ID</th>
-            <th>名前</th>
-            <th>X座標</th>
-            <th>Y座標</th>
+            <th>{{lang('name')}}</th>
+            <th>{{lang('coord')}}</th>
+            <th></th>
+            <th>{{lang('user_groups')}}</th>
           </thead>
           <tbody>
-            <tr v-for="p in peopleHavingAccessFiltered" :key="p.id">
+            <tr v-for="p in peopleHavingAccessFiltered" :key="p.id" :class="{bold: p.in_room?.role == 'owner' || p.in_room?.role == 'admin'}">
               <td>
                 <input
                   type="checkbox"
                   name=""
-                  id=""
+                  :id="'check-'+p.email"
                   :checked="selectedHavingAccess[p.email] == true"
                   @change="checkPersonWithAccess(p.email, $event)"
                 />
               </td>
-              <td>{{ p.email }}</td>
+              <td><label :for="'check-'+p.email">{{ p.email }}</label></td>
               <td :colspan="p.registered ? 1 : 2">{{ p.registered?.id || '（未入場または未登録）' }}</td>
               <td v-if="p.registered">{{ p.registered?.name }}</td>
+              <td v-else></td>
               <td colspan='2' v-if="!p.in_room">（未入場）</td>
-              <td v-if="p.in_room">{{ p.in_room.x }}</td>
-              <td v-if="p.in_room">{{ p.in_room.y }}</td>
+              <td v-if="p.in_room">({{ p.in_room.x }}, {{p.in_room.y}})</td>
+              <td v-else></td>
+              <td v-if='p.in_room?.role == "owner"'>{{lang('owner')}}</td>
+              <td v-else-if='p.in_room?.role == "admin"'>{{lang('admin')}}</td>
+              <td v-else></td>
+              <td v-if='p.in_room?.people_groups && p.in_room?.people_groups?.length > 0'>
+                <span v-for="gid in p.in_room.people_groups" :key="gid" class='code-right-entry'>{{peopleGroups[gid]?.name}}</span>
+              </td>
+              <td v-else>グループなし</td>
             </tr>
           </tbody>
         </table>
@@ -470,10 +598,12 @@ import {
   PersonWithEmailRooms,
   AccessRule,
   PersonWithMapAccess,
+  PersonUpdate,
+  MapUpdateEntry,
 } from "@/@types/types"
 import axiosDefault from "axios"
 import { AxiosStatic } from "axios"
-import { flatten, keyBy, keyByFunc, sortBy } from "@/common/util"
+import { decodeMoved, flatten, keyBy, keyByFunc, sortBy } from "@/common/util"
 const API_ROOT = "/api"
 const axios = axiosDefault.create({ baseURL: API_ROOT })
 import axiosClient from "@aspida/axios"
@@ -489,16 +619,10 @@ import {
   ref,
   nextTick,
 } from "vue"
-import {
-  Cell,
-  ChatGroupId,
-  PersonInMap,
-  PersonWithEmail,
-  UserId,
-} from "@/api/@types"
+import { Cell, ChatGroupId, PersonInMap } from "@/api/@types"
 import ManageRoomPosters from "./ManageRoomPosters.vue"
 import MapCell from "../room/MapCell.vue"
-import { findUser } from "../util"
+import { verifyMapUpdateEntries } from "@/common/maps"
 
 export default defineComponent({
   components: {
@@ -506,6 +630,11 @@ export default defineComponent({
     MapCell,
   },
   props: {
+    locale: {
+      type: String,
+      enum: ["ja", "en"],
+      required: true,
+    },
     admin_page: {
       type: Boolean,
     },
@@ -519,7 +648,6 @@ export default defineComponent({
     },
     socket: {
       type: Object as PropType<SocketIOClient.Socket>,
-      required: true,
     },
     rooms: {
       type: Object as PropType<{ [room_id: string]: Room }>,
@@ -536,7 +664,7 @@ export default defineComponent({
       required: true,
     },
     people: {
-      type: Object as PropType<{ [index: string]: PersonWithEmailRooms }>,
+      type: Object as PropType<{ [user_id: string]: PersonWithEmailRooms }>,
       required: true,
     },
   },
@@ -546,8 +674,10 @@ export default defineComponent({
     "change-room",
     "make-announcement",
     "ask-reload",
+    "create-access-code",
     "renew-access-code",
     "delete-access-code",
+    "reload-room-metadata",
   ],
   setup(props, context) {
     const client = api(axiosClient(axios))
@@ -564,13 +694,16 @@ export default defineComponent({
       announceMarqueePeriod: 20,
       roomConfig: {
         allowPosterAssignment: props.room?.allow_poster_assignment,
+        hideUnvisited: props.room
+          ? props.room.minimap_visibility == "all_only_visited"
+          : undefined,
       },
       peopleWithAccessAllChecked: false as boolean | undefined,
       selectedHavingAccess: {} as { [email: string]: boolean },
       searchUserText: null as string | null,
       searchUserTextComposition: false,
       poster_cells: [] as Cell[],
-      accessCodeActive: false,
+      accessCodeActive: {} as { [code: string]: boolean },
       assignUserDialog: false,
       assignUserBatchDialog: false,
       userAssignment: [] as {
@@ -581,15 +714,113 @@ export default defineComponent({
         enter?: boolean
       }[],
       mapCells: undefined as Cell[][] | undefined,
+      mapCellSize: 8,
       selectedMapPos: undefined as { x: number; y: number } | undefined,
+      dragoverMapReplace: false,
+      replaceMapData: "",
+      inputPatchText: "",
+      editingCodeAccess: undefined as string | undefined,
     })
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        create: {
+          ja: "新規作成",
+          en: "Create a new room",
+        },
+
+        name: {
+          ja: "名前",
+          en: "Name",
+        },
+        map: {
+          ja: "マップ",
+          en: "Map",
+        },
+        chat: {
+          ja: "チャット",
+          en: "Chat",
+        },
+        users: {
+          ja: "ユーザー",
+          en: "People",
+        },
+        user_groups: {
+          ja: "ユーザーグループ",
+          en: "Groups",
+        },
+        user_list: {
+          ja: "ユーザー一覧",
+          en: "List of people",
+        },
+        posters: {
+          ja: "ポスター",
+          en: "Posters",
+        },
+        owner: {
+          ja: "オーナー",
+          en: "Owner",
+        },
+        admin: {
+          ja: "管理者",
+          en: "Admin",
+        },
+        num_people_admin: {
+          ja: "参加者数（入場／参加資格者）",
+          en: "Participants (joined / accesible)",
+        },
+        num_people: {
+          ja: "入場者数",
+          en: "Joined people",
+        },
+        venue: {
+          ja: "会場",
+          en: "Rooms",
+        },
+        general: {
+          ja: "概要",
+          en: "General",
+        },
+        create_code: {
+          ja: "作成",
+          en: "Create",
+        },
+        coord: {
+          ja: "座標",
+          en: "Coordinate",
+        },
+        size: {
+          ja: "サイズ",
+          en: "Size",
+        },
+        preview_size: {
+          ja: "プレビューサイズ",
+          en: "Preview size",
+        },
+        large: {
+          ja: "大",
+          en: "Large",
+        },
+        medium: {
+          ja: "中",
+          en: "Medium",
+        },
+        small: {
+          ja: "小",
+          en: "Small",
+        },
+      }
+      return message[key][props.locale]
+    }
 
     const chatGroupsSorted = computed(() => {
       return sortBy(Object.values(state.chatGroups), g => g.timestamp)
     })
 
     const loadMapCells = async (room_id: RoomId) => {
-      const cells = (await client.maps._roomId(room_id).$get()).cells
+      const cells = (await client.maps._roomId(room_id).cells.$get()).cells
       state.mapCells = cells
     }
 
@@ -602,72 +833,136 @@ export default defineComponent({
       state.peopleInRoom = keyBy(
         await client.maps
           ._roomId(room_id)
-          .people.$get({ query: { email: true } }),
+          .people.$get({ query: { email: true, groups: true } }),
         "id"
       )
-      const peopleByEmail = keyByFunc(Object.values(props.people), p => p.email)
-      const peopleInRoomByEmail = keyByFunc(
-        Object.values(state.peopleInRoom),
-        p => p.email || "NA"
-      )
-      const allowed_emails = (
-        await client.maps._roomId(room_id).people_allowed.$get()
-      ).people
-
-      state.peopleHavingAccess = sortBy(
-        allowed_emails,
-        p => "" + (peopleInRoomByEmail[p.email] ? 0 : 1) + ":" + p.email
-      ).map(p => {
-        const p3 = peopleInRoomByEmail[p.email]
-        const p1 = peopleByEmail[p.email] || props.people[p3?.id]
-        const p2: PersonInMap | undefined = peopleInRoomByEmail[p.email]
-        if (p1) {
-          return {
-            email: p.email,
-            registered: {
-              id: p1.id,
-              avatar: p1.avatar!,
-              connected: p1.connected!,
-              stats: p1.stats,
-              public_key: p1.public_key,
-              last_updated: p1.last_updated,
-              name: p1.name,
-            },
-            in_room: p2
-              ? {
-                  x: p2.x,
-                  y: p2.y,
-                  direction: p2.direction,
-                  moving: p2.moving,
-                  poster_vieweing: p2.poster_viewing,
-                }
-              : undefined,
-          }
-        } else {
-          return { email: p.email }
-        }
-      })
     }
+
+    watch(
+      () => state.peopleInRoom,
+      async () => {
+        const room_id = props.room?.id
+        if (!room_id) {
+          return
+        }
+        const peopleByEmail = keyByFunc(
+          Object.values(props.people),
+          p => p.email
+        )
+        const peopleInRoomByEmail = keyByFunc(
+          Object.values(state.peopleInRoom),
+          p => p.email || "NA"
+        )
+        const allowed_emails = (
+          await client.maps._roomId(room_id).people_allowed.$get()
+        ).people
+
+        state.peopleHavingAccess = sortBy(allowed_emails, p => {
+          const pr = peopleInRoomByEmail[p.email]
+          return (
+            "" +
+            (pr?.role == "owner" ? 0 : pr?.role == "admin" ? 1 : pr ? 2 : 3) +
+            ":" +
+            p.email
+          )
+        }).map(p => {
+          const p3 = peopleInRoomByEmail[p.email]
+          const p1 = peopleByEmail[p.email] || props.people[p3?.id]
+          const p2: PersonInMap | undefined = peopleInRoomByEmail[p.email]
+          if (p1) {
+            return {
+              email: p.email,
+              registered: {
+                id: p1.id,
+                avatar: p1.avatar!,
+                connected: p1.connected!,
+                stats: p1.stats,
+                public_key: p1.public_key,
+                last_updated: p1.last_updated,
+                name: p1.name,
+              },
+              in_room: p2
+                ? {
+                    x: p2.x,
+                    y: p2.y,
+                    direction: p2.direction,
+                    moving: p2.moving,
+                    poster_vieweing: p2.poster_viewing,
+                    role: p2.role,
+                    people_groups: p2.people_groups,
+                  }
+                : undefined,
+            }
+          } else {
+            return { email: p.email }
+          }
+        })
+      },
+      { deep: true }
+    )
 
     const loadChatGroups = async () => {
       const room_id = props.room?.id
       if (room_id) {
-        const groups = await client.maps._roomId(room_id).groups.$get()
+        const groups = await client.maps._roomId(room_id).chat_groups.$get()
         state.chatGroups = keyBy(groups, "id")
       } else {
         state.chatGroups = {}
       }
     }
-    props.socket?.on("Group", (g: ChatGroup) => {
-      state.chatGroups[g.id] = g
-    })
-    props.socket?.on("GroupRemove", (gid: ChatGroupId) => {
-      delete state.chatGroups[gid]
-    })
 
+    watch(
+      () => props.socket,
+      () => {
+        if (props.socket) {
+          props.socket.on("Group", (g: ChatGroup) => {
+            state.chatGroups[g.id] = g
+          })
+          props.socket.on("GroupRemove", (gid: ChatGroupId) => {
+            delete state.chatGroups[gid]
+          })
+
+          props.socket.on("PersonUpdate", (ds: PersonUpdate[]) => {
+            for (const d of ds) {
+              const p: PersonInMap = state.peopleInRoom[d.id]
+              if (!p) {
+                console.warn("User not found (probably new user)")
+                continue
+              }
+              const person: PersonInMap = {
+                id: d.id,
+                room: p.room,
+                x: d.x || p.x,
+                y: d.y || p.y,
+                direction: d.direction || p.direction,
+                moving: d.moving || p.moving,
+                name: d.name || p.name,
+                last_updated: d.last_updated,
+                stats: d.stats || p.stats,
+                email: p.email,
+                role: d.role || p.role,
+              }
+              state.peopleInRoom[d.id] = person
+            }
+          })
+
+          props.socket.on("Moved", data => {
+            const ss = data.split(";")
+            for (const s of ss) {
+              const pos = decodeMoved(s)
+              console.log(pos)
+              if (pos?.room && pos.room == props.room?.id) {
+                state.peopleInRoom[pos.user].x = pos.x
+                state.peopleInRoom[pos.user].y = pos.y
+                state.peopleInRoom[pos.user].direction = pos.direction
+              }
+            }
+          })
+        }
+      }
+    )
     const loadPosterLocations = async (room_id: RoomId) => {
-      console.log("loadPosterLocations()")
-      const r = await client.maps._roomId(room_id).$get()
+      const r = await client.maps._roomId(room_id).cells.$get()
       state.poster_cells = flatten(r.cells).filter(
         c => c.poster_number != undefined
       )
@@ -689,8 +984,13 @@ export default defineComponent({
 
     const loadRoom = async (room: Room) => {
       if (room) {
-        state.accessCodeActive = !!room.access_code?.active
+        for (const code of room.access_codes || []) {
+          console.log({ code })
+          state.accessCodeActive[code.code] = code.active
+        }
         state.roomConfig.allowPosterAssignment = room.allow_poster_assignment
+        state.roomConfig.hideUnvisited =
+          room.minimap_visibility == "all_only_visited"
 
         await loadChatGroups()
         await loadPeopleInMap()
@@ -825,12 +1125,16 @@ export default defineComponent({
       }
     }
 
-    const renewAccessCode = async (room_id: RoomId) => {
-      context.emit("renew-access-code", room_id)
+    const createAccessCode = async (room_id: RoomId, code: string) => {
+      context.emit("create-access-code", room_id, code)
     }
 
-    const deleteAccessCode = async (room_id: RoomId) => {
-      context.emit("delete-access-code", room_id)
+    const renewAccessCode = async (room_id: RoomId, code: string) => {
+      context.emit("renew-access-code", room_id, code)
+    }
+
+    const deleteAccessCode = async (room_id: RoomId, code: string) => {
+      context.emit("delete-access-code", room_id, code)
     }
 
     const peopleHavingAccessFiltered = computed(() => {
@@ -864,6 +1168,36 @@ export default defineComponent({
 
     const countSelected = computed(() => {
       return Object.values(state.selectedHavingAccess).filter(b => b).length
+    })
+
+    const peopleGroups = computed(() => {
+      return keyBy(props.room?.people_groups || [], "id")
+    })
+
+    const allAdmins = computed(() => {
+      const peopleInRoomByEmail = keyBy(
+        Object.values(state.peopleInRoom),
+        "email"
+      )
+      for (const [email, b] of Object.entries(state.selectedHavingAccess)) {
+        if (b && peopleInRoomByEmail[email]?.role == "user") {
+          return false
+        }
+      }
+      return true
+    })
+
+    const allNonAdmins = computed(() => {
+      const peopleInRoomByEmail = keyBy(
+        Object.values(state.peopleInRoom),
+        "email"
+      )
+      for (const [email, b] of Object.entries(state.selectedHavingAccess)) {
+        if (b && peopleInRoomByEmail[email]?.role == "admin") {
+          return false
+        }
+      }
+      return true
     })
 
     const checkboxAllPeopleHavingAccess = ref<HTMLInputElement>()
@@ -928,9 +1262,9 @@ export default defineComponent({
         }
       }
 
-      state.peopleHavingAccess = state.peopleHavingAccess.filter(
-        p => !users_set.has(p.email)
-      )
+      // state.peopleHavingAccess = state.peopleHavingAccess.filter(
+      //   p => !users_set.has(p.email)
+      // )
       for (const e of users_set) {
         delete state.selectedHavingAccess[e]
       }
@@ -984,6 +1318,37 @@ export default defineComponent({
       await loadPeopleInMap()
     }
 
+    const assignRole = async (role: "admin" | "user") => {
+      const my_email = localStorage["virtual-poster:email"]
+      if (state.selectedHavingAccess[my_email] && role == "user") {
+        if (
+          !confirm(
+            "自分自身を管理者から外すとこのページにアクセスできなくなります。良いですか？"
+          )
+        ) {
+          return
+        }
+      }
+      const peopleInRoomByEmail = keyBy(
+        Object.values(state.peopleInRoom),
+        "email"
+      )
+      for (const [email, b] of Object.entries(state.selectedHavingAccess)) {
+        const p = peopleInRoomByEmail[email]
+        if (b && role == "admin" && p.role != "admin") {
+          await client.maps
+            ._roomId(props.room!.id)
+            .people._userId(p.id)
+            .$patch({ body: { role: "admin" } })
+        } else if (b && role == "user" && p.role != "user") {
+          await client.maps
+            ._roomId(props.room!.id)
+            .people._userId(p.id)
+            .$patch({ body: { role: "user" } })
+        }
+      }
+    }
+
     const assignUserFile = ref<HTMLInputElement>()
 
     const startAssignUserBatchDialog = async () => {
@@ -1000,7 +1365,6 @@ export default defineComponent({
 
     const onUserBatchFileChanged = ev => {
       const file: File = (ev.target.files || ev.dataTransfer.files)[0]
-      console.log(file)
       if (file.type != "text/csv") {
         return
       }
@@ -1011,7 +1375,6 @@ export default defineComponent({
           state.userAssignment = []
           const data = Papa.parse(csv_data)
           if (data.data && data.data.length > 0) {
-            console.log(data.data.slice(1))
             for (const r of data.data.slice(1) as string[][]) {
               if (r.length == 1 && r[0] == "") {
                 continue
@@ -1043,7 +1406,6 @@ export default defineComponent({
         return
       }
       const r = await client.maps._roomId(room_id).reset_cache.$post()
-      console.log("Reset cache result", r)
       if (r.ok) {
         alert("キャッシュをクリアしました")
       } else {
@@ -1051,44 +1413,60 @@ export default defineComponent({
       }
     }
 
-    props.socket.on("Poster", async (p: Poster) => {
-      if (p.file_url == "not_disclosed") {
-        p.file_url =
-          (await client.posters._posterId(p.id).file_url.$get()).url ||
-          p.file_url
-      }
-      if (p.file_url) {
-        p.file_url += "?timestamp=" + p.last_updated
-      }
-      state.postersInRoom[p.id] = p
-    })
+    watch(
+      () => props.socket,
+      () => {
+        if (props.socket) {
+          props.socket.on("Poster", async (p: Poster) => {
+            if (p.file_url == "not_disclosed") {
+              p.file_url =
+                (await client.posters._posterId(p.id).file_url.$get()).url ||
+                p.file_url
+            }
+            if (p.file_url) {
+              p.file_url += "?timestamp=" + p.last_updated
+            }
+            state.postersInRoom[p.id] = p
+          })
 
-    props.socket.on("PosterRemove", (pid: PosterId) => {
-      delete state.postersInRoom[pid]
-    })
+          props.socket.on("PosterRemove", (pid: PosterId) => {
+            delete state.postersInRoom[pid]
+          })
+        }
+      }
+    )
 
     watch(
-      () => [state.roomConfig],
-      async () => {
+      () => [
+        state.roomConfig.allowPosterAssignment,
+        state.roomConfig.hideUnvisited,
+      ],
+      async (nv, ov) => {
         const room = props.room
         if (!room) {
           console.error("Room is not defined")
           return
         }
+        if (ov[0] == undefined && ov[0] == undefined) {
+          // Initial
+          return
+        }
+
         const rules: AccessRule[] = [{ email: "*", allow: false }]
         const r = await client.maps._roomId(room.id).$patch({
           body: {
             allow_poster_assignment: state.roomConfig.allowPosterAssignment,
+            minimap_visibility: state.roomConfig.hideUnvisited
+              ? "all_only_visited"
+              : "all_initial",
           },
         })
-      },
-      { deep: true }
+      }
     )
 
     watch(
       () => props.room,
       async () => {
-        console.log("props.room changed")
         const room = props.room
         if (room) {
           await loadRoom(room)
@@ -1097,28 +1475,25 @@ export default defineComponent({
       { deep: true }
     )
 
-    watch(
-      () => state.accessCodeActive,
-      async () => {
-        const room = props.room
-        if (!room) {
-          return
-        }
-        await client.maps
-          ._roomId(room.id)
-          .access_code._accessCode(room.access_code!.code)
-          .$patch({ body: { active: state.accessCodeActive } })
+    const onChangeCodeActive = async (code: string, ev) => {
+      const room = props.room
+      if (!room) {
+        return
       }
-    )
+      const active = ev.target.checked
+      await client.maps
+        ._roomId(room.id)
+        .access_code._accessCode(code)
+        .$patch({ body: { active } })
+    }
 
-    const accessCodeUrl = computed(() => {
-      const code = props.room?.access_code?.code
+    const accessCodeUrl = (code?: string) => {
       if (code) {
         return new URL(location.href).origin + "/?code=" + code
       } else {
         return undefined
       }
-    })
+    }
 
     const hoverCell = () => {
       //
@@ -1126,6 +1501,131 @@ export default defineComponent({
 
     const selectMapCell = () => {
       //
+    }
+
+    const mapPatchJsonTextArea = ref<HTMLTextAreaElement>()
+
+    const inputMapChangeMessage = ref<HTMLInputElement>()
+
+    const onInputPatch = ev => {
+      state.inputPatchText = ev.target.value
+    }
+
+    const verifyInputPatch = (s: string) => {
+      try {
+        const arr = JSON.parse(s || "{}")
+        return !!verifyMapUpdateEntries(arr)
+      } catch (err) {
+        console.error("verifyInputPatch", err)
+        return false
+      }
+    }
+
+    const submitMapCellPatch = async () => {
+      const room_id = props.room?.id
+      const message = inputMapChangeMessage.value?.value
+      const csv_str = state.replaceMapData
+      const s = mapPatchJsonTextArea.value?.value
+      if (!room_id) {
+        return
+      }
+      let r: { ok: boolean } | undefined = undefined
+      if (csv_str) {
+        r = await client.maps._roomId(room_id).cells.$put({
+          body: {
+            data: csv_str,
+            message: inputMapChangeMessage.value?.value,
+          },
+        })
+      } else if (s) {
+        let changes: MapUpdateEntry[] = []
+        try {
+          changes = JSON.parse(s)
+        } catch (err) {
+          console.error("JSON parse error")
+        }
+        if (changes.length > 0) {
+          r = await client.maps._roomId(room_id).cells.$patch({
+            body: { changes: (changes as unknown) as string[], message },
+          })
+        }
+      }
+      if (!r) {
+        return
+      } else if (r.ok) {
+        await loadMapCells(room_id)
+        context.emit("reload-rooms")
+        alert("マップを差し替えました。")
+      } else {
+        alert(
+          "マップの差し替えができませんでした（ポスター板の位置を変えようとしたなど）。"
+        )
+      }
+    }
+    const onDropReplaceMap = async (event: any) => {
+      const room_id = props.room?.id
+      if (!room_id) {
+        return
+      }
+      state.dragoverMapReplace = false
+      const client = api(axiosClient(axios))
+      const fileList: File[] = event.target.files
+        ? event.target.files
+        : event.dataTransfer.files
+      if (fileList.length == 0) {
+        return false
+      }
+      const files: File[] = []
+      for (let i = 0; i < fileList.length; i++) {
+        files.push(fileList[i])
+      }
+      console.log(files)
+
+      const file = files[0]
+      if (!file) {
+        console.error("File not found")
+      } else if (file.type != "text/csv") {
+        console.error("File type invalid")
+        alert("ファイルはCSVファイルのみです")
+      } else if (file.size >= 10e6) {
+        alert("ファイルが10 MB以下にしてください")
+      } else {
+        const fileReader = new FileReader()
+        fileReader.onload = async event => {
+          const csv_str = event.target!.result as string
+          state.replaceMapData = csv_str
+        }
+        fileReader.readAsText(file)
+      }
+    }
+
+    const inputCodeAccess = ref<HTMLInputElement>()
+
+    const startEditingCodeRights = async (access_code: {
+      code: string
+      access_granted: string[]
+    }) => {
+      state.editingCodeAccess = access_code.code
+      await nextTick(() => {
+        inputCodeAccess.value!.value = access_code.access_granted.join(";;")
+      })
+    }
+
+    const finishEditingCodeRights = async () => {
+      const code = state.editingCodeAccess
+      const room_id = props.room?.id
+      const granted_str = inputCodeAccess.value!.value
+      const access_granted = granted_str.split(";;")
+      if (code && granted_str != undefined && room_id) {
+        const r = await client.maps
+          ._roomId(room_id)
+          .access_code._accessCode(code)
+          .$patch({ body: { access_granted } })
+        if (r.ok) {
+          context.emit("reload-room-metadata", room_id)
+        }
+      }
+      state.editingCodeAccess = undefined
     }
 
     return {
@@ -1141,6 +1641,7 @@ export default defineComponent({
       announceText,
       submitAnnouncement,
       askReload,
+      createAccessCode,
       renewAccessCode,
       deleteAccessCode,
       checkAllWithAccess,
@@ -1160,9 +1661,24 @@ export default defineComponent({
       onUserBatchFileChanged,
       assignUserBatch,
       clearMapCache,
+      onChangeCodeActive,
       accessCodeUrl,
       hoverCell,
       selectMapCell,
+      lang,
+      allAdmins,
+      allNonAdmins,
+      assignRole,
+      mapPatchJsonTextArea,
+      onInputPatch,
+      submitMapCellPatch,
+      onDropReplaceMap,
+      inputMapChangeMessage,
+      verifyInputPatch,
+      inputCodeAccess,
+      startEditingCodeRights,
+      finishEditingCodeRights,
+      peopleGroups,
     }
   },
 })
@@ -1187,6 +1703,10 @@ export default defineComponent({
 
 div.table-column-tool {
   float: right;
+}
+
+.room-id {
+  /* word-break: break-all; */
 }
 
 #room-nav a {
@@ -1226,9 +1746,53 @@ span.access-code {
   width: 100px;
 }
 
-#access-code-url {
+.access-code-url {
   width: 400px;
   height: 30px;
   font-size: 14px;
+}
+
+#user-table tr.bold td {
+  font-weight: bold;
+}
+
+#drop-replace-map {
+  width: 150px;
+  height: 100%;
+  padding: 70px 10px;
+  background: #ccc;
+}
+#drop-replace-map.dragover {
+  background: rgb(156, 191, 156);
+}
+
+#input-patch {
+  width: 100%;
+  height: 100%;
+}
+
+#input-mapchange-message {
+  width: 200px;
+  height: 30px;
+}
+
+.access-code-entry {
+  margin: 5px 0px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.code-right-entry {
+  display: inline-block;
+  padding: 4px;
+  height: 30px;
+  background: #ccc;
+  border-radius: 3px;
+  margin: 0px 5px 0px 0px;
+}
+
+.code-right-entry.valid {
+  background: rgb(166, 215, 166);
 }
 </style>

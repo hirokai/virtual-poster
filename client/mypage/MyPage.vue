@@ -1,5 +1,5 @@
 <template>
-  <div id="app" v-if="myself" class="columns">
+  <div id="app" v-if="myself" class="columns" :class="{ dark: darkMode }">
     <!-- <div>
       <div id="top-tools">
         <a style="margin-right: 10px;" :href="goback_path">マップに戻る</a>
@@ -24,6 +24,7 @@
       <div id="tabs">
         <ManageRooms
           v-if="tab == 'rooms'"
+          :locale="locale"
           :myUserId="myUserId"
           :axios="axios"
           :socket="socket"
@@ -37,54 +38,95 @@
           @change-room="changeRoom"
           @make-announcement="doSubmitAnnouncement"
           @ask-reload="askReload"
+          @create-access-code="createAccessCode"
           @renew-access-code="renewAccessCode"
           @delete-access-code="deleteAccessCode"
+          @reload-room-metadata="reloadRoomMetadata"
         />
         <div class="tab-content" id="tab-map" v-if="tab == 'style'">
           <section>
             <div style="font-size: 80%; margin: 10px 0px">
-              下記の設定は端末に保存されます
+              {{ lang("display_1") }}
             </div>
-            <h5 class="title is-5">表示設定</h5>
-            <h6 class="title is-6">全体</h6>
+            <h5 class="title is-5">{{ lang("display_settings") }}</h5>
+            <h6 class="title is-6">{{ lang("common") }}</h6>
             <div>
-              <span style="vertical-align: -7px">ダークモード</span>
-              <button
-                class="button"
-                :class="{ 'is-primary': !darkModeUnset && darkMode }"
-                @click="setDarkMode(true)"
-              >
-                ON
-              </button>
-              <button
-                class="button"
-                :class="{ 'is-primary': !darkModeUnset && !darkMode }"
-                @click="setDarkMode(false)"
-              >
-                OFF
-              </button>
-              <button
-                class="button"
-                :class="{ 'is-primary': darkModeUnset }"
-                @click="setDarkMode(undefined)"
-              >
-                OSの設定に合わせる
-              </button>
+              <div class="buttons has-addons">
+                <span style="margin-right: 10px; vertical-align: 20px">{{
+                  lang("language")
+                }}</span>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': locale == 'en' }"
+                  @click="changeLocale('en')"
+                >
+                  English
+                </button>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': locale == 'ja' }"
+                  @click="changeLocale('ja')"
+                >
+                  日本語
+                </button>
+              </div>
+              <div class="buttons has-addons">
+                <span style="margin-right: 10px; vertical-align: 20px">{{
+                  lang("dark_mode")
+                }}</span>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': !darkModeUnset && darkMode }"
+                  @click="setDarkMode(true)"
+                >
+                  ON
+                </button>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': !darkModeUnset && !darkMode }"
+                  @click="setDarkMode(false)"
+                >
+                  OFF
+                </button>
+                <button
+                  class="button"
+                  :class="{ 'is-primary': darkModeUnset }"
+                  @click="setDarkMode(undefined)"
+                >
+                  {{ lang("adjust_os") }}
+                </button>
+              </div>
             </div>
-            <h6 class="title is-6">マップ</h6>
-            <div>
-              <span style="vertical-align: -7px">マップの表示</span>
+            <h6 class="title is-6">{{ lang("map") }}</h6>
+            <div class="buttons has-addons">
+              <span style="margin-right: 10px">{{ lang("map_style") }}</span>
               <button
                 class="button"
                 :class="{ 'is-primary': mapVisualStyle == n[0] }"
                 v-for="n in [
-                  ['default', 'デフォルト'],
-                  ['abstract', '抽象'],
-                  ['monochrome', 'モノクロ'],
-                  ['abstract_monochrome', '抽象・モノクロ'],
+                  ['default', lang('default')],
+                  ['abstract', lang('abstract')],
+                  ['monochrome', lang('monochrome')],
+                  ['abstract_monochrome', lang('abs_monochro')],
                 ]"
                 :key="n[0]"
                 @click="setStyle(n[0])"
+              >
+                {{ n[1] }}
+              </button>
+            </div>
+            <div class="buttons has-addons">
+              <span style="margin-right: 10px">{{ lang("show_size") }}</span>
+              <button
+                class="button"
+                :class="{ 'is-primary': mapCellSize == n[0] }"
+                v-for="n in [
+                  [48, '大'],
+                  [40, '中'],
+                  [30, '小'],
+                ]"
+                :key="n[1]"
+                @click="setMapCellSize(n[0])"
               >
                 {{ n[1] }}
               </button>
@@ -96,9 +138,11 @@
                 id="config-show-minimap"
                 v-model="enableMiniMap"
               />
-              <label for="config-show-minimap">ミニマップを表示する</label>
+              <label for="config-show-minimap">{{
+                lang("show_minimap")
+              }}</label>
             </div>
-            <h6 class="title is-6">チャット</h6>
+            <h6 class="title is-6">{{ lang("chat") }}</h6>
             <div>
               <input
                 type="checkbox"
@@ -106,9 +150,9 @@
                 id="config-show-empty-sessions"
                 v-model="showEmptySessions"
               />
-              <label for="config-show-empty-sessions"
-                >会話が無かったセッション（開始〜解散）を表示する</label
-              >
+              <label for="config-show-empty-sessions">{{
+                lang("show_all_sessions")
+              }}</label>
             </div>
           </section>
         </div>
@@ -132,14 +176,16 @@
             <h3>注意</h3>
             <ul>
               <li>
-                会場に参加すると，会場のオーナーにメールアドレスが開示されます。
+                会場に参加すると，会場の管理者にメールアドレスが開示されます。
               </li>
             </ul>
           </section>
         </div>
         <MypagePoster
-          v-if="tab == 'poster'"
+          v-if="tab == 'poster' && myself"
+          :locale="locale"
           :posters="postersSorted"
+          :myself="myself"
           :people="people"
           :rooms="rooms"
           :lastLoaded="lastLoaded"
@@ -181,16 +227,16 @@
         </div>
         <div class="tab-content" id="tab-account" v-if="tab == 'account'">
           <section>
-            <h5 class="title is-5">基本情報・プロフィール</h5>
+            <h5 class="title is-5">{{ lang("basic_profile") }}</h5>
             <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
             <div class="info-entry">
-              <span class="key">ユーザーID</span> {{ myUserId }}
+              <span class="key">{{ lang("user_id") }}</span> {{ myUserId }}
             </div>
             <div class="info-entry">
               <span class="key">Email</span> {{ user ? user.email : "(不明)" }}
             </div>
             <div class="info-entry">
-              <span class="key">表示名（短縮）</span>
+              <span class="key">{{ lang("name_short") }}</span>
               <span v-if="editing.name">
                 <input
                   class="name-field"
@@ -200,12 +246,14 @@
                 /><br />
                 <button class="edit-btn" @click="saveName">OK</button>
                 <button class="edit-btn" @click="editing.name = button">
-                  キャンセル
+                  {{ lang("cancel") }}
                 </button>
               </span>
               <span v-else>
                 <span class="name-field">{{ myself.name }} </span>
-                <button class="edit-btn" @click="startEditingName">編集</button>
+                <button class="edit-btn" @click="startEditingName">
+                  {{ lang("edit") }}
+                </button>
               </span>
             </div>
             <div
@@ -214,14 +262,14 @@
               :key="key"
             >
               <span class="key" v-if="!hasDescription(key)">{{
-                showProfileKind(key, profile)
+                showProfileKind(key, profile, locale)
               }}</span>
               <span v-if="editingProfile[key] && hasDescription(key)">
                 <div class="profile-row">
                   <label
                     class="profile-title"
                     :for="'profile-' + key + '-input'"
-                    >{{ showProfileKind(key, profile) }}</label
+                    >{{ showProfileKind(key, profile, locale) }}</label
                   >
                   <input class="input-profile" ref="inputProfile" /><br />
                 </div>
@@ -230,7 +278,7 @@
                     class="profile-title"
                     :for="'profile-' + key + '-description-input'"
                   >
-                    説明
+                    {{ lang("description") }}
                   </label>
                   <input
                     type="text"
@@ -244,7 +292,7 @@
                     OK
                   </button>
                   <button class="edit-btn" @click="delete editingProfile[key]">
-                    キャンセル
+                    {{ lang("cancel") }}
                   </button>
                 </div>
               </span>
@@ -257,26 +305,26 @@
                     OK
                   </button>
                   <button class="edit-btn" @click="delete editingProfile[key]">
-                    キャンセル
+                    {{ lang("cancel") }}
                   </button>
                 </div>
               </span>
               <span v-else-if="hasDescription(key)">
                 <div class="profile-row">
                   <span class="profile-title">{{
-                    showProfileKind(key, profile)
+                    showProfileKind(key, profile, locale)
                   }}</span>
                   <span class="profile-value">{{ profile.content }}</span>
                 </div>
                 <div class="profile-row">
-                  <span class="profile-title">説明 </span>
+                  <span class="profile-title">{{ lang("description") }} </span>
                   <span class="profile-value">
                     {{ profile.metadata?.description }}
                   </span>
                 </div>
                 <div class="profile-row">
                   <button class="edit-btn" @click="startEditingProfile(key)">
-                    編集
+                    {{ lang("edit") }}
                   </button>
                 </div>
               </span>
@@ -285,7 +333,7 @@
                 <div class="profile-row">
                   <span>{{ profile.content }}</span>
                   <button class="edit-btn" @click="startEditingProfile(key)">
-                    編集
+                    {{ lang("edit") }}
                   </button>
                 </div>
               </span>
@@ -299,7 +347,7 @@
       </div> -->
           </section>
           <section>
-            <h5 class="title is-5">アバター</h5>
+            <h5 class="title is-5">{{ lang("avatar") }}</h5>
 
             <div
               v-for="n in avatars"
@@ -321,7 +369,7 @@
             </p>
           </section>
           <section>
-            <h5 class="title is-5">名前の表示色</h5>
+            <h5 class="title is-5">{{ lang("name_color") }}</h5>
             <div
               v-for="color in name_colors"
               :key="color"
@@ -337,32 +385,41 @@
                 name=""
                 v-model="displayNameBold"
                 id="check-name-bold"
-              /><label for="check-name-bold">太字にする</label>
+              /><label for="check-name-bold">{{ lang("make_bold") }}</label>
             </div>
           </section>
           <section>
-            <h5 class="title is-5">ログのエクスポート</h5>
+            <h5 class="title is-5">{{ lang("export_log") }}</h5>
             <button class="button is-primary" @click="exportLog">
-              エクスポート
+              {{ lang("export") }}
             </button>
           </section>
 
           <section>
-            <h5 class="title is-5">暗号化</h5>
+            <h5 class="title is-5">{{ lang("encryption") }}</h5>
             <div>
-              個別のチャットはエンドツーエンド暗号化が可能です。<a
-                href="https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89"
-                >楕円曲線ディフィー・ヘルマン鍵共有（ECDH）</a
-              >および128ビット<a
+              {{ lang("encryption_desc1") }}
+              {{ locale == "ja" ? `` : `` }}
+              <a
+                :href="
+                  locale == 'ja'
+                    ? 'https://ja.wikipedia.org/wiki/%E6%A5%95%E5%86%86%E6%9B%B2%E7%B7%9A%E3%83%87%E3%82%A3%E3%83%95%E3%82%A3%E3%83%BC%E3%83%BB%E3%83%98%E3%83%AB%E3%83%9E%E3%83%B3%E9%8D%B5%E5%85%B1%E6%9C%89'
+                    : 'https://en.wikipedia.org/wiki/Elliptic-curve_Diffie%E2%80%93Hellman'
+                "
+                >{{ lang("ecdh") }}</a
+              >
+              {{ lang("and") }} {{ lang("128bit") }}
+              <a
                 href="https://ja.wikipedia.org/wiki/Advanced_Encryption_Standard"
                 >AES-GCM</a
-              >を使用。<br />
+              >
+              {{ locale == "ja" ? "を使用。" : "are used." }}<br />
             </div>
             <div>
-              <h3>公開鍵</h3>
+              <h3>{{ lang("public_key") }}</h3>
 
               <div class="keys">{{ publicKeyString }}</div>
-              <h3>秘密鍵</h3>
+              <h3>{{ lang("private_key") }}</h3>
 
               <div>
                 <input
@@ -371,9 +428,9 @@
                   v-model="enableEncryption"
                   id="check-enable-encrypt"
                   :disabled="!privateKeyString"
-                /><label for="check-enable-encrypt"
-                  >エンドツーエンド暗号化を使用</label
-                >
+                /><label for="check-enable-encrypt">{{
+                  lang("use_e2ee")
+                }}</label>
               </div>
 
               <div v-if="privateKeyString" style="height: 40px; margin: 10px">
@@ -384,11 +441,11 @@
                 v-if="!privateKeyString"
                 style="height: 40px; margin: 10px"
               >
-                <span style="margin-right: 10px">秘密鍵がありません</span>
+                <span style="margin-right: 10px">{{ lang("no_pk") }}</span>
               </div>
               <div style="margin-bottom: 10px">
                 <button class="button is-primary" @click="setPrivateKey">
-                  秘密鍵を読み込み
+                  {{ lang("load_pk") }}
                 </button>
                 <button
                   style="margin-left: 10px"
@@ -396,7 +453,11 @@
                   class="button is-primary"
                   @click="showPrivKey = !showPrivKey"
                 >
-                  秘密鍵を{{ showPrivKey ? "隠す" : "表示" }}
+                  {{
+                    locale == "ja"
+                      ? `秘密鍵を${showPrivKey ? "隠す" : "表示"}`
+                      : `${showPrivKey ? "Hide" : "Show"} private key`
+                  }}
                 </button>
               </div>
               <pre id="mnemonic" v-if="showPrivKey">{{
@@ -407,47 +468,39 @@
 </pre
               >
               <span class="danger" v-if="privateKeyString"
-                >秘密鍵はこの端末のブラウザ内部のみに保管されています。<br />ブラウザを再インストールするなどして秘密鍵を無くすと暗号化したチャットの内容は全て読めなくなります。</span
-              >秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。
+                >{{ lang("priv_1") }}<br />
+                {{ lang("priv_2") }}</span
+              ><br />
+              {{ lang("priv_3") }}
             </div>
           </section>
           <section>
-            <h5 class="title is-5">アカウントの削除</h5>
+            <h5 class="title is-5">{{ lang("delete_account") }}</h5>
             <div>
               <button class="button is-danger" @click="deleteAccount">
-                アカウントの削除
+                {{ lang("delete_account") }}
               </button>
             </div>
           </section>
         </div>
         <div v-if="tab == 'help'" class="tab-content">
-          <h5 class="title is-5">簡単な使い方</h5>
-          <p style="font-size: 14px; line-height: 1; margin: 0px">
-            ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
-          </p>
+          <h5 class="title is-5">{{ lang("instruction") }}</h5>
           <ul>
             <li>
-              移動：
-              カーソルキー，hjklキー（それぞれ左，下，上，右），yubnキー（左上，右上，左下，右下）で移動。あるいは画面上の矢印ボタンで移動。
+              {{ lang("help_move") }}
             </li>
             <li>
-              会話：
-              人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
+              {{ lang("help_chat") }}
+            </li>
+            <li>{{ lang("help_poster") }}</li>
+            <li>
+              {{ lang("help_take_poster") }}
             </li>
             <li>
-              ポスター：
-              隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
+              {{ lang("help_placing_poster") }}
             </li>
             <li>
-              ポスター板の確保：
-              空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
-            </li>
-            <li>
-              ポスターの掲示：
-              自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
-            </li>
-            <li>
-              ポスターの撤去： マイページで「ポスター画像を削除」をクリック
+              {{ lang("help_remove_poster") }}
             </li>
           </ul>
         </div>
@@ -473,7 +526,6 @@ import api from "@/api/$api"
 
 import {
   Person,
-  PersonUpdate,
   Poster,
   PosterId,
   UserId,
@@ -481,8 +533,16 @@ import {
   Announcement,
   RoomUpdateSocketData,
   VisualStyle,
+  PersonUpdate,
 } from "@/@types/types"
-import { keyBy, difference, range, chunk, showProfileKind } from "@/common/util"
+import {
+  keyBy,
+  difference,
+  range,
+  chunk,
+  showProfileKind,
+  decodeMoved,
+} from "@/common/util"
 import io from "socket.io-client"
 import * as encryption from "../encryption"
 import * as BlindSignature from "blind-signatures"
@@ -492,6 +552,13 @@ import { decryptIfNeeded } from "../room/room_chat_service"
 import MypagePoster from "./MypagePoster.vue"
 import ManageRooms from "../admin/ManageRooms.vue"
 import { RoomId } from "@/api/@types"
+
+import {
+  createAccessCode,
+  deleteAccessCode,
+  reloadRoomMetadata,
+  renewAccessCode,
+} from "../admin/admin_room_service"
 
 const BigInteger = jsbn.BigInteger
 
@@ -540,26 +607,23 @@ export default defineComponent({
     MypagePoster,
     ManageRooms,
   },
-  setup: () => {
+  props: {
+    isMobile: {
+      type: Boolean,
+    },
+    moveToPane: {
+      type: Function,
+    },
+  },
+  setup: props => {
     const axios = axiosDefault.create({ baseURL: API_ROOT })
     const client = api(axiosClient(axios))
-    axios.interceptors.response.use(
-      response => {
-        return response
-      },
-      error => {
-        if (403 === error.response.status) {
-          deleteUserInfoOnLogout()
-          location.href = "/login"
-        }
-      }
-    )
 
     const name = localStorage["virtual-poster:name"]
     const user_id = localStorage["virtual-poster:user_id"]
     const email = localStorage["virtual-poster:email"]
     const myUserId: string = debug_as || user_id
-    if (!(name && user_id && email)) {
+    if (!(name && myUserId && email)) {
       location.href = "/login"
     }
     const goback_path =
@@ -605,14 +669,6 @@ export default defineComponent({
       editingProfile: {} as { [key: string]: boolean },
 
       lastUpdated: null as number | null,
-      tabs: [
-        { id: "account", name: "アカウント" },
-        { id: "style", name: "表示設定" },
-        { id: "rooms", name: "会場" },
-        { id: "poster", name: "ポスター" },
-        { id: "vote", name: "投票" },
-        { id: "help", name: "使い方" },
-      ],
 
       bgPosition: bgPositions[0],
       mouseOnAvatar: {} as { [index: string]: boolean },
@@ -670,7 +726,300 @@ export default defineComponent({
         localStorage[
           "virtual-poster:" + myUserId + ":config:show_empty_sessions"
         ] != "0",
+      locale: (localStorage[`virtual-poster:${myUserId}:config:locale`] ||
+        "ja") as "ja" | "en",
+      mapCellSize: 48,
     })
+
+    const tabs = computed(() => {
+      return state.locale == "ja"
+        ? [
+            { id: "account", name: "アカウント" },
+            { id: "style", name: "表示設定" },
+            { id: "rooms", name: "会場" },
+            { id: "poster", name: "ポスター" },
+            // { id: "vote", name: "投票" },
+            { id: "help", name: "使い方" },
+          ]
+        : [
+            { id: "account", name: "Account" },
+            { id: "style", name: "Display" },
+            { id: "rooms", name: "Rooms" },
+            { id: "poster", name: "Posters" },
+            // { id: "vote", name: "Vote" },
+            { id: "help", name: "Help" },
+          ]
+    })
+
+    const changeLocale = (l: "en" | "ja") => {
+      state.locale = l
+      if (state.user) {
+        localStorage[`virtual-poster:${state.user.user_id}:config:locale`] = l
+      }
+    }
+
+    const setMapCellSize = (n: number) => {
+      if (state.user) {
+        state.mapCellSize = n
+        localStorage[
+          `virtual-poster:${state.user.user_id}:config:map_cell_size`
+        ] = "" + n
+      }
+    }
+
+    document.title = state.locale == "ja" ? "マイページ" : "Preferences"
+
+    watch(
+      () => state.locale,
+      () => {
+        document.title = state.locale == "ja" ? "マイページ" : "Preferences"
+      }
+    )
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        basic_profile: {
+          ja: "基本情報・プロフィール",
+          en: "Basic information",
+        },
+        edit: {
+          ja: "編集",
+          en: "Edit",
+        },
+        description: {
+          ja: "説明",
+          en: "Note",
+        },
+        avatar: {
+          ja: "アバター",
+          en: "Avatar",
+        },
+        chat: {
+          ja: "チャット",
+          en: "Chat",
+        },
+        name_short: {
+          ja: "表示名（短縮）",
+          en: "Display name",
+        },
+        user_id: {
+          ja: "ユーザーID",
+          en: "User ID",
+        },
+        name_color: {
+          ja: "名前の表示色",
+          en: "Name color",
+        },
+        make_bold: {
+          ja: "太字にする",
+          en: "Bold font",
+        },
+        export_log: {
+          ja: "ログのエクスポート",
+          en: "Export log",
+        },
+        export: {
+          ja: "エクスポート",
+          en: "Export",
+        },
+        encryption: {
+          ja: "暗号化",
+          en: "Encryption",
+        },
+        encryption_desc1: {
+          ja: "チャットはエンドツーエンド暗号化が可能です。",
+          en: "End-to-end encryption of chat is possible.",
+        },
+        ecdh: {
+          ja: "楕円曲線ディフィー・ヘルマン鍵共有（ECDH）",
+          en: "Elliptic-curve Diffie–Hellman",
+        },
+        and: {
+          ja: "および",
+          en: "and",
+        },
+        "128bit": {
+          ja: "128ビット",
+          en: "128-bit",
+        },
+        delete_account: {
+          ja: "アカウントの削除",
+          en: "Delete account",
+        },
+        delete_confirm: {
+          ja:
+            "アカウントを削除します。すべての書き込み，ポスター，作成した部屋などが削除されます。一旦削除すると取り消せません。本当にいいですか？",
+          en:
+            "Deleting your account will delete all of your posts, posters, and rooms you have created. Once you delete your account, it cannot be undone. Are you sure you want to proceed?",
+        },
+        delete_failed: {
+          ja:
+            "アカウントの削除ができませんでした。管理者に連絡して手動で削除を依頼してください。",
+          en:
+            "The account could not be deleted. Please contact your administrator and request a manual deletion.",
+        },
+        cancel: {
+          ja: "キャンセル",
+          en: "Cancel",
+        },
+        public_key: {
+          ja: "公開鍵",
+          en: "Public key",
+        },
+        private_key: {
+          ja: "秘密鍵",
+          en: "Private key",
+        },
+        use_e2ee: {
+          ja: "エンドツーエンド暗号化を使用",
+          en: "Use end-to-end encryption",
+        },
+        no_pk: {
+          ja: "秘密鍵がありません",
+          en: "Private key is missing",
+        },
+        load_pk: {
+          ja: "秘密鍵を読み込み",
+          en: "Load private key",
+        },
+        priv_1: {
+          ja: "秘密鍵はこの端末のブラウザ内部のみに保管されています。",
+          en:
+            "The private key is stored only inside the browser of this device.",
+        },
+        priv_2: {
+          ja:
+            "If you lose your private key, for example by reinstalling your browser, all encrypted chat contents will be unreadable.",
+          en: "",
+        },
+        priv_3: {
+          ja:
+            "秘密鍵を安全な（人から見られない，また，紛失しない）場所にコピーして保存してください。",
+          en:
+            "Keep a copy of your private key in a safe place (where it cannot be seen or lost).",
+        },
+        display_1: {
+          ja: "下記の設定は端末に保存されます（端末ごとに設定が異なります）。",
+          en:
+            "The following settings will be saved in the device (settings will be different for each device).",
+        },
+        display_settings: {
+          ja: "表示設定",
+          en: "Display settings",
+        },
+        language: {
+          ja: "表示言語",
+          en: "Language",
+        },
+        dark_mode: {
+          ja: "ダークモード",
+          en: "Dark mode",
+        },
+        common: {
+          ja: "全体",
+          en: "General",
+        },
+        adjust_os: {
+          ja: "OSの設定に合わせる",
+          en: "Follow OS settings",
+        },
+        map: {
+          ja: "マップ",
+          en: "Map",
+        },
+        show_size: {
+          ja: "表示サイズ",
+          en: "Size",
+        },
+        map_style: {
+          ja: "マップの表示",
+          en: "Style",
+        },
+        default: {
+          ja: "デフォルト",
+          en: "Default",
+        },
+        abstract: {
+          ja: "抽象",
+          en: "Abstract",
+        },
+        monochrome: {
+          ja: "モノクロ",
+          en: "Grayscale",
+        },
+        abs_monochro: {
+          ja: "抽象・モノクロ",
+          en: "Grayscale, monochrome",
+        },
+        show_minimap: {
+          ja: "ミニマップを表示する",
+          en: "Show minimap",
+        },
+        show_all_sessions: {
+          ja:
+            "チャットウィンドウ中に会話が無かったセッション（開始〜解散）を表示する",
+          en:
+            "Show sessions where there was no conversation (start to end) in the chat window.",
+        },
+        enter_name: {
+          ja: "表示名を入力してください。",
+          en: "Enter name",
+        },
+        use_short_name: {
+          ja: "表示名は10文字以内にしてください。",
+          en: "Display name must be no more than 10 characters.",
+        },
+        bad_url: {
+          ja: "URLが正しくありません",
+          en: "Invalid URL",
+        },
+        enter_priv: {
+          ja: "秘密鍵のパスフレーズを入力してください",
+          en: "Enter the passphrase for a private key",
+        },
+        instruction: {
+          ja: "簡単な使い方",
+          en: "How to use",
+        },
+        help_move: {
+          ja:
+            "移動：カーソルキー，hjklキー（それぞれ左，下，上，右），yubnキー（左上，右上，左下，右下）で移動。あるいは画面上の矢印ボタンで移動。",
+          en:
+            "Move: Use the cursor keys, hjkl keys (left, down, up, and right, respectively), and yubn keys (upper left, upper right, lower left, and lower right, respectively) to move. Or use the arrow buttons on the screen to move.",
+        },
+        help_chat: {
+          ja:
+            "会話： 人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。",
+          en:
+            'Chat: Double-click on a person to start. You can add members from the middle of the conversation as long as they are next to you. Click "Leave conversation" to end. Click on the key icon to turn it black to encrypt the conversation.',
+        },
+        help_poster: {
+          ja:
+            "ポスター： 隣のマスに行き，「ポスターを閲覧」を押すとポスターを表示，コメント書き込み・閲覧可能。",
+          en:
+            'Poster: Go to the adjacent cell and click on "View Poster" to view the poster and write comments.',
+        },
+        help_take_poster: {
+          ja:
+            "ポスター板の確保： 空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。",
+          en:
+            "Taking a poster board: Double-click on an empty poster board (wooden tag icon) (only if the room owner allows it).",
+        },
+        help_placing_poster: {
+          ja:
+            "ポスター画像の掲示： 自分のポスター板にPNG（推奨）またはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。",
+          en:
+            "Uploading poster image: Drag and drop the PNG (recommended) or PDF file onto your poster board, or upload it from Preferences (the human icon).",
+        },
+        help_remove_poster: {
+          ja: "ポスターの撤去： マイページで「ポスター画像を削除」をクリック。",
+          en: "Removing a poster: Click 'Delete Poster' in Preferences",
+        },
+      }
+      return message[key][state.locale]
+    }
 
     const name_colors = [
       "black",
@@ -930,19 +1279,6 @@ export default defineComponent({
       }
     )
 
-    const setPerson = (d: PersonUpdate) => {
-      console.log("setPerson", d)
-      const p = state.people[d.id]
-      const person: Person = {
-        id: d.id,
-        name: d.name || p.name,
-        last_updated: d.last_updated,
-        avatar: d.avatar || p.avatar,
-        stats: d.stats || p.stats,
-      }
-      //Vue.set
-      state.people[d.id] = person
-    }
     const inputName = ref<HTMLInputElement>()
 
     const startEditingName = async () => {
@@ -956,13 +1292,13 @@ export default defineComponent({
       if (ev.keyCode && ev.keyCode !== 13) return
       const new_name = inputName.value?.value
       if (!new_name) {
-        alert("表示名を入力してください。")
+        alert(lang("enter_name"))
         state.editing.name = null
         return
       }
       console.log(state.myUserId, new_name)
       if (new_name.length > 10) {
-        alert("表示名は10文字以内にしてください。")
+        alert(lang("use_short_name"))
         state.editing.name = null
         return
       }
@@ -983,7 +1319,7 @@ export default defineComponent({
       if (!me) {
         return
       }
-      for (const [k, v] of Object.entries(state.editingProfile)) {
+      for (const k of Object.keys(state.editingProfile)) {
         state.editingProfile[k] = false
       }
       state.editingProfile[key] = true
@@ -1016,7 +1352,7 @@ export default defineComponent({
           new_value.indexOf("http://") != 0 &&
           new_value.indexOf("https://") != 0
         ) {
-          alert("URLが正しくありません")
+          alert(lang("bad_url"))
           return
         }
       }
@@ -1077,12 +1413,26 @@ export default defineComponent({
     onMounted(async () => {
       state.tab_sub = tab_sub
 
-      window.onhashchange = () => {
-        console.log("onhashchange()")
-        const hash = location.hash.slice(1)
-        state.tab = hash.split("/")[0]
-        state.tab_sub = hash.split("/")[1]
-        state.tab_sub_sub = hash.split("/")[2]
+      if (props.isMobile) {
+        window.onhashchange = () => {
+          console.log("onhashchange() mobile")
+          const hash = location.hash.slice(1)
+          if (hash != "mypage" && props.moveToPane) {
+            props.moveToPane(hash)
+          } else {
+            state.tab = hash.split("/")[1]
+            state.tab_sub = hash.split("/")[2]
+            state.tab_sub_sub = hash.split("/")[3]
+          }
+        }
+      } else {
+        window.onhashchange = () => {
+          console.log("onhashchange()")
+          const hash = location.hash.slice(1)
+          state.tab = hash.split("/")[0]
+          state.tab_sub = hash.split("/")[1]
+          state.tab_sub_sub = hash.split("/")[2]
+        }
       }
       const data = await client.socket_url.$get()
       const url = data.socket_url as string
@@ -1132,6 +1482,29 @@ export default defineComponent({
       socket.on("Poster", (p: Poster) => {
         //Vue.set
         state.posters[p.id] = p
+      })
+
+      socket.on("PersonUpdate", (ds: PersonUpdate[]) => {
+        console.log("PersonUpdate", ds)
+        for (const d of ds) {
+          const p: Person = state.people[d.id]
+          if (!p) {
+            console.warn("User not found (probably new user)")
+            continue
+          }
+          const person: Person = {
+            id: d.id,
+            name: d.name || p.name,
+            last_updated: d.last_updated,
+            avatar: d.avatar || p.avatar,
+            stats: d.stats || p.stats,
+            profiles: d.profiles || p.profiles,
+            public_key: d.public_key || p.public_key,
+            email: p.email,
+            connected: d.connected != undefined ? d.connected : p.connected,
+          }
+          state.people[d.id] = person
+        }
       })
       socket.on("AppReload", (force: boolean) => {
         if (state.reloadWaiting) {
@@ -1209,6 +1582,54 @@ export default defineComponent({
         await reload()
       }
 
+      window.addEventListener("storage", ev => {
+        if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:dark_mode"
+        ) {
+          console.log(ev.newValue, state.darkMode)
+          state.darkModeUnset = ev.newValue == null
+          state.darkMode =
+            ev.newValue == "1"
+              ? true
+              : ev.newValue == "0"
+              ? false
+              : window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+          console.log(state.darkMode)
+        } else if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:map_visual_style"
+        ) {
+          state.mapVisualStyle = getVisualStyle(
+            new URL(location.href).searchParams.get("style") ||
+              ev.newValue ||
+              ""
+          )
+        } else if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:show_minimap"
+        ) {
+          state.enableMiniMap = ev.newValue != "0"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:encryption"
+        ) {
+          state.enableEncryption = ev.newValue == "1"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:locale"
+        ) {
+          state.locale =
+            ev.newValue == "ja" ? "ja" : ev.newValue == "en" ? "en" : "ja"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + state.myUserId + ":config:map_cell_size"
+        ) {
+          state.mapCellSize = ev.newValue ? parseInt(ev.newValue) : 48
+        }
+      })
+
       window.setInterval(() => {
         if (state.tab == "avatar") {
           state.count += 1
@@ -1229,13 +1650,13 @@ export default defineComponent({
       }
     )
 
-    watch(
-      () => state.tab,
-      (newTab: string) => {
-        console.log(newTab)
-        location.hash = "#" + newTab
-      }
-    )
+    // watch(
+    //   () => state.tab,
+    //   (newTab: string) => {
+    //     console.log(newTab)
+    //     location.hash = "#" + newTab
+    //   }
+    // )
     const setPoster = (pid: PosterId, poster: Poster) => {
       state.posters[pid] = poster
     }
@@ -1247,7 +1668,7 @@ export default defineComponent({
       // console.log("mouse", n, b, state.mouseOnAvatar)
     }
     const setPrivateKey = () => {
-      const prv_str_to_import = prompt("秘密鍵のパスフレーズを入力してください")
+      const prv_str_to_import = prompt(lang("enter_priv"))
       console.log("prv_str_to_import", prv_str_to_import)
       if (!prv_str_to_import) {
         return
@@ -1416,9 +1837,7 @@ export default defineComponent({
     }
 
     const deleteAccount = async () => {
-      const r = confirm(
-        "アカウントを削除します。すべての書き込み，ポスター，作成した部屋などが削除されます。一旦削除すると取り消せません。本当にいいですか？"
-      )
+      const r = confirm(lang("delete_confirm"))
       if (!r) {
         return
       }
@@ -1448,6 +1867,8 @@ export default defineComponent({
           localStorage.removeItem(arr[i])
         }
         location.href = "/login"
+      } else {
+        alert(lang("delete_failed"))
       }
     }
 
@@ -1490,32 +1911,69 @@ export default defineComponent({
           ._userId(state.myUserId)
           .comments.$get()
 
+        const uidToObj = (uid: UserId) => {
+          const obj = { id: uid }
+          const name = state.people[uid]?.name
+          if (name) {
+            obj["name"] = name
+          }
+          return obj
+        }
+
+        const ridToObj = (rid: RoomId) => {
+          const obj = { id: rid }
+          const name = state.rooms[rid]?.name
+          if (name) {
+            obj["name"] = name
+          }
+          return obj
+        }
+
         const comments: any[] = []
         // Start file download.
         for (const c of comments_all) {
-          const r = await decryptIfNeeded(
-            myUserId,
-            state.people,
-            c,
-            state.privateKey
-          )
-          if (r.text) {
+          if (c.kind == "person" || c.kind == "poster") {
+            try {
+              const r = await decryptIfNeeded(
+                myUserId,
+                state.people,
+                c,
+                state.privateKey
+              )
+              const text = r.text || "(復号化できません)"
+              comments.push({
+                id: c.id,
+                room: ridToObj(c.room),
+                text_decrypted: text,
+                timestamp: c.timestamp,
+                x: c.x,
+                y: c.y,
+                last_updated: c.last_updated,
+                recipients: c.texts.map(t => uidToObj(t.to)),
+                // texts: c.texts,
+                person: uidToObj(c.person),
+                kind: c.kind,
+              })
+            } catch (err) {
+              //
+            }
+          } else {
+            // events
             comments.push({
-              id: c.id,
-              room: c.room,
-              text_decrypted: r.text,
-              timestamp: c.timestamp,
-              x: c.x,
-              y: c.y,
-              last_updated: c.last_updated,
-              recipients: c.texts.map(t => t.to),
-              // texts: c.texts,
-              person: c.person,
               kind: c.kind,
+              room: ridToObj(c.room),
+              group: c["group"],
+              person: uidToObj(c.person),
+              event_type: c["event_type"],
+              event_data: {
+                from_user: "U2trLcTyCVm",
+                to_users: ["U-Rxp4DS8LzK"],
+              },
+              timestamp: c.timestamp,
             })
           }
         }
-        download("export_log.json", JSON.stringify(comments))
+        download("export_log.json", JSON.stringify(comments, null, 2))
       }
     }
 
@@ -1530,39 +1988,6 @@ export default defineComponent({
       } else {
         location.href = "#rooms/" + room_id
         state.tab_sub = room_id
-      }
-    }
-
-    const renewAccessCode = async (room_id: RoomId) => {
-      if (
-        state.rooms[room_id].access_code &&
-        !confirm(
-          "アクセスコードを更新しますか？ 古いコードは使えなくなります。"
-        )
-      ) {
-        return
-      }
-      const r = await client.maps._roomId(room_id).access_code.renew.$post()
-      if (r.code && r.active != undefined) {
-        state.rooms[room_id].access_code = { code: r.code, active: r.active }
-      }
-    }
-
-    const deleteAccessCode = async (room_id: RoomId) => {
-      if (
-        !confirm(
-          "アクセスコードを削除しますか？ 削除するとコードは使えなくなります。"
-        )
-      ) {
-        return
-      }
-      const r = await client.maps._roomId(room_id).access_code.$delete()
-      if (r.ok) {
-        state.rooms[room_id].access_code = undefined
-        alert("アクセスコードを削除しました")
-      } else {
-        console.error(r.error)
-        alert("アクセスコードの削除に失敗しました")
       }
     }
 
@@ -1676,19 +2101,69 @@ export default defineComponent({
       changeRoom,
       doSubmitAnnouncement,
       askReload,
-      renewAccessCode,
-      deleteAccessCode,
+      createAccessCode: createAccessCode(state),
+      renewAccessCode: renewAccessCode(state),
+      deleteAccessCode: deleteAccessCode(state),
+      reloadRoomMetadata: reloadRoomMetadata(state),
       setDarkMode,
       setStyle,
       showProfileKind,
       hasDescription,
       myProfilesOrdered,
+      changeLocale,
+      lang,
+      tabs,
+      setMapCellSize,
     }
   },
 })
 </script>
 <style lang="css" scoped>
 /* @import "../../node_modules/bulma/css/bulma.css"; */
+
+#app {
+  height: 100%;
+  min-height: 105vh;
+}
+
+.dark {
+  background: black;
+  color: #eee;
+}
+
+.dark .title {
+  color: #eee;
+}
+
+.dark .tabs a {
+  color: #ccc;
+}
+
+.dark >>> table,
+.dark >>> table th {
+  background-color: black !important;
+  color: #eee;
+}
+
+.dark >>> .breadcrumb li a,
+.dark >>> .title {
+  color: #eee;
+}
+
+.dark >>> .box {
+  background-color: #333;
+  color: #eee;
+}
+
+.dark >>> #room-nav a.active {
+  color: white;
+  font-weight: bold;
+  cursor: default;
+}
+
+.dark >>> .poster {
+  border: 1px solid #ccc;
+}
 
 #top-tools {
   float: right;

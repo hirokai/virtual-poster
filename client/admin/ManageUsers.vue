@@ -171,6 +171,11 @@ import {
 
 export default defineComponent({
   props: {
+    locale: {
+      type: String,
+      enum: ["ja", "en"],
+      required: true,
+    },
     axios: {
       type: Function as PropType<AxiosStatic>,
       required: true,

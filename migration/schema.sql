@@ -77,11 +77,20 @@ CREATE TABLE person (
     "role" user_role NOT NULL
 );
 
+CREATE TYPE minimap_visibility AS ENUM (
+    'all_initial',
+    'map_initial',
+    'all_only_visited',
+    'map_only_visited'
+);
+
 CREATE TABLE room (
     id text PRIMARY KEY,
     "name" text NOT NULL,
     room_owner text REFERENCES person (id),
-    allow_poster_assignment boolean NOT NULL
+    allow_poster_assignment boolean NOT NULL,
+    minimap_visibility minimap_visibility DEFAULT 'all_initial',
+    move_log boolean DEFAULT 't'
 );
 
 CREATE TABLE person_profile (
@@ -95,7 +104,7 @@ CREATE TABLE person_profile (
 );
 
 CREATE TABLE room_access_code (
-    code text NOT NULL,
+    code text NOT NULL UNIQUE,
     room text REFERENCES room (id) NOT NULL,
     active boolean NOT NULL,
     granted_right text NOT NULL,
@@ -155,6 +164,21 @@ CREATE TABLE person_room_access (
     PRIMARY KEY (room, email)
 );
 
+CREATE TABLE people_group (
+    id text PRIMARY KEY,
+    room text REFERENCES room (id),
+    "name" text NOT NULL,
+    description text,
+    UNIQUE (room, name)
+);
+
+CREATE TABLE person_in_people_group (
+    people_group text REFERENCES people_group (id) NOT NULL,
+    person_email text,
+    person_id text REFERENCES person (id),
+    CONSTRAINT check_email_or_id CHECK (person_email IS NOT NULL OR person_id IS NOT NULL)
+);
+
 CREATE TABLE comment (
     id text PRIMARY KEY,
     "timestamp" bigint NOT NULL,
@@ -186,7 +210,8 @@ CREATE TABLE poster (
     access_log boolean,
     author_online_only boolean,
     file_uploaded boolean NOT NULL,
-    file_size integer
+    file_size integer,
+    watermark integer
 );
 
 CREATE TABLE comment_to_poster (
@@ -270,4 +295,31 @@ CREATE TABLE poster_comment_read (
     read boolean NOT NULL,
     PRIMARY KEY (comment, person)
 );
+
+CREATE TYPE visit_history AS ENUM (
+    'visited',
+    'seen',
+    'state_0',
+    'state_1',
+    'state_2',
+    'state_3',
+    'state_4',
+    'state_5'
+);
+
+CREATE TABLE cell_visit_history (
+    person text REFERENCES person (id),
+    "location" text REFERENCES map_cell (id),
+    last_updated bigint NOT NULL,
+    state visit_history NOT NULL,
+    PRIMARY KEY (person, "location")
+);
+
+CREATE TABLE schema_version (
+    "version" text NOT NULL,
+    minor_version text
+);
+
+INSERT INTO schema_version ("version")
+    VALUES ('20210125');
 

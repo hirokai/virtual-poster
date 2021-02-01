@@ -193,3 +193,18 @@ export async function protectedRoute(
     }
   }
 }
+
+export const manageRoom = async (req, res) => {
+  const roomId = req.params.roomId
+  const map = model.maps[roomId]
+  if (!map) {
+    return res.status(404).send("Room not found")
+  }
+  if (req["requester_type"] == "admin") {
+    return
+  }
+  const is_room_admin = await map.isUserOwnerOrAdmin(req["requester"])
+  if (!is_room_admin) {
+    return res.status(403).send("Not an owner or admin")
+  }
+}

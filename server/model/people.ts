@@ -11,7 +11,6 @@ import {
   Person,
   PersonInMap,
   PersonRDB,
-  PersonWithEmail,
   Direction,
   Point,
   UserId,
@@ -23,11 +22,18 @@ import {
   ChatGroup,
   NotificationEntry,
   PosterCommentNotification,
+  UserGroupId,
+  UserGroup,
 } from "../../@types/types"
 import { redis, log, db, pgp, maps, chat } from "./index"
 
 import { config } from "../config"
-import { calcDirection, isAdjacent, removeUndefined } from "../../common/util"
+import {
+  calcDirection,
+  isAdjacent,
+  keyBy,
+  removeUndefined,
+} from "../../common/util"
 import { ChatGroupId } from "@/api/@types"
 import { genChatEventId } from "./chat"
 const DEBUG_TOKEN = config.debug_token
@@ -96,6 +102,15 @@ function _normalizeStats(obj: Record<string, any>): PersonStat {
 function genUserId(): string {
   for (;;) {
     const s = "U" + shortid.generate()
+    if (s.indexOf("-") == -1) {
+      return s
+    }
+  }
+}
+
+export function genPeopleGroupId(): string {
+  for (;;) {
+    const s = "H" + shortid.generate()
     if (s.indexOf("-") == -1) {
       return s
     }
@@ -260,6 +275,25 @@ export async function getUserType(
   return count == 2 ? "admin" : count == 1 ? "user" : null
 }
 
+export async function getUserTypeForRoom(
+  user_id: UserId,
+  room_id: RoomId
+): Promise<"admin" | "owner" | "user" | null> {
+  const owner = await maps[room_id].getOwner()
+  if (owner == user_id) {
+    return "owner"
+  }
+  const rows = await db.query(
+    `SELECT role FROM person_room_access WHERE person=$1 AND room=$2;`,
+    [user_id, room_id]
+  )
+  if (rows.length != 1) {
+    return null
+  }
+  const role: "admin" | "user" = rows[0].role
+  return role
+}
+
 export async function isAdmin(token: string): Promise<boolean> {
   try {
     const decodedToken = await admin.auth().verifyIdToken(token)
@@ -282,7 +316,7 @@ export async function create(
   name: string,
   typ: "admin" | "user",
   avatar: string,
-  allowed_rooms: RoomId[],
+  allowed_rooms: { id: RoomId; groups: UserGroupId[] }[],
   merge_strategy: "reject" | "replace" | "append" = "append"
 ): Promise<{
   ok: boolean
@@ -343,7 +377,7 @@ export async function create(
     }
     const rooms: { room_id: string; pos?: PosDir }[] = []
     for (const room of allowed_rooms) {
-      if (!maps[room]) {
+      if (!maps[room.id]) {
         log.warn("Room does not exist", room)
         continue
       }
@@ -351,8 +385,8 @@ export async function create(
         `INSERT INTO person_room_access (room,email,"role") values ($1,$2,$3) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING;`,
         [room, email, typ]
       )
-      const pos = await maps[room].assignRandomOpenPos(uid_actual)
-      rooms.push({ room_id: room, pos: pos || undefined })
+      const pos = await maps[room.id].assignRandomOpenPos(uid_actual)
+      rooms.push({ room_id: room.id, pos: pos || undefined })
       if (!pos) {
         log.warn("No open space or map uninitialized")
       }
@@ -365,64 +399,169 @@ export async function create(
     return { ok: false }
   }
 }
+
+export async function getPeopleInRoom(
+  room_id: RoomId,
+  with_email: boolean,
+  with_groups: boolean
+): Promise<
+  (PersonInMap & {
+    email?: string
+    rooms?: RoomId[]
+    poster_viewing?: PosterId
+    people_groups?: UserGroupId[]
+  })[]
+> {
+  const rows = await db.query(
+    ` SELECT
+          person.*,
+          pos.x,
+          pos.y,
+          pos.direction,
+          ra.role,
+          k.*
+      FROM
+          person
+          LEFT JOIN person_position AS pos ON person.id = pos.person
+          LEFT JOIN person_room_access AS ra ON ra.email = person.email AND ra.room = pos.room
+          LEFT JOIN public_key AS k ON person.id = k.person
+      WHERE
+          pos.room = $1
+      GROUP BY
+          person.id,
+          pos.x,
+          pos.y,
+          pos.direction,
+          ra.role,
+          k.person;`,
+    [room_id]
+  )
+  const rows2: { person: UserId; poster: PosterId }[] = await db.query(
+    ` SELECT
+          *
+      FROM
+          poster_viewer
+      WHERE
+          poster IN (
+              SELECT
+                  id
+              FROM
+                  poster
+              WHERE
+                  location IN (
+                      SELECT
+                          id
+                      FROM
+                          map_cell
+                      WHERE
+                          room = $1
+                  )
+          )
+          AND left_time IS NULL;`,
+    [room_id]
+  )
+  const connected_users = new Set(
+    await redis.accounts.smembers(
+      "connected_users:room:" + room_id + ":__all__"
+    )
+  )
+
+  const poster_viewers = _.groupBy(rows2, "person")
+
+  const owner = room_id ? await maps[room_id].getOwner() : undefined
+
+  let groups_of_person:
+    | {
+        [user_id: string]: {
+          person_id: string
+          groups_of_person: UserGroupId[]
+        }
+      }
+    | undefined = undefined
+  if (with_groups) {
+    const rows3 = await db.query(
+      `
+      SELECT
+          p.person_id,
+          array_agg(pg.id) as groups_of_person
+      FROM
+          person_in_people_group AS p
+          JOIN people_group AS pg ON p.people_group = pg.id
+      WHERE
+          pg.room = $1
+      GROUP BY
+          p.person_id
+      `,
+      [room_id]
+    )
+
+    console.log(rows3)
+    groups_of_person = keyBy(rows3, "person_id")
+    // r.people_groups = []
+  }
+
+  const arr: (PersonInMap & {
+    email?: string
+    rooms?: RoomId[]
+    poster_viewing?: PosterId
+    people_groups?: UserGroupId[]
+  })[] = []
+  for (const row of rows) {
+    const uid = row["id"] as UserId
+    const poster_viewing = poster_viewers[uid]
+      ? poster_viewers[uid][0]?.poster
+      : undefined
+    const r: PersonInMap & {
+      email?: string
+      rooms?: RoomId[]
+      poster_viewing?: PosterId
+      people_groups?: UserGroupId[]
+    } = {
+      name: row["name"],
+      rooms: row["rooms"] || [],
+      stats: {
+        walking_steps: 0,
+        people_encountered: [],
+        chat_count: 0,
+        chat_char_count: 0,
+      },
+      profiles: {},
+      public_key: row["public_key"],
+      id: uid,
+      last_updated: parseInt(row["last_updated"]),
+      connected: connected_users.has(uid),
+      room: room_id,
+      avatar: row["avatar"],
+      x: row["x"],
+      y: row["y"],
+      direction: row["direction"],
+      moving: false,
+    }
+
+    if (room_id) {
+      r.role = owner == uid ? "owner" : row["role"] || undefined
+    }
+    if (poster_viewing) {
+      r.poster_viewing = poster_viewing
+    }
+    if (groups_of_person) {
+      r.people_groups = groups_of_person[uid]?.groups_of_person
+    }
+    if (with_email) {
+      r.email = row["email"]
+    }
+    arr.push(r)
+  }
+  return arr
+}
+
 export async function getAllPeopleList(
-  room_id: RoomId | null,
   with_email = false,
   with_room_access = false
 ): Promise<(PersonInMap & { email?: string })[]> {
-  let rows
-  let rows2: { person: UserId; poster: PosterId }[]
-  if (room_id) {
-    rows = await db.query(
-      ` SELECT
-            person.*,
-            pos.x,
-            pos.y,
-            pos.direction,
-            k.*
-        FROM
-            person
-            LEFT JOIN person_position AS pos ON person.id = pos.person
-            LEFT JOIN public_key AS k ON person.id = k.person
-        WHERE
-            pos.room = $1
-        GROUP BY
-            person.id,
-            pos.x,
-            pos.y,
-            pos.direction,
-            k.person;`,
-      [room_id]
-    )
-    rows2 = await db.query(
-      ` SELECT
-            *
-        FROM
-            poster_viewer
-        WHERE
-            poster IN (
-                SELECT
-                    id
-                FROM
-                    poster
-                WHERE
-                    location IN (
-                        SELECT
-                            id
-                        FROM
-                            map_cell
-                        WHERE
-                            room = $1
-                    )
-            )
-            AND left_time IS NULL;`,
-      [room_id]
-    )
-    //
-  } else {
-    rows = await (with_room_access
-      ? db.query(
-          ` SELECT
+  const rows = await (with_room_access
+    ? db.query(
+        ` SELECT
                 person.*,
                 array_agg(ra.room) AS rooms,
                 k.public_key
@@ -433,30 +572,16 @@ export async function getAllPeopleList(
             GROUP BY
                 person.id,
                 k.public_key;`
-        )
-      : db.query("select * from person;"))
-    rows2 = []
-  }
-  const connected_users = room_id
-    ? new Set(
-        await redis.accounts.smembers(
-          "connected_users:room:" + room_id + ":__all__"
-        )
       )
-    : new Set<string>()
+    : db.query("select * from person;"))
 
   const count_all_sockets_for_users = await redis.sockets.hgetall(
     "room:" + "__any__"
   )
 
-  const poster_viewers = _.groupBy(rows2, "person")
-
   // log.debug(count_all_sockets_for_users)
   return rows.map(row => {
     const uid = row["id"] as UserId
-    const poster_viewing = poster_viewers[uid]
-      ? poster_viewers[uid][0]?.poster
-      : undefined
     const r: PersonInMap & {
       email?: string
       rooms?: RoomId[]
@@ -474,21 +599,17 @@ export async function getAllPeopleList(
       public_key: row["public_key"],
       id: uid,
       last_updated: parseInt(row["last_updated"]),
-      connected: room_id
-        ? connected_users.has(uid)
-        : count_all_sockets_for_users[uid] &&
-          parseInt(count_all_sockets_for_users[uid]) > 0
-        ? true
-        : false,
-      room: room_id || "N/A",
+      connected:
+        count_all_sockets_for_users[uid] &&
+        parseInt(count_all_sockets_for_users[uid]) > 0
+          ? true
+          : false,
+      room: null,
       avatar: row["avatar"],
       x: row["x"],
       y: row["y"],
       direction: row["direction"],
       moving: false,
-    }
-    if (poster_viewing) {
-      r.poster_viewing = poster_viewing
     }
     if (with_email) {
       r.email = row["email"]
@@ -551,7 +672,32 @@ export async function setPos(
         `UPDATE person_position SET last_updated=$3,x=$4,y=$5,direction=$6 WHERE person=$1 and room=$2;`,
         [user_id, room_id, Date.now(), pos.x, pos.y, direction]
       )
-      // log.debug("setPos done on RDB", user_id, room_id, pos, r)
+    }
+    const r1 = await db.query(`SELECT move_log FROM room WHERE id=$1`, [
+      room_id,
+    ])
+    log.debug({ r1 })
+    if (r1[0].move_log) {
+      maps[room_id]
+        .getStaticMapAt(pos.x, pos.y)
+        .then(cell => {
+          if (cell) {
+            log.debug({ cell })
+            db.query(
+              `INSERT INTO cell_visit_history (person,"location",last_updated,state) VALUES ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT cell_visit_history_pkey DO UPDATE SET last_updated=$3,state=$4;`,
+              [user_id, cell.id, Date.now(), "visited"]
+            )
+              .then(() => {
+                //
+              })
+              .catch(() => {
+                //
+              })
+          }
+        })
+        .catch(err => {
+          log.error("cell_visit_history update error", err)
+        })
     }
     return true
   } catch (err) {
@@ -782,7 +928,7 @@ export async function get_multi(
   with_email = false,
   with_room_access = true
 ): Promise<(Person & { email?: string })[]> {
-  const ps = await getAllPeopleList(null, with_email, with_room_access)
+  const ps = await getAllPeopleList(with_email, with_room_access)
   const dict = _.fromPairs(user_ids.map(u => [u, 1]))
   return ps.filter(p => dict[p.id])
 }
@@ -916,6 +1062,17 @@ export async function update(
   }
 }
 
+export async function updateRole(
+  room_id: RoomId,
+  user_email: string,
+  role: "admin" | "user"
+) {
+  await db.query(
+    `UPDATE person_room_access SET role=$3 WHERE room=$1 AND email=$2`,
+    [room_id, user_email, role]
+  )
+}
+
 export async function saveJWT(
   email: string,
   token: string,
@@ -964,7 +1121,7 @@ export async function authSocket(
   },
   socket_id?: string
 ): Promise<UserId | null> {
-  log.debug("authSocket", { user, token, debug_as, socket_id })
+  // log.debug("authSocket", { user, token, debug_as, socket_id })
   if (socket_id) {
     const r = await redis.sockets.get("auth:" + socket_id)
     if (r) {
@@ -1025,13 +1182,6 @@ export async function setDirection(
       [direction, user_id, room_id]
     )
   }
-}
-
-export async function getAll(
-  room_id: RoomId | null
-): Promise<{ [index: string]: Person }> {
-  const people_list = await getAllPeopleList(room_id)
-  return _.keyBy(people_list, "id")
 }
 
 export function randomAvatar(): string {
@@ -1198,6 +1348,7 @@ export async function removePerson(
       user_id,
     ])
     await db.query(`DELETE FROM poster_comment_read WHERE person=$1`, [user_id])
+    await db.query(`DELETE FROM cell_visit_history WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM public_key WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person_profile WHERE person=$1`, [user_id])
     await db.query(`DELETE FROM person WHERE id=$1`, [user_id])

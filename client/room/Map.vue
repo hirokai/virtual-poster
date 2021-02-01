@@ -7,7 +7,7 @@
       normal: goBackToNormal,
       monochrome: monochromeStyle,
     }"
-    viewBox="0 0 528 528"
+    :viewBox="'0 0 ' + 528 + ' ' + 528"
   >
     <defs>
       <filter id="monochrome-filter">
@@ -18,6 +18,7 @@
       <MapCell
         v-for="(cell, xi) in row"
         :cell="cell"
+        :cellSize="cellSize"
         :myself="myself"
         :people="people"
         :poster="poster(cell)"
@@ -25,8 +26,8 @@
         :selected="
           !!selectedPos && cell.x == selectedPos.x && cell.y == selectedPos.y
         "
-        :left="(cell.x - center.x + mapRadiusX) * 48"
-        :top="(cell.y - center.y + mapRadiusY) * 48"
+        :left="(cell.x - center.x + mapRadiusX) * cellSize"
+        :top="(cell.y - center.y + mapRadiusY) * cellSize"
         :visualStyle="visualStyle"
         @select="select"
         @dbl-click="dblClick"
@@ -40,8 +41,8 @@
         :key="person.id + ':' + person.name"
         :person="person"
         :myself="!!myself && myself.id == person.id"
-        :left="(person.x - center.x + mapRadiusX) * 48"
-        :top="(person.y - center.y + mapRadiusY) * 48"
+        :left="(person.x - center.x + mapRadiusX) * cellSize"
+        :top="(person.y - center.y + mapRadiusY) * cellSize"
         :chat="!!chatGroupOfUser[person.id]"
         :typing="!!people_typing[person.id]"
         :selected="
@@ -57,14 +58,20 @@
             : undefined
         "
         :avatarImages="avatarImages"
+        :cellSize="cellSize"
         :visualStyle="visualStyle"
         @select="select"
         @dbl-click="dblClick"
         @hover-cell="hoverCell"
       />
     </g>
-    <g id="controller" @mousedown="clickController" opacity="0.8">
-      <g id="レイヤー_1-2" data-name="レイヤー 1">
+    <g
+      id="controller"
+      @mousedown="clickController"
+      opacity="0.8"
+      v-if="cellSize == 48"
+    >
+      <g id="layer1">
         <polygon
           class="cls-3"
           points="96 48 96 0 48 0 48 48 0 48 0 96 48 96 96 96 144 96 144 48 96 48"
@@ -97,7 +104,6 @@
       </g>
 
       <filter id="drop-shadow">
-        <!-- 図形の影をSourceAlphaで取得、ぼかす-->
         <feGaussianBlur in="SourceAlpha" stdDeviation="1.5"></feGaussianBlur>
       </filter>
     </g>
@@ -124,6 +130,7 @@ import {
   UserId,
   ArrowKey,
   VisualStyle,
+  CellVisibility,
 } from "@/@types/types"
 import MapCell from "./MapCell.vue"
 import MapCellPerson from "./MapCellPerson.vue"
@@ -169,6 +176,9 @@ export default defineComponent({
     personInFront: {
       type: Object as PropType<PersonInMap>,
     },
+    objectCellInFront: {
+      type: Object as PropType<Cell>,
+    },
     center: {
       type: Object as PropType<{ x: number; y: number }>,
       required: true,
@@ -199,8 +209,16 @@ export default defineComponent({
     activePoster: {
       type: Object as PropType<Poster>,
     },
+    cellSize: {
+      type: Number,
+      required: true,
+    },
     visualStyle: {
       type: String as PropType<VisualStyle>,
+      required: true,
+    },
+    cellVisibility: {
+      type: Array as PropType<CellVisibility[][]>,
       required: true,
     },
   },
@@ -271,6 +289,9 @@ export default defineComponent({
       }),
       "--map_scale_normal": computed(() => {
         return props.isMobile ? 1 : 1
+      }),
+      "--cell_size": computed(() => {
+        return "" + props.cellSize + "px"
       }),
       "--controller_x": computed(() => {
         return "" + 48 * (props.mapRadiusX * 2 - 2) + "px"
@@ -385,7 +406,7 @@ svg#cells.small {
 }
 
 svg#cells #controller {
-  transform: translate(384px, 432px);
+  transform: translate(calc(var(--cell_size) * 8), calc(var(--cell_size) * 9));
   animation-name: controller_translate_rev;
   animation-duration: 1s;
   animation-direction: normal;
@@ -406,7 +427,7 @@ svg#cells.small #controller {
 
 @keyframes controller_translate {
   0% {
-    transform: translate(var(--controller_x), 432px);
+    transform: translate(var(--controller_x), calc(var(--cell_size) * 9));
   }
   50% {
     transform: translate(var(--controller_x), var(--controller_y));
@@ -424,7 +445,7 @@ svg#cells.small #controller {
     transform: translate(var(--controller_x), var(--controller_y));
   }
   100% {
-    transform: translate(var(--controller_x), 432px);
+    transform: translate(var(--controller_x), calc(var(--cell_size) * 9));
   }
 }
 
@@ -436,54 +457,54 @@ svg#cells.small #controller {
   50% {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
   }
   100% {
-    transform: translate(0px, calc(-48px * var(--map_y_offset)))
+    transform: translate(0px, calc(var(--cell_size) * -1 * var(--map_y_offset)))
       scale(var(--map_scale_normal));
     clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
   }
 }
 
 @keyframes svg_scale_back {
   0% {
-    transform: translate(0px, calc(-48px * var(--map_y_offset)))
+    transform: translate(0px, calc(var(--cell_size) * -1 * var(--map_y_offset)))
       scale(var(--map_scale_normal));
     clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
     -webkit-clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
   }
   50% {
     transform: translate(0px, 0px) scale(var(--map_scale_normal));
     clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
     -webkit-clip-path: polygon(
-      0% calc(48px * var(--map_y_offset)),
-      0% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * (var(--map_y_offset) + var(--map_radius_y))),
-      100% calc(48px * var(--map_y_offset))
+      0% calc(var(--cell_size) * var(--map_y_offset)),
+      0% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * (var(--map_y_offset) + var(--map_radius_y))),
+      100% calc(var(--cell_size) * var(--map_y_offset))
     );
   }
   100% {

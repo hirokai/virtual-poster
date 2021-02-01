@@ -1,6 +1,6 @@
 import * as model from "../model"
 import { FastifyInstance, FastifyRequest } from "fastify"
-import { UserId, RoomId, Person } from "../../@types/types"
+import { UserId, RoomId, Person, UserGroupId } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
 import { emit } from "../socket"
@@ -36,12 +36,12 @@ async function routes(
   })
 
   fastify.get("/admin/export/people", async (req, res) => {
-    const people = await model.people.getAllPeopleList(null, true)
+    const people = await model.people.getAllPeopleList(true)
     await res.type("application/json")
     return JSON.stringify(people, null, 2)
   })
 
-  fastify.get("/admin/export/groups", async (req, res) => {
+  fastify.get("/admin/export/chat_groups", async (req, res) => {
     const groups = await model.chat.getGroupList(null)
     await res.type("application/json")
     return JSON.stringify(groups, null, 2)
@@ -80,6 +80,8 @@ async function routes(
     const { map: mm } = await MapModel.mkNewRoom(
       data["name"],
       data["cells"],
+      false,
+      "all_initial",
       req["requester"]
     )
     if (!mm) {
@@ -87,6 +89,7 @@ async function routes(
     }
     await model.maps[mm.room_id].addUser(
       req["requester_email"],
+      req["requester"],
       true,
       "admin",
       req["requester"]
@@ -102,7 +105,7 @@ async function routes(
       const people: {
         name: string
         email: string
-        rooms: RoomId[]
+        rooms: { id: RoomId; groups: UserGroupId[] }[]
         posters: { room: RoomId; loc: number; title?: string }[]
       }[] = _.compact(
         Papa.parse<string[]>(text)
@@ -120,10 +123,20 @@ async function routes(
                       return { room: a, loc: parseInt(b) }
                     })
               const titles = r4 != "" ? r4.split("@@@@") : []
+              const rooms =
+                r2 == ""
+                  ? []
+                  : r2
+                      .split(";")
+                      .filter(s => s != "")
+                      .map(s => {
+                        const ts = s.split(":")
+                        return { id: ts[0], groups: ts[1]?.split(",") || [] }
+                      })
               return {
                 name: row[0] as string,
                 email: row[1] as string,
-                rooms: r2 == "" ? [] : r2.split(";").filter(s => s != ""),
+                rooms,
                 posters: posters.map((p, i): {
                   room: RoomId
                   loc: number

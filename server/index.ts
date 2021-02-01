@@ -119,11 +119,17 @@ function parseRedisURL(url: string) {
   }
 }
 
-async function workerInitData(): Promise<void> {
+async function workerInitData(): Promise<boolean> {
+  const ok = await model.checkDBVersion(POSTGRES_CONNECTION_STRING)
+  if (!ok) {
+    log.error("Schema version does not match. Exiting.")
+    return false
+  }
   await model.initMapModel(POSTGRES_CONNECTION_STRING)
   if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
     await model.initDataForMaster(POSTGRES_CONNECTION_STRING)
   }
+  return true
 }
 
 // let server: https.Server | http.Server
@@ -131,7 +137,10 @@ async function workerInitData(): Promise<void> {
 let aws_instance_id: string | undefined = undefined
 
 workerInitData()
-  .then(() => {
+  .then(ok => {
+    if (!ok) {
+      process.exit()
+    }
     axios
       .get<string>("http://169.254.169.254/latest/meta-data/instance-id", {
         timeout: 500,
@@ -280,7 +289,7 @@ workerInitData()
             }
           )
 
-          server.get("/firebaseConfig.json", async () => {
+          server.get("/api/firebaseConfig.json", async () => {
             try {
               const s = await readFileAsync("./firebaseConfig.json", "utf-8")
               const data = JSON.parse(s)

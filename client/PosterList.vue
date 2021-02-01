@@ -102,7 +102,6 @@ export default defineComponent({
       inputFocused: false,
     })
     const setPerson = (d: PersonUpdate) => {
-      console.log("setPerson", d)
       const p = state.people[d.id]
       const person: PersonInMap = {
         id: d.id,
@@ -137,7 +136,6 @@ export default defineComponent({
             }),
             "id"
           )
-          console.log("posters", r_posters)
           state.posters = keyBy(r_posters, "id")
           state.rooms = keyBy(r_rooms, "id")
         })
@@ -157,23 +155,7 @@ export default defineComponent({
         return state.people[user_id]
       }
     )
-    const uploadPoster = (file: File, poster_id: string) => {
-      console.log(file, poster_id)
-      const fd = new FormData()
-      fd.append("file", file)
-      console.log("uploadPoster", fd)
 
-      axios
-        .post("/posters/" + poster_id + "/file", fd, {
-          headers: { "content-type": "multipart/form-data" },
-        })
-        .then(({ data }) => {
-          console.log(data)
-        })
-        .catch(err => {
-          console.error(err)
-        })
-    }
     onMounted(() => {
       const user_id = localStorage["virtual-poster:user_id"]
 
@@ -197,7 +179,7 @@ export default defineComponent({
             socket?.emit("Subscribe", {
               channel: room_id,
             })
-            console.log("Connected")
+            console.log("Socket connected")
           })
           socket.on("Poster", (p: Poster) => {
             //Vue.set
@@ -208,7 +190,7 @@ export default defineComponent({
             delete state.posters[pid]
           })
           socket.on("connection", () => {
-            console.log("SOCKET CONNECTED")
+            console.log("Socket connected")
           })
           socket.on("PersonUpdate", (ds: PersonUpdate[]) => {
             console.log("socket PersonUpdate", ds)
@@ -229,7 +211,7 @@ export default defineComponent({
         .approach.$post()
       console.log(r)
     }
-    return { ...toRefs(state), postersSorted, myself, uploadPoster, clickMove }
+    return { ...toRefs(state), postersSorted, myself, clickMove }
   },
 })
 </script>

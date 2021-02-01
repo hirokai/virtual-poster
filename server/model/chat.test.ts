@@ -18,7 +18,8 @@ describe("Chat group", () => {
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room 1",
       map_data,
-      false
+      false,
+      "all_initial"
     )
     expect(mm).toBeDefined()
     if (!mm) {
@@ -45,7 +46,8 @@ describe("Chat group", () => {
     const { map: mm } = await model.MapModel.mkNewRoom(
       "Room 1",
       map_data,
-      false
+      false,
+      "all_initial"
     )
     expect(mm).toBeDefined()
     if (!mm) {

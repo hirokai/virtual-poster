@@ -8,6 +8,7 @@ import {
   PosterId,
   CommentEvent,
   PosterCommentDecrypted,
+  UserId,
 } from "@/@types/types"
 import { keyBy } from "@/common/util"
 import { AxiosStatic, AxiosInstance } from "axios"
@@ -50,16 +51,14 @@ export const updatePosterComment = async (
   comment_id: string,
   text: string
 ): Promise<void> => {
-  console.log("updatePosterComment")
   state.posterInputComment = text
   state.editingOld = null
   const client = api(axiosClient(axios))
   try {
-    const data = await client.posters
+    await client.posters
       ._posterId(poster_id)
       .comments._commentId(comment_id)
       .$patch({ body: { comment: text } })
-    console.log("updateComment done", data)
     clearInputPoster(state)
     ;(document.querySelector("#poster-chat-input") as any)?.focus()
   } catch (err) {
@@ -84,7 +83,6 @@ export const sendPosterComment = async (
       ._posterId(pid)
       .comments._commentId(reply_to.id)
       .reply.$post({ body: { text } })
-    console.log("sendPosterComment (reply) done", r)
     if (r.ok) {
       state.posterInputComment = ""
     }
@@ -95,7 +93,6 @@ export const sendPosterComment = async (
         comment: text,
       },
     })
-    console.log("sendPosterComment done", r)
     if (r.ok) {
       state.posterInputComment = ""
     }
@@ -129,39 +126,81 @@ export const doSubmitPosterComment = async (
 }
 
 export const doUploadPoster = async (
+  user_id: UserId,
   axios: AxiosStatic | AxiosInstance,
-  state: RoomAppState,
+  state: {
+    posterUploadProgress?: {
+      file_type: "image/png" | "application/pdf"
+      loaded: number
+      total: number
+    }
+  },
   file: File,
   poster_id: string
 ): Promise<void> => {
-  console.log(file, poster_id)
-  const fd = new FormData()
-  fd.append("file", file)
-  console.log(fd)
-  const { data } = await axios.post<{ ok: boolean; poster?: Poster }>(
-    "/posters/" + poster_id + "/file",
-    fd,
-    {
-      onUploadProgress: progress => {
-        state.posterUploadProgress = {
-          file_type: file.type as "image/png" | "application/pdf",
-          loaded: progress.loaded,
-          total: progress.total,
-        }
-        console.log(
-          "onUploadProgress",
-          progress,
-          {
-            loaded: progress.loaded,
-            total: progress.total,
-          },
-          state.posterUploadProgress
-        )
-      },
+  const client = api(axiosClient(axios))
+  const r = await client.posters
+    ._posterId(poster_id)
+    .file_upload_url.$get({ query: { mime_type: file.type } })
+
+  const onUploadProgress = progress => {
+    state.posterUploadProgress = {
+      file_type: file.type as "image/png" | "application/pdf",
+      loaded: progress.loaded,
+      total: progress.total,
     }
-  )
-  state.posterUploadProgress = undefined
-  console.log(data)
+    console.log(
+      "onUploadProgress",
+      progress,
+      {
+        loaded: progress.loaded,
+        total: progress.total,
+      },
+      state.posterUploadProgress
+    )
+  }
+
+  if (!r.ok || !r.url) {
+    console.error("Upload URL unknown.")
+    return
+  }
+
+  if (r.target == "api_server") {
+    const fd = new FormData()
+    fd.append("file", file)
+    const { data } = await axios.post<{ ok: boolean; poster?: Poster }>(
+      r.url,
+      fd,
+      {
+        onUploadProgress,
+      }
+    )
+    state.posterUploadProgress = undefined
+    console.log(data)
+  } else {
+    console.log({ mime_type: file.type })
+
+    if (r.url) {
+      const options = {
+        headers: {
+          "Content-Type": file.type,
+          // "x-amz-meta-uploaded-by": user_id,
+        },
+        onUploadProgress,
+      }
+      await axios.put(r.url, file, options)
+      try {
+        await client.posters
+          ._posterId(poster_id)
+          .file_upload_done.$post({ body: { mime_type: file.type } })
+        state.posterUploadProgress = undefined
+      } catch (err) {
+        console.log(err)
+      }
+    } else {
+      console.error("Signed URL failed to get")
+    }
+  }
 }
 
 export const initPosterService = async (

@@ -10,7 +10,7 @@
     "experimentalDecorators": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "sourceMap": true,
+    "sourceMap": false,
     "noImplicitAny": false,
     "resolveJsonModule": true,
     "types": ["webpack-env", "node", "jest"],

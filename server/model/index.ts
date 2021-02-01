@@ -221,6 +221,14 @@ export async function initDataForMaster(pg_connection_string: string) {
   }, 5000)
 }
 
+export async function checkDBVersion(
+  pg_connection_string: string
+): Promise<boolean> {
+  db = dbWith(pg_connection_string)
+  const rows = await db.query(`SELECT * FROM schema_version`)
+  return rows.length == 1 && rows[0].version == "20210125"
+}
+
 export async function initMapModel(
   pg_connection_string: string
 ): Promise<RoomId[]> {

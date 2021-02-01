@@ -16,8 +16,8 @@
     :data-y="person.y"
     :transform="'translate (' + left + ' ' + top + ')'"
     :style="{
-      width: '48px',
-      height: '48px',
+      width: '' + cellSize + 'px',
+      height: '' + cellSize + 'px',
     }"
     @dblclick="$emit('dbl-click', { x: person.x, y: person.y })"
     @click="$emit('select', { x: person.x, y: person.y, event: $event })"
@@ -32,38 +32,54 @@
       v-if="pictureStyle"
       :style="{ opacity: person.connected ? 1 : 0.3 }"
       :xlink:href="avatarImage"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
     />
     <circle
       v-if="abstractStyle"
       :style="{ opacity: person.connected ? 1 : 0.3 }"
-      cx="24"
-      cy="24"
-      r="24"
+      :cx="cellSize / 2"
+      :cy="cellSize / 2"
+      :r="cellSize / 2"
       :fill="abstractColorOfAvatar(person.avatar)"
       :stroke="monochromeStyle ? 'black' : ''"
-      :stroke-width="monochromeStyle ? '2px' : ''"
-      :stroke-dasharray="monochromeStyle ? (person.connected ? '' : '3') : ''"
+      :stroke-width="monochromeStyle ? '' + cellSize / 24 + 'px' : ''"
+      :stroke-dasharray="
+        monochromeStyle ? (person.connected ? '' : '' + cellSize / 16) : ''
+      "
     />
     <path
       v-if="abstractStyle && person.direction != 'none'"
       :style="{ opacity: 0.3 }"
-      d="M0,0 L0,-24 A24,24 0 0,1 0,24z"
+      :d="
+        'M0,0 L0,-' +
+          cellSize / 2 +
+          ' A' +
+          cellSize / 2 +
+          ',' +
+          cellSize / 2 +
+          ' 0 0,1 0,' +
+          cellSize / 2 +
+          'z'
+      "
       fill="#000"
       class="person-abstract-front"
       :transform="
-        'translate(24, 24) rotate(' +
-        (person.direction == 'up'
-          ? 90
-          : person.direction == 'left'
-          ? 0
-          : person.direction == 'down'
-          ? -90
-          : person.direction == 'right'
-          ? 180
-          : 0) +
-        ')'
+        'translate(' +
+          cellSize / 2 +
+          ', ' +
+          cellSize / 2 +
+          ') rotate(' +
+          (person.direction == 'up'
+            ? 90
+            : person.direction == 'left'
+            ? 0
+            : person.direction == 'down'
+            ? -90
+            : person.direction == 'right'
+            ? 180
+            : 0) +
+          ')'
       "
     />
     <rect
@@ -71,8 +87,8 @@
       class="outline"
       x="1"
       y="1"
-      width="46"
-      height="46"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize - 2) + 'px'"
       rx="5px"
       fill="none"
       stroke-width="2"
@@ -83,9 +99,9 @@
       class="outline-selected"
       x="1"
       y="1"
-      width="46"
-      height="46"
-      rx="5px"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize - 2) + 'px'"
+      :rx="'' + (cellSize * 5) / 48 + 'px'"
       fill="none"
       stroke-width="2"
       stroke="#444"
@@ -95,9 +111,9 @@
       class="outline-selected-main"
       x="1"
       y="1"
-      width="46"
-      height="46"
-      rx="5px"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize - 2) + 'px'"
+      :rx="'' + (cellSize * 5) / 48 + 'px'"
       fill="none"
       stroke-width="2"
       stroke="blue"
@@ -106,31 +122,41 @@
       v-if="person.poster_viewing"
       x="0"
       y="0"
-      width="48"
-      height="48"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize - 2) + 'px'"
       fill="#994c15"
       opacity="0.5"
     />
-    <rect width="46px" y="28px" height="18px" opacity="0.4" fill="white" />
+    <rect
+      :y="'' + (cellSize * 28) / 48 + 'px'"
+      :width="'' + (cellSize - 2) + 'px'"
+      :height="'' + (cellSize * 18) / 48 + 'px'"
+      opacity="0.4"
+      fill="white"
+    />
     <text
       class="person-name"
       :style="{
         'font-size':
-          person.name.length >= 5 ? 10 : person.name.length >= 4 ? 12 : 14,
+          person.name.length >= 5
+            ? (cellSize * 10) / 48
+            : person.name.length >= 4
+            ? (cellSize * 12) / 48
+            : (cellSize * 14) / 48,
         'font-weight':
           person.avatar?.split(':')[2] == 'bold' ? 'bold' : 'normal',
       }"
       :fill="person.avatar?.split(':')[1] || 'black'"
-      x="24px"
-      y="44px"
+      :x="'' + (cellSize * 24) / 48 + 'px'"
+      :y="'' + (cellSize * 44) / 48 + 'px'"
       dominant-baseline="bottom"
       text-anchor="middle"
       >{{ person.name }}</text
     >
     <rect
       class="typing-indicator"
-      width="48px"
-      height="48px"
+      :width="'' + cellSize + 'px'"
+      :height="'' + cellSize + 'px'"
       opacity="0.4"
       v-if="typing"
     />
@@ -180,6 +206,10 @@ export default defineComponent({
       required: true,
     },
     top: {
+      type: Number,
+      required: true,
+    },
+    cellSize: {
       type: Number,
       required: true,
     },

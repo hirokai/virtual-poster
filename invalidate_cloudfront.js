@@ -19,7 +19,7 @@ const cloudfront = new AWS.CloudFront({
 async function invalidateCloudFront() {
   const invalidate_items = ["/*"]
 
-  if (CLOUDFRONT_ID && config.aws.s3.via_cdn) {
+  if (CLOUDFRONT_ID) {
     const params = {
       DistributionId: CLOUDFRONT_ID,
       InvalidationBatch: {

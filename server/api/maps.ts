@@ -8,12 +8,19 @@ import {
   Room,
   RoomUpdateSocketData,
   Cell,
+  PersonUpdate,
+  MinimapVisibility,
+  MapUpdateEntry,
+  MapUpdateSocketData,
+  RoomAccessCode,
+  UserGroup,
 } from "../../@types/types"
-import { protectedRoute } from "../auth"
+import { protectedRoute, manageRoom } from "../auth"
 import { emit } from "../socket"
 import { config } from "../config"
-import { loadCustomMapCsv } from "../../common/maps"
-import crypto from "crypto"
+import { loadCustomMapCsv, verifyMapUpdateEntries } from "../../common/maps"
+import { pgp } from "../model"
+import { removeUndefined } from "@/common/util"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 const RUST_WS_SERVER = config.socket_server.system == "Rust"
@@ -26,9 +33,10 @@ async function maps_api_routes(
   fastify.get(
     "/maps",
     async (req): Promise<Room[]> => {
+      const requester = req["requester"]
       const requester_email = req["requester_email"]
-      const is_admin = req["requester_type"] == "admin"
-      const rows: any[] = is_admin
+      const is_site_admin = req["requester_type"] == "admin"
+      const rows: any[] = is_site_admin
         ? await model.db.query(
             `
         SELECT
@@ -37,17 +45,16 @@ async function maps_api_routes(
             count(poster.id) AS poster_count,
             max(c.x) AS max_x,
             max(c.y) AS max_y,
-            cd.code AS access_code,
-            cd.active AS access_code_active
+            array_agg(distinct concat(cd.code, ' ', cd.active, ' ', cd.granted_right, ' ', cd.timestamp)) AS access_codes,
+            array_agg(DISTINCT concat(pg.id, ' ', pg.name, ' ', pg.description)) AS people_groups
         FROM
             room
             LEFT JOIN room_access_code AS cd ON room.id = cd.room
             LEFT JOIN map_cell AS c ON room.id = c.room
+            LEFT JOIN people_group AS pg ON pg.room = room.id
             LEFT JOIN poster ON c.id = poster.location
         GROUP BY
-            room.id,
-            cd.code,
-            cd.active;`
+            room.id;`
           )
         : await model.db.query(
             `
@@ -57,30 +64,34 @@ async function maps_api_routes(
             count(poster.id) as poster_count,
             max(c.x) as max_x,
             max(c.y) as max_y,
-            cd.code AS access_code,
-            cd.active AS access_code_active
+            array_agg(distinct concat(cd.code, ' ', cd.active, ' ', cd.granted_right, ' ', cd.timestamp)) AS access_codes,
+            array_agg(DISTINCT concat(pg.id, ' ', pg.name, ' ', pg.description)) AS people_groups
         FROM
             room
             LEFT JOIN room_access_code AS cd ON room.id = cd.room
             LEFT JOIN map_cell as c on room.id = c.room
             LEFT JOIN poster ON c.id = poster.location
+            LEFT JOIN people_group AS pg ON pg.room = room.id
             JOIN person_room_access AS a ON room.id = a.room
         WHERE
             a.email = $1
         GROUP BY
-            room.id,
-            cd.code,
-            cd.active;`,
+            room.id;`,
             [requester_email]
           )
       const result: Room[] = []
       for (const r of rows) {
         const room_id = r["id"]
+        //FIXME: N+1 SQL pattern
         const numCols: number = r["max_y"] + 1
         const numRows: number = r["max_x"] + 1
         const poster_count = parseInt(r.poster_count)
         const poster_location_count = parseInt(r.poster_location_count)
         const allow_poster_assignment = r["allow_poster_assignment"]
+
+        const page_admins: UserId[] = await model.maps[room_id].getAdmins()
+        const is_page_admin = page_admins.indexOf(requester) != -1
+        console.log({ page_admins, is_page_admin })
 
         const rows1 = await model.db.query(
           `SELECT count(*) as c FROM person_position WHERE room=$1`,
@@ -91,35 +102,81 @@ async function maps_api_routes(
           [room_id]
         )
 
-        const access_code_active = r["access_code_active"]
         const owner = r["room_owner"]
         const is_owner = req["requester"] == owner
 
+        const access_codes: RoomAccessCode[] | undefined =
+          is_owner || is_page_admin || is_site_admin
+            ? (r["access_codes"] as string[])
+                .map((s: string) => {
+                  const ts = s.split(" ")
+                  return {
+                    code: ts[0],
+                    active: ts[1] == "t",
+                    access_granted: ts[2].split(";;"),
+                    timestamp: parseInt(ts[3]),
+                  }
+                })
+                .filter(c => c.code != "")
+            : undefined
+
+        const people_groups: UserGroup[] | undefined =
+          is_owner || is_page_admin || is_site_admin
+            ? (r["people_groups"] as string[])
+                .map((s: string) => {
+                  const ts = s.split(" ")
+                  return {
+                    id: ts[0],
+                    name: ts[1],
+                    description: ts[2] || undefined,
+                  }
+                })
+                .filter(c => c.id != "")
+            : undefined
+
+        if (access_codes) {
+          access_codes.sort((a, b) => {
+            return b.timestamp - a.timestamp
+          })
+        }
+        const minimap_visibility = r["minimap_visibility"]
+
         const num_people_joined: number = +rows1[0]["c"]
         const num_people_with_access: number | undefined =
-          is_admin || is_owner ? +rows2[0]["c"] : undefined
+          is_site_admin || is_page_admin || is_owner
+            ? +rows2[0]["c"]
+            : undefined
 
         const num_people_active = await model.redis.accounts.scard(
           "connected_users:room:" + room_id + ":__all__"
         )
 
-        result.push({
-          id: room_id,
-          name: r["name"],
-          poster_location_count,
-          poster_count,
-          num_people_joined,
-          num_people_with_access,
-          allow_poster_assignment,
-          numCols,
-          numRows,
-          owner,
-          num_people_active,
-          access_code:
-            owner == req["requester"] || req["requester_type"] == "admin"
-              ? { code: r["access_code"], active: access_code_active }
-              : undefined,
-        })
+        const move_log = r["move_log"] == null ? undefined : r["move_log"]
+
+        result.push(
+          removeUndefined({
+            id: room_id,
+            name: r["name"],
+            poster_location_count,
+            poster_count,
+            num_people_joined,
+            num_people_with_access,
+            allow_poster_assignment,
+            numCols,
+            numRows,
+            owner,
+            num_people_active,
+            move_log,
+            minimap_visibility,
+            admins:
+              is_owner || is_page_admin || is_site_admin
+                ? page_admins
+                : undefined,
+            role: is_owner ? "owner" : is_page_admin ? "admin" : "user",
+            access_codes,
+            people_groups,
+          })
+        )
       }
       return result
     }
@@ -133,7 +190,10 @@ async function maps_api_routes(
       req.body.allow_poster_assignment == undefined
         ? undefined
         : req.body.allow_poster_assignment
-
+    let minimap_visibility: MinimapVisibility | undefined =
+      req.body.minimap_visibility == undefined
+        ? undefined
+        : req.body.minimap_visibility
     const { map_data } = template
       ? await model.MapModel.loadTemplate(template)
       : { map_data: undefined }
@@ -156,6 +216,10 @@ async function maps_api_routes(
           allow_poster_assignment == undefined
             ? r.allowPosterAssignment
             : allow_poster_assignment
+        minimap_visibility =
+          minimap_visibility == undefined
+            ? r.minimapVisibility
+            : minimap_visibility
         numRows = r.numRows
         numCols = r.numCols
       }
@@ -164,6 +228,7 @@ async function maps_api_routes(
       name,
       map_data || { cells, numRows, numCols },
       allow_poster_assignment || false,
+      minimap_visibility || "all_initial",
       req["requester"]
     )
     if (!mm) {
@@ -172,11 +237,56 @@ async function maps_api_routes(
 
     await model.maps[mm.room_id].addUser(
       req["requester_email"],
+      req["requester"],
       true,
       "admin",
       req["requester"]
     )
-    return { ok: true, room: { id: mm.room_id, name } }
+    return { ok: true, room_id: mm.room_id }
+  })
+
+  fastify.put<any>("/maps/:roomId/cells", async (req, res) => {
+    const roomId: string = req.params.roomId
+    const map = model.maps[roomId]
+    if (!map) {
+      await res.status(404).send("Not found")
+      return
+    }
+    const template: string | undefined = req.body.template
+    const csv_str: string | undefined = req.body.data
+    const message: string | undefined = req.body.message
+
+    const { map_data } = template
+      ? await model.MapModel.loadTemplate(template)
+      : { map_data: undefined }
+
+    if (!map_data && !csv_str) {
+      return {
+        ok: false,
+        error: "CSV data or valid template name has to be specified",
+      }
+    }
+    let cells: Cell[][] = []
+    let numRows = 0
+    let numCols = 0
+    if (csv_str) {
+      const r = loadCustomMapCsv(csv_str, model.MapModel.genMapCellId)
+      if (r) {
+        cells = r.cells
+        numRows = r.numRows
+        numCols = r.numCols
+      }
+    }
+    const { ok, error } = await map.replaceMapCells(
+      map_data || { cells, numRows, numCols }
+    )
+    if (!ok) {
+      return { ok: false, error }
+    }
+    const obj = removeUndefined({ room: roomId, message })
+    emit.channel(roomId).mapReplace(obj)
+    emit.channel(roomId + ":__observe__").mapReplace(obj)
+    return { ok: true }
   })
 
   fastify.get<any>("/maps/:roomId", async (req, res) => {
@@ -185,39 +295,76 @@ async function maps_api_routes(
       await res.status(404).send("Not found")
       return
     }
-    const key = "map_cache:" + map.room_id
-    const cache = await model.redis.staticMap.get(key)
-    if (cache) {
-      await res
-        .status(200)
-        .header("content-type", "application/json")
-        .send(cache)
-      return
-    } else {
-      const data = await map.get()
-      await model.redis.staticMap.set(key, JSON.stringify(data))
-      return data
-    }
+
+    const is_room_admin = await map.isUserOwnerOrAdmin(req["requester"])
+    const admin = req["requester_type"] != "admin" || is_room_admin
+
+    const data: {
+      id: RoomId
+      numCols: number
+      numRows: number
+      name: string
+      move_log: boolean
+      allow_poster_assignment: boolean
+      minimap_visibility:
+        | "all_initial"
+        | "map_initial"
+        | "all_only_visited"
+        | "map_only_visited"
+      access_codes?: RoomAccessCode[]
+      people_groups?: UserGroup[]
+    } = await map.getMetadata(admin)
+    return removeUndefined(data)
   })
 
-  fastify.post<any>("/maps/:roomId/reset_cache", async (req, res) => {
+  fastify.get<any>("/maps/:roomId/cells", async (req, res) => {
     const map = model.maps[req.params.roomId]
+    const user_id: UserId = req["requester"]
     if (!map) {
       await res.status(404).send("Not found")
       return
     }
-    if (req["requester_type"] != "admin") {
-      const owner = await map.getOwner()
-      if (!owner || owner != req["requester"]) {
-        return {
-          ok: false,
-          error: "You are not the admin or owner of the room.",
+    const key = "map_cache:" + map.room_id
+    const cache = await model.redis.staticMap.get(key)
+    let data: {
+      cells: Cell[][]
+      numRows: number
+      numCols: number
+    }
+    if (cache) {
+      data = JSON.parse(cache)
+      if (!data.cells) {
+        data = await map.get()
+        await model.redis.staticMap.set(key, JSON.stringify(data))
+      }
+    } else {
+      data = await map.get()
+      await model.redis.staticMap.set(key, JSON.stringify(data))
+    }
+    const cell_ids = await map.getVisitedCells(user_id)
+    // console.log("cell_ids", cell_ids.size || "undef size")
+    for (const row of data.cells) {
+      for (const c of row) {
+        // console.log(c)
+        if (cell_ids.has(c.id)) {
+          c.visited = "visited"
+          // console.log("visited!!")
         }
       }
     }
-    await map.clearStaticMapCache()
-    return { ok: true }
+    return data
   })
+
+  fastify.post<any>(
+    "/maps/:roomId/reset_cache",
+    { preHandler: manageRoom },
+    async req => {
+      const map = model.maps[req.params.roomId]
+
+      await map.clearStaticMapCache()
+      return { ok: true }
+    }
+  )
 
   fastify.patch<any>("/maps/:roomId", async (req, res) => {
     const map = model.maps[req.params.roomId]
@@ -228,18 +375,63 @@ async function maps_api_routes(
     const allow_poster_assignment = req.body.allow_poster_assignment as
       | boolean
       | undefined
+    const minimap_visibility = req.body.minimap_visibility as
+      | "all_initial"
+      | "all_only_visited"
+      | undefined
+    let changed = false
     if (allow_poster_assignment != undefined) {
       await model.db.query(
         `UPDATE room SET allow_poster_assignment=$1 WHERE id=$2`,
         [allow_poster_assignment, map.room_id]
       )
+      changed = true
+    }
+    if (minimap_visibility != undefined) {
+      await model.db.query(
+        `UPDATE room SET minimap_visibility=$1 WHERE id=$2`,
+        [minimap_visibility, map.room_id]
+      )
+      await map.clearStaticMapCache()
+      changed = true
+    }
+    if (changed) {
       await map.clearStaticMapCache()
       const data = await map.getMetadata()
       emit.room(data)
       return { ok: true }
+    } else {
+      return { ok: false, error: "Nothing has changed" }
     }
-    return { ok: false, error: "Stub" }
   })
+
+  fastify.patch<any>(
+    "/maps/:roomId/cells",
+    { preHandler: manageRoom },
+    async req => {
+      const roomId: string = req.params.roomId
+      const message: string | undefined = req.body.message
+      const changes: MapUpdateEntry[] | null = verifyMapUpdateEntries(
+        req.body.changes
+      )
+      if (!changes) {
+        return { ok: false, error: "Data format invalid" }
+      }
+      const m = model.maps[roomId]
+      const r = await m.updateMapCells(changes)
+      if (r.ok) {
+        const data: MapUpdateSocketData = {
+          room: roomId,
+          message,
+          changes,
+        }
+        emit.channel(roomId).mapUpdate(data)
+        return { ok: true }
+      } else {
+        return { ok: false }
+      }
+    }
+  )
 
   fastify.delete<any>("/maps/:roomId", async (req, res) => {
     const roomId = req.params.roomId
@@ -247,15 +439,16 @@ async function maps_api_routes(
     if (!m) {
       throw { statusCode: 404 }
     }
-    if (req["requester_type"] != "admin") {
-      const owner = await m.getOwner()
-      if (!owner || owner != req["requester"]) {
-        return {
-          ok: false,
-          error: "You are not the admin or owner of the room.",
-        }
+
+    // Only owner can delete the room
+    const owner = await m.getOwner()
+    if (req["requester_type"] != "admin" && owner != req["requester"]) {
+      return {
+        ok: false,
+        error: "You are not the site admin or owner of the room.",
       }
     }
+
     const ok = await m.deleteRoomFromDB()
     if (ok) {
       delete model.maps[roomId]
@@ -263,60 +456,68 @@ async function maps_api_routes(
     return { ok }
   })
 
-  const random_str = (N?: number): string => {
-    const MAX_LENGTH = 100
-    const MIN_LENGTH = 10
-    N = N
-      ? N
-      : MIN_LENGTH + Math.floor(Math.random() * (MAX_LENGTH - MIN_LENGTH))
-    return crypto
-      .randomBytes(N)
-      .toString("base64")
-      .substring(0, N)
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "")
-  }
+  fastify.post<any>(
+    "/maps/:roomId/access_code",
+    { preHandler: manageRoom },
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+      const access_granted: string[] = req.body.access_granted || []
+      const active: boolean | undefined = req.body.active
+      try {
+        const r = await map.createAccessCode(access_granted, active)
+        await map.clearStaticMapCache()
+        const data = await map.getMetadata()
+        emit.room(data)
+        if (r) {
+          return { ok: true, access_code: r }
+        } else {
+          return { ok: false }
+        }
+      } catch (e) {
+        req.log.error(e)
+        return { ok: false, error: "DB error" }
+      }
+    }
+  )
 
-  fastify.delete<any>("/maps/:roomId/access_code", async (req, res) => {
-    const map = model.maps[req.params.roomId]
-    if (!map) {
-      await res.status(404).send("Not found")
-      return
+  fastify.delete<any>(
+    "/maps/:roomId/access_code/:accessCode",
+    { preHandler: manageRoom },
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+      const code: string | undefined = req.params.accessCode
+
+      try {
+        const rows = await model.db.query(
+          `DELETE FROM room_access_code WHERE room=$1 AND code=$2`,
+          [map.room_id, code]
+        )
+        await map.clearStaticMapCache()
+        const data = await map.getMetadata()
+        emit.room(data)
+        return { ok: true, deleted_code: code }
+      } catch (e) {
+        req.log.error(e)
+        return { ok: false, error: "DB error" }
+      }
     }
-    const owner = await map.getOwner()
-    if (owner != req["requester"] && req["requester_type"] != "admin") {
-      return res.status(403).send("Not an owner or admin")
-    }
-    try {
-      const rows = await model.db.query(
-        `DELETE FROM room_access_code WHERE room=$1 RETURNING code`,
-        [map.room_id]
-      )
-      await map.clearStaticMapCache()
-      const data = await map.getMetadata()
-      emit.room(data)
-      const deleted_code = rows[0]?.code
-      return { ok: true, deleted_code }
-    } catch (e) {
-      req.log.error(e)
-      return { ok: false, error: "DB error" }
-    }
-  })
+  )
 
   fastify.patch<any>(
     "/maps/:roomId/access_code/:accessCode",
     async (req, res) => {
       const map = model.maps[req.params.roomId]
+      const code = req.params.accessCode
       if (!map) {
         await res.status(404).send("Not found")
         return
       }
-      const active = req.body.active as boolean
-      const rows = await model.db.query(
-        `UPDATE room_access_code SET active=$1 WHERE room=$2`,
-        [active, map.room_id]
-      )
+      const active = req.body.active as boolean | undefined
+      const access_granted = req.body.access_granted as string[] | undefined
+      const granted_right = access_granted?.join(";;")
+      const updateObj = removeUndefined({ active, granted_right })
+      const q = pgp.helpers.update(updateObj, null, "room_access_code")
+      await model.db.query(q + ` WHERE code=$1`, [code])
       await map.clearStaticMapCache()
       const data = await map.getMetadata()
       emit.room(data)
@@ -325,46 +526,43 @@ async function maps_api_routes(
     }
   )
 
-  fastify.post<any>("/maps/:roomId/access_code/renew", async (req, res) => {
-    const map = model.maps[req.params.roomId]
-    if (!map) {
-      await res.status(404).send("Not found")
-      return
+  fastify.post<any>(
+    "/maps/:roomId/access_code/:accessCode/renew",
+    { preHandler: manageRoom },
+    async req => {
+      const map = model.maps[req.params.roomId]
+
+      try {
+        await model.db.query(`BEGIN`)
+        const r1 = await model.db.query(
+          `SELECT active,granted_right FROM room_access_code WHERE room=$1 AND code=$2`,
+          [map.room_id, req.params.accessCode]
+        )
+        const active = r1[0] ? !!r1[0]?.active : true
+        const access_granted: string[] = r1[0]
+          ? r1[0]?.granted_right.split(";;")
+          : true
+        await model.db.query(
+          `DELETE FROM room_access_code WHERE room=$1 AND code=$2`,
+          [map.room_id, req.params.accessCode]
+        )
+        const r = await map.createAccessCode(access_granted, active)
+        await model.db.query(`COMMIT`)
+        if (r) {
+          await map.clearStaticMapCache()
+          const data = await map.getMetadata()
+          emit.room(data)
+          return { ok: true, code: r.code, active }
+        } else {
+          return { ok: false }
+        }
+      } catch (e) {
+        await model.db.query(`ROLLBACK`)
+        req.log.error(e)
+        return { ok: false, error: "DB error" }
+      }
     }
-    const rows = await model.db.query(
-      `SELECT room_owner FROM room WHERE id=$1`,
-      [map.room_id]
-    )
-    const owner: UserId | undefined = rows[0]?.room_owner
-    if (owner != req["requester"] && req["requester_type"] != "admin") {
-      return res.status(403).send("Not an owner or admin")
-    }
-    try {
-      const code = random_str(20)
-      await model.db.query(`BEGIN`)
-      const r1 = await model.db.query(
-        `SELECT active FROM room_access_code WHERE room=$1`,
-        [map.room_id]
-      )
-      const active = r1[0] ? !!r1[0]?.active : true
-      await model.db.query(`DELETE FROM room_access_code WHERE room=$1`, [
-        map.room_id,
-      ])
-      await model.db.query(
-        `INSERT INTO room_access_code (code,room,granted_right,timestamp,active) VALUES ($1,$2,$3,$4,$5)`,
-        [code, map.room_id, "user", Date.now(), active]
-      )
-      await map.clearStaticMapCache()
-      await model.db.query(`COMMIT`)
-      const data = await map.getMetadata()
-      emit.room(data)
-      return { ok: true, code, active }
-    } catch (e) {
-      await model.db.query(`ROLLBACK`)
-      req.log.error(e)
-      return { ok: false, error: "DB error" }
-    }
-  })
+  )
 
   fastify.get<any>("/maps/:roomId/notifications", async (req, res) => {
     const map = model.maps[req.params.roomId]
@@ -482,6 +680,31 @@ async function maps_api_routes(
     return r
   })
 
+  fastify.patch<any>(
+    "/maps/:roomId/people/:userId",
+    { preHandler: manageRoom },
+    async req => {
+      const userId: UserId = req.params.userId as string
+      const roomId: RoomId = req.params.roomId as string
+      const m = model.maps[roomId || ""]
+      if (!m) {
+        throw { statusCode: 404 }
+      }
+      const role: "admin" | "user" = req.body.role
+
+      const user = await model.people.getUnwrap(userId, true)
+      await model.people.updateRole(roomId, user.email!, role)
+      const d: PersonUpdate = {
+        id: userId,
+        last_updated: Date.now(),
+        room: roomId,
+        role,
+      }
+      emit.peopleUpdate([d])
+      return { ok: true }
+    }
+  )
+
   fastify.delete<any>("/maps/:roomId/people/:userId", async (req, res) => {
     const requester = req["requester"]
     const userId = req.params.userId as string
@@ -490,11 +713,12 @@ async function maps_api_routes(
     if (!m) {
       throw { statusCode: 404 }
     }
-    const owner = await m.getOwner()
+    const is_room_admin = await m.isUserOwnerOrAdmin(requester)
+
     if (
       req["requester_type"] != "admin" &&
       requester != userId &&
-      requester != owner
+      is_room_admin
     ) {
       throw { statusCode: 403, message: "Unauthorized" }
     }

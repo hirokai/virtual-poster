@@ -1,19 +1,55 @@
 <template>
-  <div id="app" v-cloak>
-    <h1>バーチャルポスターセッション</h1>
-    <div v-if="nextAction == undefined">
-      <div id="firebaseui-auth-container"></div>
-    </div>
-    <div v-else-if="nextAction == 'verify'">
-      <h2>
-        {{
-          user.email
-        }}に送られたメールの確認用リンクをクリックしてください。（しばらく経ってもメールが届かない場合は，迷惑メールフォルダを確認してください。）
-      </h2>
-      <div>
-        <a href="#" @click="checkVerification">クリック後，続行</a>
+  <div class="container" id="app" v-cloak>
+    <div class="columns">
+      <div class="column is-full">
+        <h1 class="title is-3">{{ lang("title") }}</h1>
+        <div v-if="nextAction == undefined">
+          <div id="firebaseui-auth-container"></div>
+        </div>
+        <div v-else-if="nextAction == 'verify'">
+          <h2>
+            {{
+              locale == "ja"
+                ? user.email +
+                  "に送られたメールの確認用リンクをクリックしてください。（しばらく経ってもメールが届かない場合は，迷惑メールフォルダを確認してください。）"
+                : `Click on the verification link in the email sent to ${user.email}. (If you don't receive the email after a while, please check your spam folder.)`
+            }}
+          </h2>
+          <div>
+            <a href="#" @click="checkVerification">{{ lang("proceed") }}</a>
+          </div>
+          <div>{{ verifyStatus }}</div>
+        </div>
+        <div class="columns">
+          <div class="column is-one-third"></div>
+          <div class="column is-one-third">
+            <div
+              class="buttons has-addons"
+              style="
+                margin: 30px auto;
+                text-align: center;
+                display: inline-block;
+              "
+            >
+              <button
+                class="button is-small"
+                :class="{ 'is-info': locale == 'en' }"
+                @click="changeLocale('en')"
+              >
+                English
+              </button>
+              <button
+                class="button is-small"
+                :class="{ 'is-info': locale == 'ja' }"
+                @click="changeLocale('ja')"
+              >
+                日本語
+              </button>
+            </div>
+          </div>
+          <div class="column is-one-third"></div>
+        </div>
       </div>
-      <div>{{ verifyStatus }}</div>
     </div>
   </div>
 </template>
@@ -25,7 +61,7 @@ import "firebase/auth"
 import * as firebaseui from "firebaseui"
 import jsSHA from "jssha"
 
-import { onMounted, toRefs, defineComponent, reactive } from "vue"
+import { onMounted, toRefs, defineComponent, reactive, watch } from "vue"
 
 import { setUserInfo, deleteUserInfoOnLogout } from "./util"
 
@@ -49,7 +85,39 @@ export default defineComponent({
       nextAction: undefined as "register" | "verify" | undefined,
       register_name: "",
       access_code: "",
+      locale: (navigator.language == "ja" ? "ja" : "en") as "en" | "ja",
     })
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in ui_literals]: { [key in "ja" | "en"]: string }
+      } = {
+        title: {
+          ja: "バーチャルポスターセッション",
+          en: "Virtual poster session",
+        },
+        proceed: {
+          ja: "クリック後，続行",
+          en: "Click to proceed",
+        },
+      }
+      return message[key][state.locale]
+    }
+
+    const changeLocale = (l: "en" | "ja") => {
+      state.locale = l
+    }
+
+    document.title = lang("title")
+
+    watch(
+      () => state.locale,
+      () => {
+        document.title = lang("title")
+      }
+    )
+
+    type ui_literals = "title" | "proceed"
 
     // This is correct. User ID saved in localStorage must be deleted.
     deleteUserInfoOnLogout()
@@ -90,7 +158,6 @@ export default defineComponent({
                       if (!email) {
                         return
                       }
-                      console.log("/id_token result", data)
                       const shaObj = new jsSHA("SHA-256", "TEXT", {
                         encoding: "UTF8",
                       })
@@ -171,6 +238,8 @@ export default defineComponent({
     return {
       ...toRefs(state),
       checkVerification,
+      lang,
+      changeLocale,
     }
   },
 })

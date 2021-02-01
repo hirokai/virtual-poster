@@ -17,15 +17,11 @@ import {
   MySocketObject,
   CommentEncryptedEntry,
   Tree,
-  ChatEventSocketData,
   NewCommentNotification,
 } from "@/@types/types"
 import { keyBy, compact, sortTree } from "@/common/util"
 import * as encryption from "../encryption"
 import { AxiosStatic, AxiosInstance } from "axios"
-import { MeshRoom, SfuRoom } from "skyway-js"
-import Peer from "skyway-js"
-
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
 
@@ -39,19 +35,45 @@ export const sameDate = (a: number, b: number): boolean => {
   )
 }
 
-export const formatDate = (t: number): string => {
+export const formatDate = (t: number, locale: "ja" | "en" = "ja"): string => {
   const t1 = new Date(t)
   const show_year = t1.getFullYear() != new Date().getFullYear()
-  return (
-    "" +
-    (show_year ? t1.getFullYear() + "年" : "") +
-    (t1.getMonth() + 1) +
-    "月" +
-    t1.getDate() +
-    "日 (" +
-    ["日", "月", "火", "水", "木", "金", "土"][t1.getDay()] +
-    ")"
-  )
+  if (locale == "ja") {
+    return (
+      "" +
+      (show_year ? t1.getFullYear() + "年" : "") +
+      (t1.getMonth() + 1) +
+      "月" +
+      t1.getDate() +
+      "日 (" +
+      ["日", "月", "火", "水", "木", "金", "土"][t1.getDay()] +
+      ")"
+    )
+  } else {
+    return (
+      "" +
+      [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ][t1.getMonth()] +
+      " " +
+      t1.getDate() +
+      " (" +
+      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][t1.getDay()] +
+      ".)" +
+      (show_year ? ", " + t1.getFullYear() : "")
+    )
+  }
 }
 
 async function makeEncrypted(
@@ -66,7 +88,6 @@ async function makeEncrypted(
     const k = public_keys[u]?.public_key
     if (k) {
       const pub = await encryption.importPublicKey(k, true)
-      // console.log(to_users, u, k, pub)
       if (encrypting && privateKey && pub) {
         const comment = encrypting
           ? await encryption.encrypt_str(pub, privateKey, text)
@@ -91,7 +112,6 @@ async function makeEncrypted(
 
 export async function sendComment(
   axios: AxiosStatic | AxiosInstance,
-  skywayRoom: MeshRoom | SfuRoom | null,
   room_id: RoomId,
   text: string,
   encrypting: boolean,
@@ -103,7 +123,7 @@ export async function sendComment(
 ): Promise<{ ok: boolean; data?: any }> {
   const client = api(axiosClient(axios))
   if (encrypting && !privateKey) {
-    console.log("Private key import failed")
+    console.warn("Private key import failed")
     return { ok: false }
   }
   const comments_encrypted = await makeEncrypted(
@@ -113,7 +133,6 @@ export async function sendComment(
     encrypting,
     text
   )
-  console.log(comments_encrypted)
   if (reply_to) {
     await client.comments
       ._commentId(reply_to)
@@ -122,19 +141,13 @@ export async function sendComment(
   } else if (groupId) {
     const data = await client.maps
       ._roomId(room_id)
-      .groups._groupId(groupId)
+      .chat_groups._groupId(groupId)
       .comments.$post({
         body: comments_encrypted,
       })
     console.log(data)
-    if (skywayRoom) {
-      skywayRoom.send({
-        comments_encrypted,
-        room_id: room_id,
-      })
-    } else {
-      return { ok: true, data }
-    }
+
+    return { ok: true, data }
   }
 
   return { ok: false }
@@ -142,7 +155,6 @@ export async function sendComment(
 
 export async function updateComment(
   axios: AxiosStatic | AxiosInstance,
-  skywayRoom: MeshRoom | SfuRoom | null,
   room_id: RoomId,
   text: string,
   encrypting: boolean,
@@ -359,7 +371,7 @@ export const startChat = async (
   if (to_groups.length == 1) {
     const data = await client.maps
       ._roomId(props.room_id)
-      .groups._groupId(to_groups[0])
+      .chat_groups._groupId(to_groups[0])
       .join.$post()
     const group: ChatGroup | undefined = data.joinedGroup
     if (!group) {
@@ -371,7 +383,7 @@ export const startChat = async (
     console.log("join result", data)
     return { group, encryption_possible }
   } else {
-    const data = await client.maps._roomId(props.room_id).groups.$post({
+    const data = await client.maps._roomId(props.room_id).chat_groups.$post({
       body: {
         fromUser: props.myUserId,
         toUsers: to_users,
@@ -413,7 +425,7 @@ export const inviteToChat = async (
   }
   const data = await client.maps
     ._roomId(props.room_id)
-    .groups._groupId(group_id)
+    .chat_groups._groupId(group_id)
     .people.$post({ body: { userId: p.id } })
 
   console.log("invite result", data)
@@ -437,7 +449,7 @@ export const kickFromChat = async (
   }
   const data = await client.maps
     ._roomId(props.room_id)
-    .groups._groupId(group_id)
+    .chat_groups._groupId(group_id)
     .people.$delete({ body: { userId: p.id } })
   return { ok: data.ok, group_removed: !!data.group_removed, users: data.users }
 }
@@ -512,56 +524,11 @@ export const initChatService = async (
     state.chatGroups[d.id] = d
     const group = myChatGroup(props, state).value
     console.log("myChatGroup", group)
-    if (group) {
-      if (!state.skywayRoom) {
-        if (!state.peer) {
-          console.log("Peer is null! Making...")
-
-          state.peer = new Peer(props.myUserId + "-" + Date.now(), {
-            key: process.env.VUE_APP_SKYWAY_API_KEY || "",
-          })
-        }
-        console.log("Peer is: ", state.peer)
-        state.peer.on("open", peerId => {
-          console.log("Peer ID: ", peerId)
-          state.skywayRoom = state.peer!.joinRoom(group) as MeshRoom | SfuRoom
-          state.skywayRoom.on("open", () => {
-            console.log("Skyway Room OPEN")
-            state.skywayRoom!.on("data", data => {
-              console.log(data)
-            })
-            state.skywayRoom!.send({
-              msg: "Hello from " + props.myUserId,
-            })
-            if (state.skywayRoom) {
-              state.skywayRoom.send({
-                msg: `Thanks for adding. I'm ${props.myUserId}.`,
-              })
-            }
-            state.skywayRoom!.on("data", data => {
-              console.log("%c" + JSON.stringify(data.data), "color: purple")
-            })
-          })
-        })
-      }
-    } else {
-      if (state.skywayRoom) {
-        state.skywayRoom.close()
-        state.skywayRoom = null
-      }
-    }
   })
   socket.on("GroupRemove", id => {
     console.log("GroupRemove", id)
     // Vue.delete
     delete state.chatGroups[id]
-    const group = myChatGroup(props, state).value
-    if (!group) {
-      if (state.skywayRoom) {
-        state.skywayRoom.close()
-        state.skywayRoom = null
-      }
-    }
   })
 
   socket.on("ChatEvent", (d: ChatEvent) => {
@@ -577,7 +544,7 @@ export const initChatService = async (
 
   const [comments, groups] = await Promise.all([
     client.maps._roomId(props.room_id).comments.$get(),
-    client.maps._roomId(props.room_id).groups.$get(),
+    client.maps._roomId(props.room_id).chat_groups.$get(),
   ])
   state.chatGroups = keyBy(groups, "id")
 
@@ -689,7 +656,7 @@ function summarizeReactions<T extends DecryptedCommentCommon>(
   }
 }
 
-interface DecryptedCommentCommon {
+export interface DecryptedCommentCommon {
   id: CommentId
   reply_to?: CommentId
   timestamp: number

@@ -1,5 +1,6 @@
 <template>
   <section>
+    <h5 class='title is-5'>ポスター一覧</h5>
     <div style="margin: 5px 0px;">
       <button
         class="button is-small"
@@ -316,18 +317,14 @@
 <script lang="ts">
 import * as Papa from "papaparse"
 import {
-  RoomId,
   Room,
   Poster,
   PosterId,
   ChatGroup,
-  PersonWithEmailRooms,
-  AccessRule,
   PersonWithMapAccess,
 } from "@/@types/types"
 import axiosDefault from "axios"
-import { AxiosStatic } from "axios"
-import { compact, flatten, keyBy, keyByFunc, sortBy } from "@/common/util"
+import { flatten, keyBy, keyByFunc, sortBy } from "@/common/util"
 const API_ROOT = "/api"
 const axios = axiosDefault.create({ baseURL: API_ROOT })
 
@@ -337,7 +334,6 @@ import api from "@/api/$api"
 import {
   defineComponent,
   reactive,
-  onMounted,
   toRefs,
   PropType,
   computed,
@@ -345,13 +341,19 @@ import {
   ref,
   nextTick,
 } from "vue"
-import { Cell, PersonInMap, PersonWithEmail, UserId } from "@/api/@types"
-import { findUser, findUser2 } from "../util"
+import { Cell, PersonInMap, UserId } from "@/api/@types"
+import { findUser2 } from "../util"
+import { doUploadPoster } from "../room/room_poster_service"
 
 export default defineComponent({
   props: {
     myUserId: {
       type: String,
+      required: true,
+    },
+    locale: {
+      type: String,
+      enum: ["ja", "en"],
       required: true,
     },
     room: {
@@ -416,6 +418,13 @@ export default defineComponent({
       dragOverUploadButton: {} as { [poster_id: string]: boolean },
       dragOverPosterTile: {} as { [poster_id: string]: boolean },
       refreshPosterFilesNow: false,
+      posterUploadProgress: undefined as
+        | {
+            file_type: "image/png" | "application/pdf"
+            loaded: number
+            total: number
+          }
+        | undefined,
     })
 
     const client = api(axiosClient(axios))
@@ -428,13 +437,18 @@ export default defineComponent({
       const timer = setTimeout(() => {
         state.refreshPosterFilesNow = true
       }, 200)
-      const r = await client.maps
-        ._roomId(props.room.id)
-        .posters.refresh_files.$post()
-      state.refreshPosterFilesNow = false
-      clearTimeout(timer)
-      if (!r.ok) {
-        alert("ポスターファイルの確認に失敗: " + (r.error || "(N/A)"))
+      try {
+        const r = await client.maps
+          ._roomId(props.room.id)
+          .posters.refresh_files.$post()
+        state.refreshPosterFilesNow = false
+        clearTimeout(timer)
+        if (!r.ok) {
+          alert("ポスターファイルの確認に失敗: " + (r.error || "(N/A)"))
+        }
+      } catch (err) {
+        state.refreshPosterFilesNow = false
+        alert("ポスターファイルの確認に失敗: " + (err || "(N/A)"))
       }
     }
 
@@ -476,7 +490,6 @@ export default defineComponent({
 
     const onPosterBatchFileChanged = async ev => {
       const file: File = (ev.target.files || ev.dataTransfer.files)[0]
-      console.log(file)
       if (file.type != "text/csv") {
         return
       }
@@ -489,7 +502,6 @@ export default defineComponent({
           state.posterAssignment = []
           const data = Papa.parse(state.posterBatchAssignCsvData)
           if (data.data && data.data.length > 0) {
-            console.log(data.data.slice(1))
             for (const r of data.data.slice(1) as string[][]) {
               if (r.length == 1 && r[0] == "") {
                 continue
@@ -705,22 +717,11 @@ export default defineComponent({
       } else if (file.size >= 10e6) {
         alert("ファイルが>10 MBです")
       } else {
-        const fd = new FormData() //★②
-        fd.append("file", file)
-        console.log("onDropPoster", fd)
-
-        const { data } = await axios.post(
-          "/posters/" + poster_id + "/file",
-          fd,
-          {
-            headers: { "content-type": "multipart/form-data" },
-          }
-        )
-        console.log(data)
-        if (data.ok) {
-          //Vue.set
-          context.emit("update-poster", data.poster)
-        }
+        await doUploadPoster(props.myUserId, axios, state, file, poster_id)
+        context.emit("update-poster", {
+          ...props.posters[poster_id],
+          last_updated: Date.now(),
+        })
       }
     }
 

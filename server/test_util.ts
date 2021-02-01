@@ -29,7 +29,7 @@ export const createUser = async (
     name,
     "user",
     "001",
-    [room_id],
+    [{ id: room_id, groups: [] }],
     "reject"
   )
   if (!user) {

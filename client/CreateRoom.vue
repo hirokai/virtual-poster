@@ -91,6 +91,17 @@
             <label for="new-room-config-allow-self-assign-poster"
               >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
             >
+            <br />
+            <input
+              type="checkbox"
+              name=""
+              id="new-room-config-hide-unvisited"
+              v-model="hideUnvisited"
+              style="margin-left: 10px"
+            />
+            <label for="new-room-config-hide-unvisited"
+              >マップの未探索の部分を隠す</label
+            >
           </div>
           <div>
             <h3>備考</h3>
@@ -106,9 +117,12 @@
             <p>
               {{ result?.message }}
               <br />
-              <a v-if="result?.ok != undefined" href="/mypage#rooms"
-                >マイページに戻る</a
+              <a
+                v-if="result?.room_id"
+                :href="'/room?room_id=' + result.room_id"
+                >作成した会場に行く</a
               >
+              <a v-if="result?.ok != undefined" href="/">トップページに戻る</a>
             </p>
           </div>
         </div>
@@ -136,7 +150,13 @@
 <script lang="ts">
 import { defineComponent, reactive, onMounted, toRefs, ref } from "vue"
 
-import { Cell, CellType, Room, UserId } from "../@types/types"
+import {
+  Cell,
+  CellType,
+  MinimapVisibility,
+  Room,
+  UserId,
+} from "../@types/types"
 
 import axios from "axios"
 import * as encryption from "./encryption"
@@ -146,6 +166,7 @@ import axiosClient from "@aspida/axios"
 import api from "../api/$api"
 import { loadCustomMapCsv } from "@/common/maps"
 import { flatten } from "@/common/util"
+import { RoomId } from "@/api/@types"
 
 const API_ROOT = "/api"
 axios.defaults.baseURL = API_ROOT
@@ -184,6 +205,7 @@ export default defineComponent({
           [name: string]: { kind: CellType; custom_image?: string }
         }
         cells: (Cell & { cell_type_id: string })[][]
+        userGroups: { name: string; description?: string }[]
       }
     } = {
       small: {
@@ -192,6 +214,7 @@ export default defineComponent({
         numCells: 20 * 20,
         cellTable: {},
         cells: [],
+        userGroups: [],
       }, //FIXME: cell data needs to be filled
       medium: {
         numCols: 55,
@@ -199,6 +222,7 @@ export default defineComponent({
         numCells: 55 * 42,
         cellTable: {},
         cells: [],
+        userGroups: [],
       },
       large: {
         numCols: 161,
@@ -206,6 +230,7 @@ export default defineComponent({
         numCells: 161 * 82,
         cellTable: {},
         cells: [],
+        userGroups: [],
       },
     }
 
@@ -243,7 +268,12 @@ export default defineComponent({
       roomName: "",
       roomKind: "small",
       allowPosterAssignment: true,
-      result: { ok: undefined as boolean | undefined, message: "" },
+      minimapVisibility: undefined as MinimapVisibility | undefined,
+      result: {
+        ok: undefined as boolean | undefined,
+        message: "",
+        room_id: undefined as RoomId | undefined,
+      },
       dragoverCustom: false,
       csv_str: undefined as string | undefined,
       room_info: roomInfoTable["small"] as
@@ -255,6 +285,7 @@ export default defineComponent({
               [name: string]: { kind: CellType; custom_image?: string }
             }
             cells: (Cell & { cell_type_id: string })[][]
+            userGroups?: { name: string; description?: string }[]
           }
         | undefined,
     })
@@ -273,7 +304,6 @@ export default defineComponent({
       })
       const client = api(axiosClient(axios))
       ;(async () => {
-        console.log("User:", state.user)
         if (debug_as && debug_token) {
           console.log("Initializing debug mode...", debug_as)
           state.myUserId = debug_as
@@ -282,7 +312,6 @@ export default defineComponent({
           const data = await client.id_token.$post({
             body: { token: "DEBUG_BYPASS", debug_from: "Index" },
           })
-          console.log("/id_token result", data)
 
           state.myUserId = data.user_id || null
           if (data.ok) {
@@ -361,11 +390,19 @@ export default defineComponent({
           template: state.roomKind == "custom" ? undefined : state.roomKind,
           data: state.roomKind == "custom" ? state.csv_str : undefined,
           allow_poster_assignment: state.allowPosterAssignment,
+          minimap_visibility: state.minimapVisibility,
         },
       })
-      if (r.ok) {
+      if (r.ok && r.room_id) {
         state.result.message = "部屋が作成されました。"
+        const groups = state.room_info?.userGroups
+        if (groups) {
+          await client.maps
+            ._roomId(r.room_id)
+            .people_groups.$post({ body: { groups } })
+        }
         state.result.ok = true
+        state.result.room_id = r.room_id
         // location.href = "/mypage#rooms"
       } else {
         state.result.ok = false
@@ -430,12 +467,16 @@ export default defineComponent({
             if (r.allowPosterAssignment != undefined) {
               state.allowPosterAssignment = r.allowPosterAssignment
             }
+            if (r.minimapVisibility != undefined) {
+              state.minimapVisibility = r.minimapVisibility
+            }
             roomInfoTable["custom"] = {
               numRows: r.numRows,
               numCols: r.numCols,
               numCells: r.numCells,
               cellTable: r.cell_table,
               cells: r.cells,
+              userGroups: r.userGroups || [],
             }
             state.room_info = roomInfoTable["custom"]
 

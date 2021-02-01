@@ -3,7 +3,7 @@ import Register from "./Register.vue"
 import axiosDefault from "axios"
 
 axiosDefault
-  .get("/firebaseConfig.json")
+  .get("/api/firebaseConfig.json")
   .then(({ data }) => {
     const propsData = {
       firebaseConfig: data,
@@ -11,5 +11,5 @@ axiosDefault
     createApp(Register, propsData).mount("#app")
   })
   .catch(err => {
-    console.error("Failed to load Firebase config file")
+    console.error("Failed to load Firebase config file", err)
   })

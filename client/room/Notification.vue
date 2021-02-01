@@ -1,28 +1,41 @@
 <template>
   <div id="notification-pane" @click.stop>
-    <h1 class="is-1">通知</h1>
-    <div v-if="notifications.length == 0">通知はありません</div>
+    <h1 class="is-1">{{ lang("notification") }}</h1>
+    <div v-if="notifications.length == 0">{{ lang("none") }}</div>
     <div class="notification-entry" v-for="(n, i) in notifications" :key="i">
       <hr v-if="i > 0" />
       <div v-if="n.kind == 'new_comments'" @click="highlightUnreadComments">
-        <div class="header">{{ formatTime(n.timestamp) }}</div>
-        {{ n.data?.count }}件の<span
-          style="color: rgb(255, 174, 22); font-weight: bold"
-          >未読コメント</span
-        >があります。<br />
-        <small style="line-height: 0.7em"
-          >オレンジ色の未読コメントまでスクロールするか，マウスをホーバーすると既読になります</small
-        >
+        <div class="header">{{ formatTime(n.timestamp, locale) }}</div>
+        {{ n.data?.count }} {{ locale == "ja" ? "件の" : ""
+        }}<span style="color: rgb(255, 174, 22); font-weight: bold"
+          >{{ locale == "ja" ? "" : "You have "
+          }}{{
+            locale == "ja"
+              ? "未読コメント"
+              : n.data?.count > 1
+              ? "unread comments"
+              : "unread comment"
+          }}</span
+        >{{ locale == "ja" ? "があります。" : "" }}<br />
+        <small style="line-height: 0.7em">{{ lang("unread_note") }}</small>
       </div>
       <div
         v-if="n.kind == 'poster_comments'"
         @click="$emit('approach-poster', n.data.poster)"
       >
         {{
-          posters[n.data.poster]?.author == myself.id ? "自分の" : ""
-        }}ポスター（{{ posters[n.data.poster]?.poster_number }}番）に{{
-          n.data.count
-        }}件のコメントがあります。
+          locale == "ja"
+            ? `${
+                posters[n.data.poster]?.author == myself.id ? "自分の" : ""
+              }ポスター（${posters[n.data.poster]?.poster_number}番）に${
+                n.data.count
+              }件のコメントがあります。`
+            : `You have ${n.data.count} comment${
+                n.data.count > 1 ? "s" : ""
+              } on ${
+                posters[n.data.poster]?.author == myself.id ? "your " : ""
+              } poster #${posters[n.data.poster]?.poster_number}.`
+        }}
       </div>
     </div>
   </div>
@@ -58,6 +71,10 @@ export default defineComponent({
       type: Object as PropType<{ [poster_id: string]: Poster }>,
       required: true,
     },
+    locale: {
+      type: String as PropType<"ja" | "en">,
+      required: true,
+    },
   },
   setup(props, context) {
     const state = reactive({})
@@ -67,10 +84,33 @@ export default defineComponent({
       context.emit("highlight-unread-comments", true)
     }
 
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        notification: {
+          ja: "通知",
+          en: "Notification",
+        },
+        none: {
+          ja: "通知はありません",
+          en: "No notification",
+        },
+        unread_note: {
+          ja:
+            "オレンジ色の未読コメントまでスクロールするか，マウスをホーバーすると既読になります",
+          en:
+            "Scroll to the orange unread comments or hover your mouse over to mark them as read.",
+        },
+      }
+      return message[key][props.locale]
+    }
+
     return {
       ...toRefs(state),
       highlightUnreadComments,
       formatTime,
+      lang,
     }
   },
 })

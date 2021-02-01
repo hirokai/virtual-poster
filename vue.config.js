@@ -63,6 +63,7 @@ module.exports = {
       chunks: ["chunk-vendors", "chunk-common", "mypage"],
     },
   },
+  productionSourceMap: false,
   configureWebpack: {
     plugins: [
       new webpack.IgnorePlugin(/^\.\/wordlists\/(?!english)/, /bip39\/src$/),
@@ -106,11 +107,6 @@ module.exports = {
         secure: false,
       },
       "^/img": {
-        target: "http://localhost:3000",
-        ws: false,
-        secure: false,
-      },
-      "^/firebaseConfig.json": {
         target: "http://localhost:3000",
         ws: false,
         secure: false,

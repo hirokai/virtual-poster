@@ -1,6 +1,4 @@
 import { admin } from "firebase-admin/lib/auth"
-import Peer, { SfuRoom } from "skyway-js"
-import { MeshRoom } from "skyway-js"
 import { BatchMove } from "@/client/room/room_map_service"
 import SocketIOClient from "socket.io-client"
 export type Point = { x: number; y: number }
@@ -41,6 +39,8 @@ export type PersonInMap = Person & {
   moving: boolean
   poster_viewing?: PosterId
   email?: string
+  role?: "admin" | "user" | "owner"
+  people_groups?: UserGroupId[]
 }
 
 // Used for map administration. This can be just reference to a future user stub with only email.
@@ -61,6 +61,7 @@ export type PersonWithMapAccess = {
     direction: Direction
     moving: boolean
     poster_viewing?: PosterId
+    role?: "owner" | "admin" | "user"
   }
 }
 
@@ -85,6 +86,7 @@ export type PersonUpdate = {
     }
   }
   public_key?: string
+  role?: "admin" | "user" | "owner"
 }
 
 export type PersonRDB = {
@@ -138,10 +140,14 @@ type Tree<T> = {
   children: Tree<T>[]
 }
 
+type MinimapVisibility =
+  | "all_initial" // All map elements and people are visible by default
+  | "map_initial" // All map elements but not people are visible by default
+  | "all_only_visited" // All map elements and people are visible once the user visits nearby. This implies move_log = true.
+  | "map_only_visited" // All map elements but not people are visible once the user visits nearby.  This implies move_log = true.
+
 type RoomAppState = {
   socket: SocketIOClient.Socket | MySocketObject | null
-  peer: Peer | null
-  skywayRoom: MeshRoom | SfuRoom | null
   people: { [index: string]: PersonInMap }
   enableEncryption: boolean
   avatarImages: { [index: string]: string }
@@ -149,11 +155,21 @@ type RoomAppState = {
   posters: { [index: string]: Poster }
   posterComments: { [comment_id: string]: PosterCommentDecrypted }
   posterInputComment: string | undefined
-  roomName: string
   hallMap: Cell[][]
   cols: number
   rows: number
-  allow_poster_assignment: boolean
+
+  room: {
+    name?: string
+    move_log?: boolean
+    allow_poster_assignment?: boolean
+    minimap_visibility?: MinimapVisibility
+  }
+
+  viewDistance: number
+
+  cellVisibility: CellVisibility[][]
+
   keyQueue: { key: ArrowKey; timestamp: number } | null
 
   center: { x: number; y: number }
@@ -182,6 +198,14 @@ type RoomAppState = {
 
   personInfo: {
     person?: Person
+    hide: boolean
+    color?: string
+    timer?: number
+  }
+
+  objectInfo: {
+    text: string
+    url: string
     hide: boolean
     color?: string
     timer?: number
@@ -217,8 +241,7 @@ type RoomAppState = {
 
   reloadWaiting: boolean
 
-  mobilePane: string
-
+  mapCellSize: number
   visualStyle: VisualStyle
   darkMode: boolean
 
@@ -240,6 +263,8 @@ type RoomAppState = {
   playingBGM?: HTMLAudioElement
 
   posterContainerWidth: number
+
+  locale: "en" | "ja"
 }
 
 interface NotificationEntry {
@@ -270,6 +295,20 @@ interface PosterCommentNotification extends NotificationEntry {
   }
 }
 
+type UserGroup = {
+  id: UserGroupId
+  name: string
+  description?: string
+  user_count?: number
+}
+
+type RoomAccessCode = {
+  code: string
+  active: boolean
+  access_granted: string[]
+  timestamp: number
+}
+
 type Room = {
   id: RoomId
   numCols: number
@@ -277,15 +316,17 @@ type Room = {
   name: string
   poster_location_count: number
   poster_count: number
+  role?: "owner" | "admin" | "user"
   owner?: UserId
-  access_code?: {
-    code: string
-    active: boolean
-  }
+  admins?: string[]
+  access_codes?: RoomAccessCode[]
   allow_poster_assignment?: boolean
+  move_log?: boolean
+  minimap_visibility: MinimapVisibility
   num_people_joined?: number
   num_people_with_access?: number
   num_people_active?: number
+  people_groups?: UserGroup[]
 }
 
 type AccessRule = {
@@ -307,7 +348,10 @@ export type Cell = {
   custom_image?: string
   link_url?: string
   no_initial_position?: boolean
+  visited?: "visited" | "seen"
 }
+
+type CellVisibility = "visited" | "visible" | "not_visited" | "action_done"
 
 type PosterCell = Cell & {
   kind: "poster"
@@ -442,7 +486,7 @@ export type ChatGroupRDB = {
   last_updated: string
   location?: MapCellId
   color?: string
-  users?: string
+  users?: string[]
   kind: "poster" | "people"
 }
 
@@ -469,6 +513,7 @@ export type Poster = {
   y: number
   access_log: boolean
   author_online_only: boolean
+  watermark?: number
   file_size?: number
 }
 
@@ -556,6 +601,7 @@ type CommentId = string
 type PosterId = string
 type RoomId = string
 type MapCellId = string
+type UserGroupId = string
 
 declare global {
   namespace Express {
@@ -607,6 +653,7 @@ type AuthSocket = {
 type RoomUpdateSocketData = {
   id: RoomId
   allow_poster_assignment?: boolean
+  minimap_visibility?: MinimapVisibility
   poster_count?: number
   num_people_joined?: number
   num_people_active?: number
@@ -618,6 +665,29 @@ type GroupSocketData = {
   room: RoomId
   users: UserId[]
   color: string
+}
+
+type MapUpdateEntry = {
+  x: number
+  y: number
+  kind?: CellType
+  open?: boolean
+  name?: string | null
+  poster_number?: number | null
+  custom_image?: string | null
+  link_url?: string | null
+  no_initial_position?: boolean
+}
+
+type MapUpdateSocketData = {
+  room: RoomId
+  message?: string
+  changes: MapUpdateEntry[]
+}
+
+type MapReplaceSocketData = {
+  room: RoomId
+  message?: string // If undefined, silent update
 }
 
 type TryToMoveResult = {
@@ -688,6 +758,8 @@ export type AppNotification =
   | "Poster"
   | "PosterRemove"
   | "Notification"
+  | "MapUpdate"
+  | "MapReplace"
   | "MapReset"
   | "ActiveUsers"
   | "ChatTyping"

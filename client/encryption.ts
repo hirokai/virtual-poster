@@ -461,12 +461,11 @@ export async function setupEncryption(
     publicKeyString = pub_str_from_server
   } else if (pub_str_local) {
     console.log("Public key: found in localStorage, not found on server.")
-    const data = await client.public_key.$post({
+    await client.public_key.$post({
       body: {
         key: pub_str_local,
       },
     })
-    console.log("posted /public_key", data)
     publicKeyString = pub_str_local
   } else {
     console.log(
@@ -477,7 +476,6 @@ export async function setupEncryption(
       myUserId,
       false
     )
-    console.log("generateAndSendKeys()", ok)
     if (!ok || !pub_str || !prv_str) {
       console.error("Key generation failed")
       localStorage["virtual-poster:" + myUserId + ":config:encryption"] = "0"

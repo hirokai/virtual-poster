@@ -82,7 +82,8 @@ const user_id: string | undefined = localStorage["virtual-poster:user_id"]
           bot_mode: bot_mode,
           jwt_hash_initial,
           axios,
-          isMobile: false, //Temporarily disable, as it is broken
+          isMobile,
+          // isMobile: false, //Temporarily disable, as it is broken
         }
         console.log("Initializing...", data, user?.email, propsData)
         // app.$props.socket = app.$mount("#app")

@@ -12,12 +12,22 @@ import {
   MapCellRDB,
   Direction,
   PersonInMap,
+  MapUpdateEntry,
+  UserGroupId,
+  RoomAccessCode,
+  UserGroup,
 } from "../../@types/types"
 import shortid from "shortid"
 import { redis, log, db, pgp, POSTGRES_CONNECTION_STRING } from "./index"
 import * as model from "./index"
 import _ from "lodash"
-import { mkKey, calcDirection, isOpenCell } from "../../common/util"
+import {
+  mkKey,
+  calcDirection,
+  isOpenCell,
+  range,
+  flatten,
+} from "../../common/util"
 import {
   getCellOpenFromString,
   getCellKindFromString,
@@ -30,6 +40,7 @@ import { emit } from "../socket"
 import { promisify } from "util"
 import fs from "fs"
 import path from "path"
+import { random_str } from "./util"
 const readFile = promisify(fs.readFile)
 
 const USE_S3_CDN = config.aws.s3.via_cdn
@@ -86,6 +97,11 @@ export class MapModel {
     name: string,
     map_data: string | { cells: Cell[][]; numRows: number; numCols: number },
     allow_poster_assignment: boolean,
+    minimap_visibility:
+      | "all_initial"
+      | "map_initial"
+      | "all_only_visited"
+      | "map_only_visited",
     owner?: UserId
   ): Promise<{ map?: MapModel; error?: string }> {
     const room_id = MapModel.genRoomId()
@@ -97,10 +113,11 @@ export class MapModel {
       return { error: "Room name already exists" }
     }
     await db.query(
-      `INSERT INTO room (id,name,room_owner,allow_poster_assignment) values ($1,$2,$3,$4)`,
-      [room_id, name, owner, allow_poster_assignment]
+      `INSERT INTO room (id,name,room_owner,allow_poster_assignment,minimap_visibility) values ($1,$2,$3,$4,$5)`,
+      [room_id, name, owner, allow_poster_assignment, minimap_visibility]
     )
     const m = new MapModel(room_id, name)
+    model.maps[room_id] = m
     const res =
       typeof map_data == "string" ? MapModel.parseMapString(map_data) : map_data
     if (!res) {
@@ -108,8 +125,19 @@ export class MapModel {
       return { error: "Import failed" }
     }
     await m.importMapData(res)
-    model.maps[room_id] = m
     return { map: m }
+  }
+
+  async replaceMapCells(
+    map_data: string | { cells: Cell[][]; numRows: number; numCols: number }
+  ): Promise<{ ok: boolean; error?: string }> {
+    const res =
+      typeof map_data == "string" ? MapModel.parseMapString(map_data) : map_data
+    if (!res) {
+      return { ok: false, error: "Import failed" }
+    }
+    const r = await this.importMapData(res, true)
+    return { ok: !!r }
   }
 
   async getOwner(): Promise<UserId | undefined> {
@@ -117,6 +145,49 @@ export class MapModel {
       this.room_id,
     ])
     return rows[0]?.room_owner
+  }
+
+  async isUserOwnerOrAdmin(user_id: UserId): Promise<boolean> {
+    if (user_id.indexOf("@") != -1 || user_id[0] != "U") {
+      throw "Wrong user ID"
+    }
+    const rows = await db.query(
+      `SELECT
+            1
+        FROM
+            person
+            JOIN person_room_access AS ra ON person.email = ra.email
+        WHERE
+            ra.room = $1
+            AND ra.role = 'admin'
+            AND person.id = $2
+  `,
+      [this.room_id, user_id]
+    )
+    if (rows.length == 1) {
+      return true
+    }
+    const rows2 = await db.query(
+      `SELECT 1 FROM room WHERE id=$1 AND room_owner=$2`,
+      [this.room_id, user_id]
+    )
+    return rows2.length == 1
+  }
+
+  async getAdmins(): Promise<UserId[]> {
+    const rows = await db.query(
+      `SELECT person.id FROM person JOIN person_room_access as ra ON person.email=ra.email WHERE ra.room=$1 AND ra.role='admin'`,
+      [this.room_id]
+    )
+    return rows.map(r => r["id"])
+  }
+
+  async getAdminEmails(): Promise<string[]> {
+    const rows = await db.query(
+      `SELECT email FROM person_room_access WHERE room=$1 AND role='admin'`,
+      [this.room_id]
+    )
+    return rows.map(r => r["email"])
   }
 
   async get(): Promise<{
@@ -128,7 +199,7 @@ export class MapModel {
   }> {
     const data1 = await this.getStaticMap()
     const room = await model.db.oneOrNone(
-      `SELECT name,allow_poster_assignment FROM room WHERE id=$1`,
+      `SELECT name,allow_poster_assignment,move_log,minimap_visibility FROM room WHERE id=$1`,
       [this.room_id]
     )
     if (!room) {
@@ -137,28 +208,181 @@ export class MapModel {
 
     const allow_poster_assignment = !!room.allow_poster_assignment
     const name: string = room!.name
-    const data = { ...data1, allow_poster_assignment, name }
+    const move_log: boolean = room.move_log
+    const minimap_visibility: string = room.minimap_visibility
+    const data = {
+      ...data1,
+      allow_poster_assignment,
+      name,
+      move_log,
+      minimap_visibility,
+    }
     return data
   }
 
-  async getMetadata(): Promise<{
+  async getMetadata(
+    admin = false
+  ): Promise<{
     id: RoomId
+    name: string
+    numCols: number
+    numRows: number
+    move_log: boolean
     allow_poster_assignment: boolean
+    minimap_visibility:
+      | "all_initial"
+      | "map_initial"
+      | "all_only_visited"
+      | "map_only_visited"
+    access_codes?: RoomAccessCode[]
+    people_groups?: UserGroup[]
   }> {
-    const allow_poster_assignment = !!(
-      await model.db.oneOrNone(
-        `SELECT allow_poster_assignment FROM room WHERE id=$1`,
-        [this.room_id]
-      )
-    )?.allow_poster_assignment
-    return { id: this.room_id, allow_poster_assignment }
+    const d = await model.db.oneOrNone(
+      `SELECT
+            room.name,
+            room.move_log,
+            allow_poster_assignment,
+            minimap_visibility,
+            array_agg(DISTINCT concat(cd.code, ' ', cd.active, ' ', cd.granted_right, ' ', cd.timestamp)) AS access_codes,
+            array_agg(DISTINCT concat(pg.id, ' ', pg.name, ' ', pg.description)) AS people_groups
+        FROM
+            room
+            LEFT JOIN room_access_code AS cd ON cd.room = room.id
+            LEFT JOIN people_group AS pg ON pg.room = room.id
+        WHERE
+            room.id = $1
+        GROUP BY
+            room.allow_poster_assignment,
+            room.minimap_visibility,
+            room.name,
+            room.move_log
+        `,
+      [this.room_id]
+    )
+    const name: string = d.name
+    const move_log: boolean = d.move_log
+    const allow_poster_assignment = !!d.allow_poster_assignment
+    const minimap_visibility:
+      | "all_initial"
+      | "map_initial"
+      | "all_only_visited"
+      | "map_only_visited" = d.minimap_visibility
+    const access_codes: RoomAccessCode[] | undefined = admin
+      ? (d["access_codes"] as string[])
+          .map((s: string) => {
+            const ts = s.split(" ")
+            return {
+              code: ts[0],
+              active: ts[1] == "t",
+              access_granted: ts[2].split(";;"),
+              timestamp: parseInt(ts[3]),
+            }
+          })
+          .filter(c => c.code != "")
+      : undefined
+
+    const people_groups: UserGroup[] | undefined = admin
+      ? (d["people_groups"] as string[])
+          .map((s: string) => {
+            const ts = s.split(" ")
+            return {
+              id: ts[0],
+              name: ts[1],
+              description: ts[2] || undefined,
+            }
+          })
+          .filter(c => c.id != "")
+      : undefined
+
+    const numCols = await this.numCols()
+    const numRows = await this.numRows()
+
+    return {
+      id: this.room_id,
+      name,
+      numCols,
+      numRows,
+      move_log,
+      allow_poster_assignment,
+      minimap_visibility,
+      access_codes,
+      people_groups,
+    }
   }
 
-  // Give a user room access and optionally place in a map.
+  async getVisitedCells(user_id: UserId): Promise<Set<MapCellId>> {
+    const s = new Set<MapCellId>()
+    const cells = await db.query(
+      `SELECT "location" FROM cell_visit_history WHERE person=$1 AND "location" in (SELECT id FROM map_cell WHERE room=$2)`,
+      [user_id, this.room_id]
+    )
+    for (const c of cells) {
+      // console.log(c)
+      s.add(c.location)
+      // console.log(s)
+    }
+    return s
+  }
+
+  async createUserGroup(name: string, description?: string) {
+    const group_id = model.people.genPeopleGroupId()
+    await db.query(
+      `INSERT INTO people_group (room, id, name,description) values ($1,$2,$3,$4)`,
+      [this.room_id, group_id, name, description || null]
+    )
+  }
+
+  async addUserToUserGroups(
+    user_email: string,
+    user_id: UserId | null,
+    groups: UserGroupId[]
+  ) {
+    if (user_id) {
+      for (const g of groups) {
+        const rows = await db.query(
+          `SELECT 1 FROM people_group WHERE id=$1 AND room=$2`,
+          [g, this.room_id]
+        )
+        if (rows.length == 0) {
+          continue
+        }
+        await db.query(
+          `DELETE FROM person_in_people_group WHERE people_group=$1 AND person_id=$2`,
+          [g, user_id]
+        )
+        await db.query(
+          `INSERT INTO person_in_people_group (people_group, person_id) values ($1,$2)`,
+          [g, user_id]
+        )
+      }
+    } else {
+      for (const g of groups) {
+        const rows = await db.query(
+          `SELECT 1 FROM people_group WHERE id=$1 AND room=$2`,
+          [g, this.room_id]
+        )
+        if (rows.length == 0) {
+          continue
+        }
+        await db.query(
+          `DELETE FROM person_in_people_group WHERE people_group=$1 AND person_email=$2`,
+          [g, user_email]
+        )
+        await db.query(
+          `INSERT INTO person_in_people_group (people_group, person_email) values ($1,$2) `,
+          [g, user_email]
+        )
+      }
+    }
+  }
+
+  // Give a user room access, add the user to user groups, and optionally place them in a map.
   async addUser(
     user_email: string,
+    user_id?: UserId,
     assignPosition = true,
     role: "user" | "admin" = "user",
+    groups: UserGroupId[] = [],
     added_by?: string
   ): Promise<{
     ok: boolean
@@ -171,7 +395,12 @@ export class MapModel {
         `INSERT INTO person_room_access (room,email,"role",added_by) values ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT person_room_access_pkey DO NOTHING `,
         [this.room_id, user_email, role, added_by]
       )
-      const user_id = await model.people.getUserIdFromEmail(user_email)
+      user_id =
+        user_id ||
+        (await model.people.getUserIdFromEmail(user_email)) ||
+        undefined
+
+      await this.addUserToUserGroups(user_email, user_id || null, groups)
       if (assignPosition) {
         if (!user_id) {
           return {
@@ -226,6 +455,10 @@ export class MapModel {
       //FIXME: Delete other activities such as comments, groups, posters, etc.
       if (user_id) {
         await db.query(
+          `DELETE FROM person_in_people_group WHERE person_id=$1 AND people_group IN (SELECT id FROM people_group WHERE room=$2)`,
+          [user_id, this.room_id]
+        )
+        await db.query(
           `DELETE FROM person_position WHERE room=$1 AND person=$2`,
           [this.room_id, user_id]
         )
@@ -271,6 +504,30 @@ export class MapModel {
     }
   }
 
+  async createAccessCode(
+    access_granted: string[] = [],
+    active = true
+  ): Promise<RoomAccessCode | null> {
+    const code = random_str(20)
+    const timestamp = Date.now()
+    try {
+      await model.db.query(
+        `INSERT INTO room_access_code (code,room,granted_right,timestamp,active) VALUES ($1,$2,$3,$4,$5)`,
+        [
+          code,
+          this.room_id,
+          ["user", ...access_granted].join(";;"),
+          timestamp,
+          active,
+        ]
+      )
+    } catch (err) {
+      log.error(err)
+      return null
+    }
+    return { code, active, access_granted, timestamp }
+  }
+
   async writeRedisCache(): Promise<void> {
     await this.initStaticMap()
     await this.initLiveObjects()
@@ -297,8 +554,41 @@ export class MapModel {
   }
 
   async initLiveObjects(): Promise<void> {
-    const people = await model.people.getAllPeopleList(this.room_id)
+    const people = await model.people.getPeopleInRoom(
+      this.room_id,
+      false,
+      false
+    )
     await setRedisPeoplePosition(this.room_id, people)
+  }
+
+  async updateMapCells(
+    changes: MapUpdateEntry[]
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await db.query(`BEGIN`)
+      for (const c of changes) {
+        const updateObj: { [index: string]: number | string | boolean } = {}
+        //FIXME: Complete this.
+        if (c.kind) {
+          updateObj.kind = c.kind
+        }
+        const q = pgp.helpers.update(updateObj, null, "map_cell")
+        const condition = pgp.as.format(" WHERE room=$1 and x=$2 and y=$3", [
+          this.room_id,
+          c.x,
+          c.y,
+        ])
+        await db.query(q + condition)
+      }
+      await db.query(`COMMIT`)
+    } catch (err) {
+      console.error(err)
+      await db.query(`ROLLBACK`)
+      return { ok: false, error: "DB error" }
+    }
+    await this.clearStaticMapCache()
+    return { ok: true }
   }
 
   private async tryPurge(
@@ -457,14 +747,95 @@ export class MapModel {
     }
   }
 
-  async importMapData(map: {
-    cells: Cell[][]
-    numRows: number
-    numCols: number
-  }): Promise<{ cells: Cell[][]; numRows: number; numCols: number } | null> {
+  async importMapData(
+    map: {
+      cells: Cell[][]
+      numRows: number
+      numCols: number
+    },
+    replace = false
+  ): Promise<{ cells: Cell[][]; numRows: number; numCols: number } | null> {
     let poster_number = 0
     try {
       await db.query("BEGIN")
+      if (replace) {
+        const currentRows = await this.numRows()
+        const currentCols = await this.numCols()
+        if (map.numRows < currentRows) {
+          //Shrink rows
+          await db.query(
+            `DELETE FROM cell_visit_history WHERE "location" in (SELECT id FROM map_cell WHERE room=$1 AND y>=$2)`,
+            [this.room_id, map.numRows]
+          )
+          await db.query(`DELETE FROM map_cell WHERE room=$1 AND y>=$2`, [
+            this.room_id,
+            map.numRows,
+          ])
+        } else if (map.numRows > currentRows) {
+          //Expand rows
+          const cs = flatten(
+            range(currentRows, map.numRows).map(y => {
+              return range(0, map.numCols).map(x => {
+                return { x, y }
+              })
+            })
+          )
+          const data_dummy = cs.map(c => {
+            return {
+              id: MapModel.genMapCellId(),
+              room: this.room_id,
+              x: c.x,
+              y: c.y,
+              kind: "grass",
+              no_initial_position: false,
+            }
+          })
+          await db.none(
+            pgp.helpers.insert(
+              data_dummy,
+              ["id", "room", "x", "y", "kind", "no_initial_position"],
+              "map_cell"
+            ) + " ON CONFLICT ON CONSTRAINT map_cell_room_x_y_key DO NOTHING"
+          )
+        }
+        if (map.numCols < currentCols) {
+          //Shrink columns
+          await db.query(
+            `DELETE FROM cell_visit_history WHERE "location" in (SELECT id FROM map_cell WHERE room=$1 AND x>=$2)`,
+            [this.room_id, map.numCols]
+          )
+          await db.query(`DELETE FROM map_cell WHERE room=$1 AND x>=$2`, [
+            this.room_id,
+            map.numCols,
+          ])
+        } else if (map.numCols > currentCols) {
+          //Expand columns
+          const cs = flatten(
+            range(currentCols, map.numCols).map(x => {
+              return range(0, map.numRows).map(y => {
+                return { x, y }
+              })
+            })
+          )
+          const data_dummy = cs.map(c => {
+            return {
+              id: MapModel.genMapCellId(),
+              room: this.room_id,
+              x: c.x,
+              y: c.y,
+              kind: "grass",
+              no_initial_position: false,
+            }
+          })
+          await db.none(
+            pgp.helpers.insert(
+              data_dummy,
+              ["id", "room", "x", "y", "kind", "no_initial_position"],
+              "map_cell"
+            ) + " ON CONFLICT ON CONSTRAINT map_cell_room_x_y_key DO NOTHING"
+          )
+        }
+      }
       for (const cs of _.chunk(_.flatten(map.cells), 1000)) {
         const dataMulti = cs.map(c => {
           if (c.kind == "poster") {
@@ -482,31 +853,106 @@ export class MapModel {
             no_initial_position: c.no_initial_position,
           }
         })
-
-        await db.none(
-          pgp.helpers.insert(
+        if (replace) {
+          const values = pgp.helpers.values(
             dataMulti,
-            [
-              "id",
-              "room",
-              "x",
-              "y",
-              "kind",
-              "poster_number",
-              "custom_image",
-              "link_url",
-              "no_initial_position",
-            ],
-            "map_cell"
+            new pgp.helpers.ColumnSet([
+              {
+                name: "room",
+                cast: "text", // use SQL type casting '::int[]'
+              },
+              {
+                name: "x",
+                cast: "integer", // use SQL type casting '::int[]'
+              },
+              {
+                name: "y",
+                cast: "integer", // use SQL type casting '::int[]'
+              },
+              {
+                name: "kind",
+                cast: "text", // use SQL type casting '::int[]'
+              },
+              {
+                name: "poster_number",
+                cast: "integer", // use SQL type casting '::int[]'
+              },
+              {
+                name: "custom_image",
+                cast: "text", // use SQL type casting '::int[]'
+              },
+              {
+                name: "link_url",
+                cast: "text", // use SQL type casting '::int[]'
+              },
+              {
+                name: "no_initial_position",
+                cast: "boolean", // use SQL type casting '::int[]'
+              },
+            ])
           )
-        )
+          const s =
+            `
+          UPDATE
+              map_cell
+          SET
+              kind = t.kind,
+              poster_number = t.poster_number,
+              custom_image = t.custom_image,
+              link_url = t.link_url,
+              no_initial_position = t.no_initial_position
+          FROM
+          (VALUES ` +
+            values +
+            `) AS t (room,
+                  x,
+                  y,
+                  kind,
+                  poster_number,
+                  custom_image,
+                  link_url,
+                  no_initial_position)
+          WHERE
+              map_cell.room = t.room
+              AND map_cell.x = t.x
+              AND map_cell.y = t.y
+          `
+          await db.none(s)
+        } else {
+          await db.none(
+            pgp.helpers.insert(
+              dataMulti,
+              [
+                "id",
+                "room",
+                "x",
+                "y",
+                "kind",
+                "poster_number",
+                "custom_image",
+                "link_url",
+                "no_initial_position",
+              ],
+              "map_cell"
+            )
+          )
+        }
       }
       await db.query("COMMIT")
     } catch (err) {
-      log.error("DB error", err)
+      if (replace) {
+        log.error(
+          "DB error (maybe UPDATE failed by poster or chat group map_cell references)",
+          err
+        )
+      } else {
+        log.error("DB error", err)
+      }
       await db.query("ROLLBACK")
+      return null
     }
     //Reload Redis cache
+    await this.clearStaticMapCache()
     await this.writeRedisCache()
     return map
   }
@@ -554,8 +1000,10 @@ export class MapModel {
       numCols = Math.max(numCols, c.x + 1)
       numRows = Math.max(numRows, c.y + 1)
     }
-    const cells: Cell[][] = _.range(numRows).map(() => {
-      return new Array(numCols).fill(null)
+    const cells: Cell[][] = _.range(numRows).map(y => {
+      return new Array(numCols).fill(null).map(x => {
+        return { id: "", kind: "grass", open: false, x, y }
+      })
     })
     for (const c of cell_list) {
       cells[c.y][c.x] = c
@@ -569,6 +1017,7 @@ export class MapModel {
   ): Promise<{
     ok: boolean
     status: "New" | "ComeBack" | "NoAccess" | "DoesNotExist" | "NoSpace"
+    position?: Point
   }> {
     log.debug("assignUserPosition()", user_id)
     const user = await model.people.get(user_id, undefined, true)
@@ -595,7 +1044,7 @@ export class MapModel {
       pos.direction,
       true
     )
-    return { ok: true, status: "New" }
+    return { ok: true, status: "New", position: { x: pos.x, y: pos.y } }
   }
 
   async enterRoom(
@@ -613,10 +1062,10 @@ export class MapModel {
       return { ok: false, status: "DoesNotExist" }
     }
     const rows = await db.query(
-      `SELECT count(*) FROM person_position where person=$1 and room=$2;`,
+      `SELECT * FROM person_position where person=$1 and room=$2;`,
       [user_id, this.room_id]
     )
-    if (rows[0].count == 0) {
+    if (rows.length == 0) {
       const r = await this.assignUserPosition(user_id)
       if (r.status == "New") {
         const num_people_joined = +(
@@ -627,8 +1076,39 @@ export class MapModel {
         )[0].c
         return { ...r, num_people_joined }
       }
+      if (r.position) {
+        const r1 = await db.query(`SELECT move_log FROM room WHERE id=$1`, [
+          this.room_id,
+        ])
+        if (r1[0].move_log) {
+          const c: Cell | null = await this.getStaticMapAt(
+            r.position.x,
+            r.position.y
+          )
+          if (c) {
+            await db.query(
+              `INSERT INTO cell_visit_history (person,"location",last_updated,state) VALUES ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT cell_visit_history_pkey DO UPDATE SET last_updated=$3,state=$4;`,
+              [user_id, c.id, Date.now(), "visited"]
+            )
+          }
+        }
+      }
       return r
     } else {
+      const x: number = rows[0].x
+      const y: number = rows[0].y
+      const r1 = await db.query(`SELECT move_log FROM room WHERE id=$1`, [
+        this.room_id,
+      ])
+      if (r1[0].move_log) {
+        const c = await this.getStaticMapAt(x, y)
+        if (c) {
+          await db.query(
+            `INSERT INTO cell_visit_history (person,"location",last_updated,state) VALUES ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT cell_visit_history_pkey DO UPDATE SET last_updated=$3,state=$4;`,
+            [user_id, c.id, Date.now(), "visited"]
+          )
+        }
+      }
       return { ok: true, status: "ComeBack" }
     }
   }
@@ -770,7 +1250,7 @@ export class MapModel {
         return { error: "Static cell cache failed to get." }
       }
       if (!isOpenCell(to_cell)) {
-        log.warn("Destination is not open")
+        log.warn("Destination is not open:", to_cell)
         return { error: "Destination is not open" }
       }
       const group = await model.chat.getGroupIdOfUser(this.room_id, d.user)
@@ -831,6 +1311,7 @@ export class MapModel {
     const s = await redis.staticMap.get(mkKey(this.room_id, x, y))
     return s ? JSON.parse(s) : null
   }
+
   async getAllStaticMapCellsFromRDB(): Promise<Cell[]> {
     const rows = await db.query<MapCellRDB[]>(
       `SELECT * from map_cell where room=$1`,
@@ -970,11 +1451,20 @@ export class MapModel {
         return { ok: false, error: "Poster not found" }
       }
       const typ = await model.people.getUserType(requester)
-      if (poster.author != requester && typ != "admin") {
+      const typ_room = await model.people.getUserTypeForRoom(
+        requester,
+        this.room_id
+      )
+      if (
+        poster.author != requester &&
+        typ != "admin" &&
+        typ_room != "owner" &&
+        typ_room != "admin"
+      ) {
         return {
           ok: false,
           poster_id: poster.id,
-          error: "Not my poster",
+          error: "Not my poster or I am not admin",
         }
       }
       if (forceRemoveComments) {
@@ -1144,6 +1634,11 @@ export class MapModel {
       )
 
       await db.query(
+        `DELETE from poster_comment_read where comment in (SELECT id from comment where room=$1);`,
+        [this.room_id]
+      )
+
+      await db.query(
         `DELETE from comment_to_person where comment in (SELECT id from comment where room=$1);`,
         [this.room_id]
       )
@@ -1164,6 +1659,11 @@ export class MapModel {
         `DELETE from poster where location in (SELECT id from map_cell where room=$1);`,
         [this.room_id]
       )
+      await db.query(
+        `DELETE from cell_visit_history where location in (SELECT id from map_cell where room=$1);`,
+        [this.room_id]
+      )
+
       await db.query(`DELETE from map_cell where room=$1;`, [this.room_id])
       await db.query(`DELETE from person_position where room=$1;`, [
         this.room_id,
@@ -1181,6 +1681,7 @@ export class MapModel {
       return false
     }
   }
+
   static genRoomId(): string {
     for (;;) {
       const s = "R" + shortid.generate()
@@ -1200,29 +1701,33 @@ export class MapModel {
 
   static async getAllowedRoomsFromCode(
     code: string
-  ): Promise<RoomId[] | undefined> {
+  ): Promise<{ id: RoomId; groups: UserGroupId[] }[] | undefined> {
     // If it has non-existent room ID, return undefined
     const codes = code.split(":")
-    const rooms_ok: RoomId[] = []
+    const rooms_ok: { id: RoomId; groups: UserGroupId[] }[] = []
     for (const code of codes) {
       const rows = await model.db.query(
-        `SELECT room FROM room_access_code WHERE code=$1`,
+        `SELECT room,granted_right FROM room_access_code WHERE code=$1`,
         [code]
       )
       const rid: string | undefined = rows[0]?.room
+      const granted_right_str: string = rows[0]?.granted_right || ""
+      const groups = granted_right_str.split(";;")
       if (rid) {
         const mm = model.maps[rid]
         if (mm) {
-          rooms_ok.push(rid)
+          rooms_ok.push({ id: rid, groups })
         }
       }
     }
     return rooms_ok
   }
 
-  static getDefaultRooms(): RoomId[] {
-    return config.default_rooms.filter(rid => {
-      return model.maps[rid]
-    })
+  static getDefaultRooms(): { id: RoomId; groups: UserGroupId[] }[] {
+    return config.default_rooms
+      .filter(rid => model.maps[rid])
+      .map(rid => {
+        return { id: model.maps[rid].room_id, groups: ["__user__"] }
+      })
   }
 }

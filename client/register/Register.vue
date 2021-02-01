@@ -1,13 +1,13 @@
 <template>
   <div id="app" v-cloak>
-    <h1>ユーザー登録 - バーチャルポスターセッション</h1>
+    <h1 class="title is-4">{{ lang("title") }}</h1>
     <div>
-      <h2>ユーザー情報を入力してください。</h2>
+      <h2>{{ lang("enter_info") }}</h2>
       <div>
         <label for="register-email">Email</label>
         <input type="text" id="register-email" v-model="email" disabled />
         <br />
-        <label for="register-name">名前</label>
+        <label for="register-name">{{ lang("name") }}</label>
         <input
           type="text"
           id="register-name"
@@ -23,59 +23,82 @@
           :disabled="loginReady"
           style="display: none"
         />
-        <button id="submit" @click="submitRegistration" :disabled="loginReady">
-          登録
+        <button
+          class="button is-primary"
+          id="submit"
+          @click="submitRegistration"
+          :disabled="loginReady"
+        >
+          {{ lang("register") }}
         </button>
         <transition name="fade">
-          <div v-if="loginReady" id="register-done">登録が完了しました</div>
+          <div v-if="loginReady" id="register-done">{{ lang("complete") }}</div>
         </transition>
       </div>
-      <transition name="fade-2">
-        <div v-if="loginReady">
+      <transition name="fade-2"
+        ><div v-if="loginReady">
           <div>
-            <h2>簡単な使い方</h2>
+            <h5 class="title is-5">{{ lang("instruction") }}</h5>
             <p style="font-size: 14px; line-height: 1; margin: 0px">
-              ※ マイページ（マップ画面よりアクセス可能）にも記載されています。
+              {{ lang("instruction_note") }}
             </p>
             <ul>
               <li>
-                移動：
-                カーソルキー，hjklキー（それぞれ左，下，上，右），yubnキー（左上，右上，左下，右下）で移動。あるいは画面上の矢印ボタンで移動。
+                {{ lang("help_move") }}
               </li>
               <li>
-                会話：
-                人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。
+                {{ lang("help_chat") }}
+              </li>
+              <li>{{ lang("help_poster") }}</li>
+              <li>
+                {{ lang("help_take_poster") }}
               </li>
               <li>
-                ポスター：
-                隣のマスに行くとポスターを表示，コメント書き込み・閲覧可能。
+                {{ lang("help_placing_poster") }}
               </li>
               <li>
-                ポスター板の確保：
-                空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。
-              </li>
-              <li>
-                ポスターの掲示：
-                自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。
-              </li>
-              <li>
-                ポスターの撤去： マイページで「ポスター画像を削除」をクリック
+                {{ lang("help_remove_poster") }}
               </li>
             </ul>
           </div>
-          <a href="/" id="go-to-home" class="btn"
-            >ホーム画面に移動して利用開始</a
-          >
+          <a href="/" id="go-to-home" class="btn">{{ lang("start") }}</a>
         </div>
       </transition>
 
       <div>{{ verifyStatus }}</div>
+
+      <div
+        class="buttons has-addons"
+        style="float: left; margin: 30px 10px 0px 0px"
+      >
+        <button
+          class="button is-small"
+          :class="{ 'is-info': locale == 'en' }"
+          @click="changeLocale('en')"
+        >
+          English
+        </button>
+        <button
+          class="button is-small"
+          :class="{ 'is-info': locale == 'ja' }"
+          @click="changeLocale('ja')"
+        >
+          日本語
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { onMounted, toRefs, computed, defineComponent, reactive } from "vue"
+import {
+  onMounted,
+  toRefs,
+  computed,
+  defineComponent,
+  reactive,
+  watch,
+} from "vue"
 import axiosDefault from "axios"
 import * as firebase from "firebase/app"
 import "firebase/auth"
@@ -108,7 +131,100 @@ export default defineComponent({
       show_key: false,
       loginReady: localStorage["virtual-poster:user_id"] != undefined,
       prv_mnemonic: undefined as string | undefined,
+      locale: (navigator.language == "ja" ? "ja" : "en") as "en" | "ja",
     })
+
+    const changeLocale = (l: "en" | "ja") => {
+      state.locale = l
+      if (state.user) {
+        localStorage[`virtual-poster:${state.user.user_id}:config:locale`] = l
+      }
+    }
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        title: {
+          ja: "ユーザー登録 - バーチャルポスターセッション",
+          en: "Registration - Virtual poster session",
+        },
+        instruction: {
+          ja: "簡単な使い方",
+          en: "How to use",
+        },
+        help_move: {
+          ja:
+            "移動：カーソルキー，hjklキー（それぞれ左，下，上，右），yubnキー（左上，右上，左下，右下）で移動。あるいは画面上の矢印ボタンで移動。",
+          en:
+            "Move: Use the cursor keys, hjkl keys (left, down, up, and right, respectively), and yubn keys (upper left, upper right, lower left, and lower right, respectively) to move. Or use the arrow buttons on the screen to move.",
+        },
+        help_chat: {
+          ja:
+            "会話： 人をダブルクリックして開始。隣りにいる人であれば途中からメンバーを追加可能。「会話から離脱」を押して終了。鍵アイコンをクリックして黒くすると会話を暗号化。",
+          en:
+            'Chat: Double-click on a person to start. You can add members from the middle of the conversation as long as they are next to you. Click "Leave conversation" to end. Click on the key icon to turn it black to encrypt the conversation.',
+        },
+        help_poster: {
+          ja:
+            "ポスター： 隣のマスに行き，「ポスターを閲覧」を押すとポスターを表示，コメント書き込み・閲覧可能。",
+          en:
+            'Poster: Go to the adjacent cell and click on "View Poster" to view the poster and write comments.',
+        },
+        help_take_poster: {
+          ja:
+            "ポスター板の確保： 空いているポスター板（木札のアイコン）をダブルクリック（会場管理者が許可している場合のみ）。",
+          en:
+            "Taking a poster board: Double-click on an empty poster board (wooden tag icon) (only if the room owner allows it).",
+        },
+        help_placing_poster: {
+          ja:
+            "ポスター画像の掲示： 自分のポスター板にPNGまたはPDFをドラッグ＆ドロップするか，マイページ（人型のアイコン）からアップロード。",
+          en:
+            "Uploading poster image: Drag and drop the PNG or PDF file onto your poster board, or upload it from Preferences (the human icon).",
+        },
+        help_remove_poster: {
+          ja: "ポスターの撤去： マイページで「ポスター画像を削除」をクリック。",
+          en: "Removing a poster: Click 'Delete Poster' in Preferences",
+        },
+        enter_info: {
+          ja: "表示する名前を入力してください。後でいつでも変えられます。",
+          en: "Enter your display name below. You can change it later.",
+        },
+        name: {
+          ja: "名前",
+          en: "Name",
+        },
+        register: {
+          ja: "登録",
+          en: "Register",
+        },
+        complete: {
+          ja: "登録が完了しました",
+          en: "Registration is complete.",
+        },
+        start: {
+          ja: "ホーム画面に移動して利用開始",
+          en: "Go to home to start",
+        },
+        instruction_note: {
+          ja:
+            "※ マイページ（マップ画面よりアクセス可能）にも記載されています。",
+          en:
+            "* You can also find this on Help tab on Preferences page (accessible from the map screen).",
+        },
+      }
+      return message[key][state.locale]
+    }
+    document.title = lang("title")
+
+    watch(
+      () => state.locale,
+      () => {
+        document.title = lang("title")
+      }
+    )
+
     const user_id = localStorage["virtual-poster:user_id"] as string | undefined
     const prv_local_str: string | undefined = user_id
       ? localStorage["virtual-poster:" + user_id + ":private_key_jwk"]
@@ -180,6 +296,8 @@ export default defineComponent({
       checkVerification,
       submitRegistration,
       prv_mnemonic_formatted,
+      lang,
+      changeLocale,
     }
   },
 })
@@ -298,7 +416,9 @@ label {
 
 #submit {
   margin-top: 10px;
-  margin-left: 382px;
+  margin-left: 325px;
+  width: 100px;
+  height: 30px;
 }
 
 .fade-enter-active,

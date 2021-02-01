@@ -1,224 +1,85 @@
 <template>
-  <div id="app-main" class="mobile" v-if="isMobile">
-    <div id="mobile-menu">
-      <div class="mobile-menu-item" @click="moveToPane('minimap')">
-        <img src="/img/icon/world.png" width="96" alt="" />
-        <div
-          class="mobile-menu-item-active"
-          v-if="mobilePane == 'minimap'"
-        ></div>
-      </div>
-      <div class="mobile-menu-item" @click="moveToPane('map')">
-        <img src="/img/icon/map.png" width="96" alt="" />
-        <div class="mobile-menu-item-active" v-if="mobilePane == 'map'">
-          &nbsp;
-        </div>
-      </div>
-      <div class="mobile-menu-item" @click="moveToPane('chat')">
-        <img src="/img/icon/chat.png" width="96" alt="" />
-        <div class="mobile-menu-item-active" v-if="mobilePane == 'chat'"></div>
-      </div>
-      <div
-        class="mobile-menu-item"
-        :class="{ disabled: !posterLooking }"
-        @click="moveToPane('poster')"
-      >
-        <img src="/img/icon/new-poster.png" width="96" alt="" />
-        <div
-          class="mobile-menu-item-active"
-          v-if="mobilePane == 'poster'"
-        ></div>
-      </div>
-      <div
-        class="mobile-menu-item"
-        :class="{ disabled: !posterLooking }"
-        @click="moveToPane('poster_chat')"
-      >
-        <img src="/img/icon/feedback.png" width="96" alt="" />
-        <div
-          class="mobile-menu-item-active"
-          v-if="mobilePane == 'poster_chat'"
-        ></div>
-      </div>
-      <div class="mobile-menu-item" @click="moveToMypage('account')">
-        <img src="/img/icon/settings.png" width="96" alt="" />
-        <div
-          class="mobile-menu-item-active"
-          v-if="mobilePane == 'mypage'"
-        ></div>
-      </div>
-    </div>
-    <Map
-      v-if="!!myself && mobilePane == 'map'"
-      :myself="myself"
-      :isMobile="isMobile"
-      :hidden="hidden"
-      :people="people"
-      :posters="posters"
-      :activePoster="posterLooking ? adjacentPoster : undefined"
-      :cells="cellsMag"
-      :center="center"
-      :mapRadiusX="4"
-      :mapRadiusY="7"
-      :myChatGroup="myChatGroup"
-      :chatGroups="chatGroups"
-      :chatGroupOfUser="chatGroupOfUser"
-      :selectedPos="selectedPos"
-      :selectedUsers="selectedUsers"
-      :personInFront="personInFront"
-      :people_typing="people_typing"
-      :avatarImages="avatarImages"
-      @select="updateSelectedPos"
-      @hover="hoverOnCell"
-      @dbl-click="dblClick"
-      @upload-poster="uploadPoster"
-      @input-arrow-key="inputArrowKey"
-    />
-    <MiniMap
-      v-if="mobilePane == 'minimap'"
-      :isMobile="isMobile"
-      :hidden="hidden"
-      :cells="hallMap"
-      :center="center"
-      :mapRadiusX="4"
-      :mapRadiusY="7"
-      :people="people"
-      :posters="posters"
-      :chatGroups="chatGroups"
-      :avatarImages="avatarImages"
-      :people_typing="people_typing"
-      :selectedPos="selectedPos"
-      :visualStyle="visualStyle"
-      @select="updateSelectedPos"
-      @dbl-click="dblClick"
-    />
-    <ChatLocal
-      ref="chatLocal"
-      v-if="mobilePane == 'chat'"
-      :axios="axios"
-      :isMobile="isMobile"
-      :myself="myself"
-      :contentHidden="hidden"
-      :comments="comments"
-      :commentTree="commentTree"
-      :events="chat_events"
-      :people="people"
-      :editingOld="editingOld"
-      :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
-      :inputFocused="inputFocused"
-      :poster="botActive || !posterLooking ? null : adjacentPoster"
-      :people_typing="people_typing"
-      :enableEncryption="enableEncryption"
-      :encryptionPossibleInChat="encryption_possible_in_chat"
-      :darkMode="darkMode"
-      :highlightUnread="highlightUnread"
-      @leave-chat="leaveChat"
-      @submit-comment="submitComment"
-      @update-comment="sendOrUpdateComment"
-      @delete-comment="deleteComment"
-      @set-editing-old="setEditingOld"
-      @onInputTextChange="onInputTextChange"
-      @on-focus-input="onFocusInput"
-      @set-encryption="setEncryption"
-      @add-emoji-reaction="addEmojiReaction"
-      @read-comment="readComment"
-    />
-    <Poster
-      v-show="
-        (mobilePane == 'poster' || mobilePane == 'poster_chat') && posterLooking
-      "
-      ref="posterComponent"
-      :isMobile="isMobile"
-      :mobilePane="mobilePane"
-      :myself="myself"
-      :poster="adjacentPoster"
-      :uploadProgress="posterUploadProgress"
-      :comments="posterComments"
-      :commentTree="posterCommentTree"
-      :people="people"
-      :editingOld="editingOld"
-      :posterChatGroup="posterChatGroup"
-      :darkMode="darkMode"
-      :highlightUnread="highlightUnreadPoster[posterLooking?.id] || {}"
-      @submit-poster-comment="submitPosterComment"
-      @update-poster-comment="updatePosterComment"
-      @delete-comment="deletePosterComment"
-      @set-editing-old="setEditingOld"
-      @on-focus-input="onFocusInput"
-      @upload-poster="uploadPoster"
-      @add-emoji-reaction="addEmojiReaction"
-      @read-comment="readPosterComment"
-    />
-    <div id="tools-on-map" v-if="mobilePane == 'map'">
-      <button
-        id="enter-poster-on-map"
-        class="button is-primary"
-        @click="enterPoster"
-        v-if="adjacentPoster && !posterLooking"
-      >
-        ポスターを閲覧
-      </button>
-      <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
-        <span style="font-weight: bold"
-          >{{ adjacentPoster.poster_number }}:
-          {{
-            people[adjacentPoster.author]
-              ? people[adjacentPoster.author].name
-              : ""
-          }}</span
-        >
-
-        <br />
-        {{ adjacentPoster.title }}
-        <span id="access-log-notice" v-if="adjacentPoster.access_log">
-          このポスターを閲覧すると<br />足あとが記録されます
-        </span>
-      </div>
-      <button
-        id="start-chat-on-map"
-        @click="startChatInFront"
-        v-if="!myChatGroup && personInFront"
-      >
-        会話を始める
-      </button>
-      <button
-        id="view-info-person-on-map"
-        @click="viewInfoPersonInFront"
-        v-if="!myChatGroup && personInFront"
-      >
-        プロフィール
-      </button>
-      <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
-        会話から離脱
-      </button>
-    </div>
-    <button
-      id="leave-poster-on-map"
-      class="button is-primary"
-      @click="leavePoster"
-      v-if="posterLooking && (mobilePane == 'poster' || mobilePane == 'map')"
-    >
-      ポスターから離脱
-    </button>
-    <div
-      id="message"
-      :class="{ hide: message.hide }"
-      :style="{
-        background: message.color,
-      }"
-    >
-      <div id="message-close" @click="hideMessage">&times;</div>
-      {{ message.text }}
-    </div>
-    <MyPage v-if="mobilePane == 'mypage'" />
-  </div>
-
+  <RoomMobile
+    v-if="isMobile"
+    :posterLooking="posterLooking"
+    :myself="myself"
+    :adjacentPoster="adjacentPoster"
+    :locale="locale"
+    :people="people"
+    :posterComments="posterComments"
+    :posterCommentTree="posterCommentTree"
+    :roomAppState="roomAppState"
+    :isMobile="isMobile"
+    :cellVisibility="cellVisibility"
+    :hidden="hidden"
+    :posters="posters"
+    :activePoster="posterLooking ? adjacentPoster : undefined"
+    :cellsMag="cellsMag"
+    :center="center"
+    :mapRadiusX="5"
+    :mapRadiusY="5"
+    :myChatGroup="myChatGroup"
+    :chatGroups="chatGroups"
+    :chatGroupOfUser="chatGroupOfUser"
+    :selectedPos="selectedPos"
+    :selectedUsers="selectedUsers"
+    :personInFront="personInFront"
+    :objectCellInFront="objectCellInFront"
+    :people_typing="people_typing"
+    :avatarImages="avatarImages"
+    :visualStyle="visualStyle"
+    @start-chat-in-front="startChatInFront"
+    @select="updateSelectedPos"
+    @enter-poster="enterPoster"
+    @leave-poster="leavePoster"
+    @hover-on-cell="hoverOnCell"
+    @dbl-click="dblClick"
+    :uploadPoster="uploadPoster"
+    @input-arrow-key="inputArrowKey"
+    :contentHidden="hidden"
+    :comments="comments"
+    :commentTree="commentTree"
+    :events="chat_events"
+    :editingOld="editingOld"
+    :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
+    :inputFocused="inputFocused"
+    :poster="botActive || !posterLooking ? null : adjacentPoster"
+    :enableEncryption="enableEncryption"
+    :encryptionPossibleInChat="encryption_possible_in_chat"
+    :hoverElement="hoverElement"
+    :highlightUnread="highlightUnread"
+    :posterContainerWidth="posterContainerWidth"
+    @leave-chat="leaveChat"
+    @submit-comment="submitComment"
+    @update-comment="sendOrUpdateComment"
+    @delete-comment="deleteComment"
+    @set-editing-old="setEditingOld"
+    @on-input-text-change="onInputTextChange"
+    @on-focus-input="onFocusInput"
+    @set-encryption="setEncryption"
+    @add-emoji-reaction="addEmojiReaction"
+    @set-hover-with-delay="setHoverWithDelay"
+    @cancel-hover="cancelHover"
+    @read-comment="readComment"
+    :axios="axios"
+    :posterChatGroup="posterChatGroup"
+    :darkMode="darkMode"
+    :uploadProgress="posterUploadProgress"
+    :highlightUnreadPoster="highlightUnreadPoster[posterLooking?.id] || {}"
+    :submitPosterComment="submitPosterComment"
+    :updatePosterComment="updatePosterComment"
+    :deletePosterComment="deletePosterComment"
+    @read-poster-comment="readPosterComment"
+    @set-poster-container-width="setPosterContainerWidth"
+    @set-poster="setPoster"
+  />
   <div
     id="app-main"
     v-if="!isMobile"
     :class="{ poster_active: posterLooking, mobile: isMobile, dark: darkMode }"
     @click="visibleNotification = false"
     v-cloak
+    :style="cssVars"
   >
     <div
       id="header"
@@ -227,24 +88,16 @@
         top: isMobile ? '0px' : undefined,
       }"
     >
-      <div
-        style="
-          display: inline-block;
-          width: 350px;
-          height: 30px;
-          overflow: hidden;
-        "
-      >
-        <span>{{ roomName }}</span
+      <div id="page-title-info">
+        <span style="font-weight: bold">{{ room?.name }}</span
         >：
         <span v-if="!!myself">
-          {{ myself ? myself.name : "" }}さん
-          <span id="login-info">({{ myUserId }}) </span>
+          {{ myself ? myself.name : "" }}{{ locale == "ja" ? "さん" : "" }}
         </span>
       </div>
 
       <span
-        class="icon-link with-tool-tip"
+        class="icon-link with-tool-tip right"
         @mouseenter="setHoverWithDelay('leaveRoom')"
         @mouseleave="cancelHover"
         :class="{ hover: hoverElement == 'leaveRoom' }"
@@ -254,8 +107,9 @@
           src="/img/icon/logout.png"
           width="25"
           height="25"
+          :alt="lang('leave_room')"
         />
-        <div class="tooltip">部屋を退出</div>
+        <div class="tooltip">{{ lang("leave_room") }}</div>
       </span>
 
       <span
@@ -280,9 +134,10 @@
           {{ notifications.length }}
         </div>
 
-        <div class="tooltip">通知</div>
+        <div class="tooltip">{{ lang("notification") }}</div>
         <Notification
           v-if="visibleNotification && myself"
+          :locale="locale"
           :myself="myself"
           :visualStyle="visualStyle"
           :notifications="notifications"
@@ -298,17 +153,22 @@
         :class="{ hover: hoverElement == 'mypage' }"
         :href="
           '/mypage?room=' +
-            room_id +
-            (debug_as
-              ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
-              : '')
+          room_id +
+          (debug_as
+            ? '&debug_as=' + debug_as + '&debug_token=' + debug_token
+            : '')
         "
         target="_blank"
         @mouseenter="setHoverWithDelay('mypage')"
         @mouseleave="cancelHover"
       >
-        <img width="25" height="25" src="/img/icon/user.png" alt="マイページ" />
-        <div class="tooltip">マイページ</div>
+        <img
+          width="25"
+          height="25"
+          src="/img/icon/user.png"
+          :alt="lang('mypage')"
+        />
+        <div class="tooltip">{{ lang("mypage") }}</div>
       </a>
       <a
         class="icon-link with-tool-tip"
@@ -322,9 +182,9 @@
           width="25"
           height="25"
           src="/img/icon/promotion.png"
-          alt="ポスターリスト"
+          :alt="lang('poster_list')"
         />
-        <div class="tooltip">ポスター一覧</div>
+        <div class="tooltip">{{ lang("poster_list") }}</div>
       </a>
       <span
         class="icon-link with-tool-tip"
@@ -354,15 +214,23 @@
       <div style="clear: both"></div>
     </div>
     <div id="all-connection-status" v-if="!hidden">
-      <span
-        >会場に{{
-          Object.values(people).filter(p => p.connected).length
-        }}人が接続中</span
-      >
+      <span>{{
+        locale == "ja"
+          ? `会場に${
+              Object.values(people).filter(p => p.connected).length
+            }人が接続中`
+          : `${Object.values(people).filter(p => p.connected).length} ${
+              Object.values(people).filter(p => p.connected).length > 1
+                ? "people"
+                : "person"
+            } online`
+      }}</span>
     </div>
     <div id="connection-status" v-if="!hidden">
-      <span v-if="socket_active" class="connected">接続されています</span>
-      <span v-else class="disconnected">接続されていません</span>
+      <span v-if="socket_active" class="connected">{{
+        lang("connected")
+      }}</span>
+      <span v-else class="disconnected">{{ lang("disconnected") }}</span>
     </div>
     <div
       id="announce"
@@ -384,12 +252,14 @@
       :cell="cellOnHover.cell"
       :person="cellOnHover.person"
       :poster="selectedPoster"
+      :locale="locale"
     />
     <Map
       v-if="!botActive"
       v-show="!!myself"
       :myself="myself"
       :isMobile="isMobile"
+      :cellVisibility="cellVisibility"
       :hidden="hidden"
       :people="people"
       :posters="posters"
@@ -404,8 +274,10 @@
       :selectedPos="selectedPos"
       :selectedUsers="selectedUsers"
       :personInFront="personInFront"
+      :objectCellInFront="objectCellInFront"
       :people_typing="people_typing"
       :avatarImages="avatarImages"
+      :cellSize="mapCellSize"
       :visualStyle="visualStyle"
       @select="updateSelectedPos"
       @hover-on-cell="hoverOnCell"
@@ -416,9 +288,12 @@
     <MiniMap
       v-if="enableMiniMap && !botActive"
       v-show="!posterLooking"
+      :room="room"
       :isMobile="isMobile"
+      :cellVisibility="cellVisibility"
       :hidden="hidden"
       :cells="hallMap"
+      :mainMapCellSize="mapCellSize"
       :center="center"
       :mapRadiusX="5"
       :mapRadiusY="5"
@@ -436,10 +311,12 @@
       ref="chatLocal"
       v-show="isMobile ? !enableMiniMap && !posterLooking : true"
       :isMobile="isMobile"
+      :locale="locale"
       :axios="axios"
       :myself="myself"
       :contentHidden="hidden"
       :comments="comments"
+      :mapCellSize="mapCellSize"
       :commentTree="commentTree"
       :events="chat_events"
       :people="people"
@@ -470,6 +347,7 @@
       v-if="!botActive"
       v-show="posterLooking"
       ref="posterComponent"
+      :locale="locale"
       :isMobile="isMobile"
       :myself="myself"
       :axios="axios"
@@ -480,6 +358,7 @@
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
       :darkMode="darkMode"
+      :mapCellSize="mapCellSize"
       :uploadProgress="posterUploadProgress"
       :highlightUnread="highlightUnreadPoster[posterLooking?.id] || {}"
       @submit-poster-comment="submitPosterComment"
@@ -491,14 +370,97 @@
       @add-emoji-reaction="addEmojiReaction"
       @read-comment="readPosterComment"
       @set-poster-container-width="setPosterContainerWidth"
+      @set-poster="setPoster"
     />
+    <div
+      id="message"
+      :class="{ hide: message.hide }"
+      :style="{
+        background: message.color,
+      }"
+    >
+      <div id="message-close" @click="hideMessage">&times;</div>
+      {{ message.text }}
+    </div>
+    <div
+      id="person-info"
+      v-if="personInfo.person"
+      :class="{ hide: personInfo.hide }"
+      :style="{
+        background: personInfo.color,
+      }"
+    >
+      <div id="person-info-close" @click="hidePersonInfo">&times;</div>
+      <div
+        v-if="personInfo.person.profiles?.display_name_full?.content"
+        style="font-weight: bold; font-size: 14px"
+      >
+        {{ personInfo.person.profiles?.display_name_full?.content }} （{{
+          personInfo.person.name
+        }}）
+      </div>
+      <div v-else style="font-weight: bold; font-size: 14px">
+        {{ personInfo.person.name }}
+      </div>
+      <div
+        style="font-weight: bold; font-size: 14px"
+        v-if="personInfo.person.profiles?.affiliation"
+      >
+        {{ personInfo.person.profiles.affiliation.content }}
+      </div>
+      <div
+        v-for="[k, v] in Object.entries(personInfo.person.profiles)"
+        :key="k"
+      >
+        <span
+          v-if="
+            ['url', 'url2', 'url3'].indexOf(k) >= 0 &&
+            v.content.indexOf('http') == 0
+          "
+          style="font-size: 12px"
+        >
+          <div style="font-weight: bold">
+            {{ showProfileKind(k, undefined, locale)
+            }}{{
+              v.metadata?.description ? ": " + v.metadata?.description : ""
+            }}
+          </div>
+          <div>
+            <a :href="v.content" target="_blank">{{
+              v.content.length > 60
+                ? v.content.slice(0, 30) +
+                  "..." +
+                  v.content.slice(v.content.length - 30, v.content.length)
+                : v.content
+            }}</a>
+          </div>
+        </span>
+      </div>
+    </div>
+    <div
+      id="object-info"
+      v-if="!objectInfo.hide"
+      :class="{ hide: objectInfo.hide }"
+      :style="{
+        background: objectInfo.color,
+      }"
+    >
+      <div id="object-info-close" @click="hideObjectInfo">&times;</div>
+      <div style="font-weight: bold; font-size: 14px">
+        <div v-if="objectInfo.text">{{ objectInfo.text }}</div>
+        <div v-if="objectInfo.url">
+          URL: <a :href="objectInfo.url">{{ objectInfo.url }}</a>
+        </div>
+      </div>
+    </div>
     <div id="tools-on-map">
       <button
         id="enter-poster-on-map"
+        class="map-tool-pos2"
         @click="enterPoster"
         v-if="adjacentPoster && !posterLooking"
       >
-        ポスターを閲覧
+        {{ lang("view_poster") }}
       </button>
       <div id="poster-preview" v-if="adjacentPoster && !posterLooking">
         <span style="font-weight: bold"
@@ -513,99 +475,54 @@
         <br />
         {{ adjacentPoster.title }}
         <span id="access-log-notice" v-if="adjacentPoster.access_log">
-          このポスターを閲覧すると<br />足あとが記録されます
+          {{
+            locale == "ja"
+              ? "このポスターを閲覧すると，足あとが記録されます"
+              : "This poster records the access log of visitors."
+          }}
         </span>
       </div>
       <button
         id="leave-poster-on-map"
+        class="map-tool-pos2"
         @click="leavePoster"
         v-if="posterLooking"
       >
-        ポスターから離脱
+        {{ lang("leave_poster") }}
       </button>
       <button
         id="start-chat-on-map"
+        class="map-tool-pos1"
         @click="startChatInFront"
         v-if="!myChatGroup && personInFront"
       >
-        会話を始める
+        {{ lang("start_chat") }}
       </button>
       <button
         id="view-info-person-on-map"
+        class="map-tool-pos2"
         @click="viewInfoPersonInFront"
         v-if="!myChatGroup && personInFront"
         :class="{ 'poster-adjacent': adjacentPoster }"
       >
-        プロフィール
+        {{ lang("profile") }}
       </button>
-      <button id="leave-chat-on-map" @click="leaveChat" v-if="myChatGroup">
-        会話から離脱
+      <button
+        id="view-info-object-on-map"
+        class="map-tool-pos1"
+        @click="viewInfoObjectInFront"
+        v-if="!adjacentPoster && objectCellInFront"
+      >
+        {{ lang("view_object") }}
       </button>
-      <div
-        id="message"
-        :class="{ hide: message.hide }"
-        :style="{
-          background: message.color,
-        }"
+      <button
+        id="leave-chat-on-map"
+        class="map-tool-pos1"
+        @click="leaveChat"
+        v-if="myChatGroup"
       >
-        <div id="message-close" @click="hideMessage">&times;</div>
-        {{ message.text }}
-      </div>
-      <div
-        id="person-info"
-        v-if="personInfo.person"
-        :class="{ hide: personInfo.hide }"
-        :style="{
-          background: personInfo.color,
-        }"
-      >
-        <div id="person-info-close" @click="hidePersonInfo">&times;</div>
-        <div
-          v-if="personInfo.person.profiles?.display_name_full?.content"
-          style="font-weight: bold; font-size: 14px"
-        >
-          {{ personInfo.person.profiles?.display_name_full?.content }} （{{
-            personInfo.person.name
-          }}）
-        </div>
-        <div v-else style="font-weight: bold; font-size: 14px">
-          {{ personInfo.person.name }}
-        </div>
-        <div
-          style="font-weight: bold; font-size: 14px"
-          v-if="personInfo.person.profiles?.affiliation"
-        >
-          {{ personInfo.person.profiles.affiliation.content }}
-        </div>
-        <div
-          v-for="[k, v] in Object.entries(personInfo.person.profiles)"
-          :key="k"
-        >
-          <span
-            v-if="
-              ['url', 'url2', 'url3'].indexOf(k) >= 0 &&
-                v.content.indexOf('http') == 0
-            "
-            style="font-size: 12px"
-          >
-            <div style="font-weight: bold">
-              {{ showProfileKind(k)
-              }}{{
-                v.metadata?.description ? ": " + v.metadata?.description : ""
-              }}
-            </div>
-            <div>
-              <a :href="v.content" target="_blank">{{
-                v.content.length > 60
-                  ? v.content.slice(0, 30) +
-                    "..." +
-                    v.content.slice(v.content.length - 30, v.content.length)
-                  : v.content
-              }}</a>
-            </div>
-          </span>
-        </div>
-      </div>
+        {{ lang("leave_chat") }}
+      </button>
     </div>
   </div>
 </template>
@@ -644,7 +561,10 @@ import {
   VisualStyle,
   NewCommentNotification,
   PosterCommentNotification,
+  CellVisibility,
 } from "@/@types/types"
+
+import RoomMobile from "./RoomMobile.vue"
 
 import Map from "./Map.vue"
 import MiniMap from "./MiniMap.vue"
@@ -652,7 +572,6 @@ import Poster from "./Poster.vue"
 import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
 import Notification from "./Notification.vue"
-import MyPage from "../mypage/MyPage.vue"
 
 import { inRange, keyBy, sortBy, showProfileKind } from "@/common/util"
 import { formatTime, truncateComment } from "../util"
@@ -681,6 +600,7 @@ import {
 import {
   showMessage as showMessage_,
   showPersonInfo as showPersonInfo_,
+  showObjectInfo as showObjectInfo_,
   moveByArrow,
   cellsMag,
   initMapService,
@@ -690,6 +610,7 @@ import {
   stopBGM as _stopBGM,
   posterLooking as _posterLooking,
   personInFront as _personInFront,
+  objectCellInFront as _objectCellInFront,
 } from "./room_map_service"
 
 import {
@@ -709,7 +630,6 @@ const setupSocketHandlers = (
   state: RoomAppState,
   socket: SocketIOClient.Socket | MySocketObject
 ) => {
-  // console.log("Setting up socket handlers for", socket)
   socket.on("disconnect", () => {
     state.socket_active = false
   })
@@ -739,14 +659,9 @@ const setupSocketHandlers = (
   })
 
   socket.on("Announce", d => {
-    // console.log("socket announce", d)
     state.announcement = d
   })
 
-  socket.on("map.reset", () => {
-    console.log("map.reset not implemented")
-    // reloadData()
-  })
   socket.on("AppReload", (force: boolean) => {
     if (state.reloadWaiting) {
       return
@@ -776,8 +691,8 @@ export default defineComponent({
     Poster,
     CellInfo,
     ChatLocal,
-    MyPage,
     Notification,
+    RoomMobile,
   },
 
   props: {
@@ -854,17 +769,11 @@ export default defineComponent({
       return response
     })
 
-    if (!process.env.VUE_APP_SKYWAY_API_KEY) {
-      console.warn("Skyway API key not set.")
-    }
-
     const dark_local_storage =
       localStorage["virtual-poster:" + props.myUserId + ":config:dark_mode"]
 
     const state = reactive<RoomAppState>({
       socket: null as SocketIOClient.Socket | null,
-      peer: null,
-      skywayRoom: null,
       enableEncryption:
         localStorage[
           "virtual-poster:" + props.myUserId + ":config:encryption"
@@ -877,11 +786,22 @@ export default defineComponent({
       posters: {} as { [index: string]: PosterTyp },
       posterComments: {} as { [comment_id: string]: PosterCommentDecrypted },
       posterInputComment: "" as string | undefined,
-      roomName: "",
       hallMap: [] as Cell[][],
+
+      cellVisibility: [] as CellVisibility[][],
+
       cols: 0,
       rows: 0,
-      allow_poster_assignment: false,
+
+      room: {
+        name: "",
+        allow_poster_assignment: false,
+        move_log: false,
+        minimap_visibility: "all_initial",
+      },
+
+      viewDistance: 5,
+
       keyQueue: null as { key: ArrowKey; timestamp: number } | null,
 
       center: { x: 5, y: 5 },
@@ -903,6 +823,7 @@ export default defineComponent({
       oneStepAccepted: false,
       message: { hide: true },
       personInfo: { hide: true },
+      objectInfo: { url: "", text: "", hide: true },
 
       socket_active: false,
 
@@ -933,7 +854,6 @@ export default defineComponent({
 
       reloadWaiting: false,
 
-      mobilePane: "map",
       visualStyle: getVisualStyle(
         new URL(location.href).searchParams.get("style") ||
           localStorage[
@@ -948,6 +868,12 @@ export default defineComponent({
           ? false
           : window.matchMedia &&
             window.matchMedia("(prefers-color-scheme: dark)").matches,
+      mapCellSize:
+        parseInt(
+          localStorage[
+            "virtual-poster:" + props.myUserId + ":config:map_cell_size"
+          ]
+        ) || 48,
       hoverElementTimer: undefined,
       hoverElement: undefined,
       posterUploadProgress: undefined,
@@ -957,7 +883,88 @@ export default defineComponent({
       highlightUnreadPoster: {},
       playingBGM: undefined,
       posterContainerWidth: 0,
+      locale:
+        localStorage["virtual-poster:" + props.myUserId + ":config:locale"] ||
+        "ja",
     })
+
+    document.title =
+      state.locale == "ja"
+        ? "バーチャルポスターセッション"
+        : "Virtual poster session"
+
+    watch(
+      () => [state.locale, state.room?.name],
+      () => {
+        document.title =
+          state.locale == "ja"
+            ? (state.room?.name ? state.room?.name + " - " : "") +
+              "バーチャルポスターセッション"
+            : (state.room?.name ? state.room?.name + " - " : "") +
+              "Virtual poster session"
+      }
+    )
+
+    const lang = (key: string): string => {
+      const message: {
+        [key in string]: { [key in "ja" | "en"]: string }
+      } = {
+        start_chat: {
+          ja: "会話を始める",
+          en: "Start chat",
+        },
+        leave_chat: {
+          ja: "会話から離脱",
+          en: "Leave chat",
+        },
+        view_poster: {
+          ja: "ポスターを閲覧",
+          en: "View poster",
+        },
+
+        leave_poster: {
+          ja: "ポスターから離脱",
+          en: "Leave poster",
+        },
+        left_chat: {
+          ja: "会話から離脱しました。",
+          en: "You left the chat.",
+        },
+        profile: {
+          ja: "プロフィール",
+          en: "Profile",
+        },
+        view_object: {
+          ja: "調べる",
+          en: "Inspect",
+        },
+        connected: {
+          ja: "接続されています",
+          en: "Connected",
+        },
+        disconnected: {
+          ja: "接続されていません",
+          en: "Disconnected",
+        },
+        poster_list: {
+          ja: "ポスター一覧",
+          en: "List of posters",
+        },
+        mypage: {
+          ja: "マイページ",
+          en: "Preferences",
+        },
+        notification: {
+          ja: "通知",
+          en: "Notification",
+        },
+        leave_room: {
+          ja: "部屋を退出",
+          en: "Leave room",
+        },
+      }
+      return message[key][state.locale]
+    }
 
     props.axios.interceptors.request.use(config => {
       if (props.debug_token) {
@@ -970,14 +977,6 @@ export default defineComponent({
       }
     })
 
-    // state.peer?.on("connection", d => {
-    //   console.log("Skyway peer connection", d)
-    // })
-
-    // state.peer?.on("data", d => {
-    //   console.log("Skyway peer data", d)
-    // })
-
     const myself: ComputedRef<PersonInMap | undefined> = computed(
       (): PersonInMap => {
         return state.people[props.myUserId]
@@ -988,7 +987,58 @@ export default defineComponent({
 
     const showMessage = showMessage_(props, state)
 
+    const posterLooking = _posterLooking(props, state)
+
+    const personInFront = _personInFront(props, state)
+
+    const objectCellInFront = _objectCellInFront(props, state)
+
     const showPersonInfo = showPersonInfo_(props, state)
+
+    const showObjectInfo = showObjectInfo_(props, state)
+
+    const myChatGroup = _myChatGroup(props, state)
+
+    const viewInfoPersonInFront = async () => {
+      const p1 = personInFront.value
+      if (!p1) {
+        return
+      }
+      const p = await client.people._userId(p1.id).$get()
+      console.log("viewInfoPersonInFront", p)
+
+      showPersonInfo(p, 30 * 1000)
+    }
+
+    const viewInfoObjectInFront = async () => {
+      const c = objectCellInFront.value
+      if (!c) {
+        return
+      }
+      showObjectInfo(c, 30 * 1000)
+    }
+
+    const startChatInFront = async () => {
+      const p = personInFront.value
+      if (myChatGroup.value || !p) {
+        return
+      }
+      state.selectedUsers.clear()
+      state.selectedUsers.add(p.id)
+      const r = await startChat(props, state, props.axios)
+      if (r) {
+        console.log(r)
+        showMessage(
+          state.locale == "ja" ? "会話を開始しました" : "You started chat."
+        )
+      }
+      const el = document.querySelector(
+        "#local-chat-input"
+      ) as HTMLTextAreaElement
+      if (el) {
+        el.focus()
+      }
+    }
 
     const posterComponent = ref<typeof Poster>()
 
@@ -1012,9 +1062,6 @@ export default defineComponent({
         state.socket?.emit("Unsubscribe", {
           channel: poster_id,
         })
-        if (props.isMobile) {
-          state.mobilePane = "map"
-        }
         state.highlightUnreadPoster = {}
         await nextTick(() => {
           if (state.playingBGM) {
@@ -1025,8 +1072,6 @@ export default defineComponent({
         console.error("Leave poster failed")
       }
     }
-
-    const myChatGroup = _myChatGroup(props, state)
 
     const sendOrUpdateComment = async (
       text: string,
@@ -1043,7 +1088,6 @@ export default defineComponent({
       if (updating) {
         const r = await updateComment(
           props.axios,
-          state.skywayRoom,
           props.room_id,
           text,
           encrypting,
@@ -1056,7 +1100,6 @@ export default defineComponent({
       } else {
         const r = await sendComment(
           props.axios,
-          state.skywayRoom,
           props.room_id,
           text,
           encrypting,
@@ -1122,7 +1165,7 @@ export default defineComponent({
     ) => {
       state.selectedPos = pos
       if (!pos) {
-        state.selectedUsers = new Set()
+        state.selectedUsers?.clear()
         return
       }
       const person: PersonInMap | undefined = Object.values(state.people).find(
@@ -1137,7 +1180,7 @@ export default defineComponent({
       ) {
         state.selectedUsers = new Set([person.id])
       } else {
-        state.selectedUsers = new Set()
+        state.selectedUsers?.clear()
       }
     }
 
@@ -1166,7 +1209,73 @@ export default defineComponent({
       }
     }
 
+    const inputSpaceKey = () => {
+      if (objectCellInFront.value) {
+        if (state.objectInfo.text) {
+          state.objectInfo.hide = true
+          state.objectInfo.text = ""
+        } else {
+          viewInfoObjectInFront()
+            .then(() => {
+              //
+            })
+            .catch(() => {
+              //
+            })
+        }
+      } else if (personInFront.value) {
+        if (state.personInfo.person) {
+          state.personInfo.hide = true
+          state.personInfo.person = undefined
+        } else {
+          viewInfoPersonInFront()
+            .then(() => {
+              //
+            })
+            .catch(() => {
+              //
+            })
+        }
+      }
+    }
+
+    const inputEnterKey = () => {
+      console.log("input Enter", adjacentPoster.value, posterLooking.value)
+      if (adjacentPoster.value && !posterLooking.value) {
+        enterPoster(props.axios, props, state)()
+          .then(() => {
+            //
+          })
+          .catch(() => {
+            //
+          })
+      } else if (personInFront.value) {
+        startChatInFront()
+          .then(() => {
+            //
+          })
+          .catch(() => {
+            //
+          })
+      }
+    }
+
+    const inputEscKey = () => {
+      if (posterLooking.value) {
+        leavePoster()
+          .then(() => {
+            //
+          })
+          .catch(() => {
+            //
+          })
+      }
+    }
+
     const handleGlobalKeyDown = (ev: KeyboardEvent) => {
+      if (state.inputFocused) {
+        return
+      }
       if (
         [
           "ArrowRight",
@@ -1181,11 +1290,16 @@ export default defineComponent({
           "u",
           "b",
           "n",
-        ].indexOf(ev.key) != -1 &&
-        !state.inputFocused
+        ].indexOf(ev.key) != -1
       ) {
         const key = ev.key as ArrowKey
         return inputArrowKey(key)
+      } else if (ev.key == " ") {
+        return inputSpaceKey()
+      } else if (ev.key == "Enter") {
+        return inputEnterKey()
+      } else if (ev.key == "Escape") {
+        return inputEscKey()
       } else {
         return false
       }
@@ -1230,6 +1344,18 @@ export default defineComponent({
           "virtual-poster:" + props.myUserId + ":config:encryption"
         ) {
           state.enableEncryption = ev.newValue == "1"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:locale"
+        ) {
+          state.locale =
+            ev.newValue == "ja" ? "ja" : ev.newValue == "en" ? "en" : "ja"
+        } else if (
+          ev.key ==
+          "virtual-poster:" + props.myUserId + ":config:map_cell_size"
+        ) {
+          const v = parseInt(ev.newValue || "0")
+          state.mapCellSize = isNaN(v) ? 48 : v
         }
       })
       const mm = window.matchMedia("(prefers-color-scheme: dark)")
@@ -1270,7 +1396,7 @@ export default defineComponent({
           .catch(() => {
             return {
               ok: false,
-              status: "API error",
+              status: "APIError",
               socket_url: undefined,
               socket_protocol: undefined,
               public_key: undefined,
@@ -1278,22 +1404,40 @@ export default defineComponent({
           })
         if (!data.ok) {
           alert(
-            "部屋に入れませんでした。" +
+            (state.locale == "ja"
+              ? "部屋に入れませんでした。"
+              : "Could not enter the room: ") +
               (data.status == "NoAccess"
-                ? " アクセス権がありません。"
+                ? state.locale == "ja"
+                  ? "アクセス権がありません。"
+                  : "Access not granted"
                 : data.status == "NoSpace"
-                ? "スペースがありません。"
+                ? state.locale == "ja"
+                  ? "スペースがありません。"
+                  : "No open space in the map"
                 : data.status == "DoesNotExist"
-                ? "部屋が見つかりません。"
+                ? state.locale == "ja"
+                  ? "部屋が見つかりません。"
+                  : "Room is not found"
+                : data.status == "APIError"
+                ? state.locale == "ja"
+                  ? "サーバーに接続できません。少し待ってページをリロードしてください。"
+                  : "Cannot connect to the server. Wait and reload later."
                 : "")
           )
-          location.href = "/"
+          if (data.status != "APIError") {
+            location.href = "/"
+          }
           return
         }
         // let socket_url = "http://localhost:5000/"
         const socket_url = data.socket_url
         if (!socket_url) {
-          alert("WebSocketの設定が見つかりません")
+          alert(
+            state.locale == "ja"
+              ? "WebSocketの設定が見つかりません"
+              : "WebSocket configuration not found"
+          )
           location.href = "/"
           return
         }
@@ -1376,24 +1520,42 @@ export default defineComponent({
           state.center = {
             x: inRange(
               me.x,
-              props.isMobile ? 4 : 5,
-              state.cols - (props.isMobile ? 4 : 5) - 1
+              props.isMobile ? 4 : state.viewDistance,
+              state.cols - (props.isMobile ? 4 : state.viewDistance) - 1
             ),
             y: inRange(
               me.y,
-              props.isMobile ? 6 : 5,
-              state.rows - (props.isMobile ? 6 : 5) - 1
+              props.isMobile ? 6 : state.viewDistance,
+              state.rows - (props.isMobile ? 6 : state.viewDistance) - 1
             ),
           }
+          const max_y = Math.min(
+            state.rows - 1,
+            state.center.y + state.viewDistance
+          )
+          const max_x = Math.min(
+            state.cols - 1,
+            state.center.x + state.viewDistance
+          )
+          for (
+            let y = Math.max(0, me.y - state.viewDistance);
+            y <= max_y;
+            y++
+          ) {
+            for (
+              let x = Math.max(0, me.x - state.viewDistance);
+              x <= max_x;
+              x++
+            ) {
+              state.cellVisibility[y][x] = "visible"
+            }
+          }
+          state.cellVisibility[me.y][me.x] = "visited"
           state.hidden = false
         }
       })().catch(err => {
         console.error(err)
-        // alert("部屋に入れませんでした。ホーム画面に戻ります。")
-        // `location`.href = "/"
       })
-
-      // window.setInterval(state.refreshToken, 1000 * 60 * 59)
     })
 
     watch(
@@ -1513,6 +1675,10 @@ export default defineComponent({
       state.personInfo.hide = true
     }
 
+    const hideObjectInfo = () => {
+      state.objectInfo.hide = true
+    }
+
     const dblClick = async (p: Point) => {
       state.selectedPos = null
       await dblClickHandler(props, state, props.axios)(p)
@@ -1551,11 +1717,12 @@ export default defineComponent({
     })
 
     const hoverOnCell = (p: { x: number; y: number; person?: PersonInMap }) => {
-      state.cellOnHover = { cell: state.hallMap[p.y][p.x], person: p.person }
+      state.cellOnHover.cell = state.hallMap[p.y][p.x]
+      state.cellOnHover.person = p.person
     }
 
     const uploadPoster = async (file: File, poster_id: string) => {
-      await doUploadPoster(props.axios, state, file, poster_id)
+      await doUploadPoster(props.myUserId, props.axios, state, file, poster_id)
     }
 
     const onFocusInput = (focused: boolean) => {
@@ -1602,7 +1769,7 @@ export default defineComponent({
       if (group_id) {
         client.maps
           ._roomId(props.room_id)
-          .groups._groupId(group_id)
+          .chat_groups._groupId(group_id)
           .leave.$post()
           .then(data => {
             console.log(data)
@@ -1611,14 +1778,10 @@ export default defineComponent({
                 //Vue.set
                 state.chatGroups[group_id] = data.leftGroup
               }
-              showMessage("会話から離脱しました。")
+              showMessage(lang("left_chat"))
               state.encryption_possible_in_chat = !!state.privateKey
               //Vue.set
               state.people_typing[props.myUserId] = false
-              if (state.skywayRoom) {
-                state.skywayRoom.close()
-                state.skywayRoom = null
-              }
             } else {
               //
             }
@@ -1626,33 +1789,6 @@ export default defineComponent({
           .catch(err => {
             console.error(err)
           })
-      }
-    }
-
-    const posterLooking = _posterLooking(props, state)
-
-    const personInFront = _personInFront(props, state)
-
-    const moveToPane = (pane: string) => {
-      if ((pane == "poster" || pane == "poster_chat") && !posterLooking.value) {
-        return
-      }
-      location.hash = pane
-      state.mobilePane = pane
-    }
-
-    const moveToMypage = (tab: string) => {
-      location.hash = "#" + tab
-      state.mobilePane = "mypage"
-    }
-
-    if (props.isMobile) {
-      if (["", "#"].indexOf(location.hash) != -1) {
-        location.hash = "#map"
-      } else if (["#account", "#avatar"].indexOf(location.hash) != -1) {
-        state.mobilePane = "mypage"
-      } else {
-        state.mobilePane = location.hash.slice(1)
       }
     }
 
@@ -1669,6 +1805,9 @@ export default defineComponent({
 
     const readComment = (comment_id: CommentId, immediate?: boolean) => {
       if (!state.comments[comment_id]) {
+        return
+      }
+      if (state.comments[comment_id].read) {
         return
       }
       state.comments[comment_id].read = true
@@ -1849,37 +1988,13 @@ export default defineComponent({
       highlightUnreadPosterComments(poster_id, true)
     }
 
+    const setPoster = (pid: PosterId, poster: PosterTyp) => {
+      state.posters[pid] = poster
+    }
+
     const setPosterContainerWidth = (w: number) => {
       console.log("setPosterContainerWidth", w)
       state.posterContainerWidth = w
-    }
-
-    const startChatInFront = async () => {
-      const p = personInFront.value
-      if (myChatGroup.value || !p) {
-        return
-      }
-      state.selectedUsers.clear()
-      state.selectedUsers.add(p.id)
-      const r = await startChat(props, state, props.axios)
-      if (r) {
-        console.log(r)
-        showMessage("会話を開始しました")
-      }
-    }
-
-    const viewInfoPersonInFront = async () => {
-      const p1 = personInFront.value
-      if (!p1) {
-        return
-      }
-      const p = await client.people._userId(p1.id).$get()
-      console.log("viewInfoPersonInFront", p)
-      let s = "名前: " + p.name + ""
-      if (p.profiles) {
-        s += "　プロフィール: " + JSON.stringify(p.profiles)
-      }
-      showPersonInfo(p, 30 * 1000)
     }
 
     watch(
@@ -1890,8 +2005,31 @@ export default defineComponent({
         }
       }
     )
+
+    const cssVars = reactive({
+      "--cell_size": computed(() => {
+        return "" + state.mapCellSize + "px"
+      }),
+    })
+
+    const mapCalculatedProps = {
+      personInFront,
+      objectCellInFront,
+      selectedPerson,
+    }
+    const mapEventHandlers = {
+      personInFront,
+      objectCellInFront,
+    }
+    const posterEventHandlers = {
+      setPoster,
+      uploadPoster,
+      updatePosterComment,
+      approachPoster,
+    }
     return {
       ...toRefs(state),
+      roomAppState: state,
       formatTime,
       truncateComment,
       commentTree: _commentTree(state, "chat"),
@@ -1903,13 +2041,13 @@ export default defineComponent({
       adjacentPosters,
       selectedPoster,
       leaveChat,
-      uploadPoster,
       deleteComment: deleteComment(props.axios),
       deletePosterComment: deletePosterComment(props.axios),
       onInputTextChange,
       cellsMag: cellsMag(state, props.isMobile ? 4 : 5, props.isMobile ? 6 : 5),
       hideMessage,
       hidePersonInfo,
+      hideObjectInfo,
       dblClick,
       toggleBot,
       setEditingOld,
@@ -1924,14 +2062,11 @@ export default defineComponent({
       adjacentPoster,
       posterLooking: posterLooking,
       myself,
-      updatePosterComment,
       chatGroupOfUser: chatGroupOfUser(state),
-      selectedPerson,
+
       posterComponent,
       enterPoster: enterPoster(props.axios, props, state),
       leavePoster,
-      moveToPane,
-      moveToMypage,
       setHoverWithDelay,
       cancelHover,
       readComment,
@@ -1939,12 +2074,16 @@ export default defineComponent({
       highlightUnreadComments,
       playBGM: playBGM,
       stopBGM: stopBGM,
-      approachPoster,
       setPosterContainerWidth,
-      personInFront,
       startChatInFront,
       viewInfoPersonInFront,
+      viewInfoObjectInFront,
       showProfileKind,
+      lang,
+      ...mapCalculatedProps,
+      ...mapEventHandlers,
+      ...posterEventHandlers,
+      cssVars,
     }
   },
 })
@@ -2003,9 +2142,12 @@ body {
 }
 
 #header {
+  position: absolute;
+  padding: 0px;
   background: white;
   z-index: 100;
-  width: 528px;
+  left: 8px;
+  width: calc(var(--cell_size) * 11);
   height: 38px;
   margin: 0px;
   /* background: #ccc; */
@@ -2013,6 +2155,16 @@ body {
 
 .dark #header {
   background: black;
+}
+
+#page-title-info {
+  display: inline-block;
+  width: calc(var(--cell_size) * 11 - 188px);
+  height: 30px;
+  overflow: hidden;
+  font-size: 13px;
+  margin: 2px 0px 0px 7px;
+  line-height: 1.2em;
 }
 
 #help {
@@ -2032,8 +2184,8 @@ h2 {
   box-sizing: border-box;
   position: absolute;
   left: 8px;
-  top: 580px;
-  width: 528px;
+  top: calc(var(--cell_size) * 11 + 52px);
+  width: calc(var(--cell_size) * 11);
   height: 25px;
   background: black;
   color: yellow;
@@ -2049,7 +2201,7 @@ h2 {
 }
 
 #announce.poster_active {
-  top: 293px;
+  top: calc(var(--cell_size) * 5 + 53px);
   transition: top 0.5s 0.5s;
 }
 
@@ -2058,50 +2210,40 @@ h2 {
 }
 
 button#leave-chat-on-map {
-  position: absolute;
   width: 120px;
-  height: 26px;
-  left: 400px;
-  top: 60px;
 }
 
 button#start-chat-on-map {
-  position: absolute;
   width: 120px;
-  height: 26px;
-  left: 400px;
-  top: 60px;
 }
 
 button#view-info-person-on-map {
-  position: absolute;
   width: 120px;
-  height: 26px;
-  left: 400px;
-  top: 90px;
 }
 
 button#view-info-person-on-map.poster-adjacent {
-  left: 270px;
+  right: calc(var(--cell_size) * 12 / 48 + 130px);
   top: 60px;
 }
 
-button#enter-poster-on-map {
+button#view-info-object-on-map {
+  width: 120px;
+}
+
+button.map-tool-pos1 {
   position: absolute;
   width: 150px;
   height: 26px;
-  left: 370px;
-  top: 90px;
+  right: calc(var(--cell_size) * 12 / 48);
+  top: 60px;
 }
 
-.mobile button#enter-poster-on-map,
-.mobile button#leave-poster-on-map {
-  font-size: 27px;
-  left: 10vw;
-  top: 10px;
-  width: 80vw;
-  /* right: 10px; */
-  height: 40px;
+button.map-tool-pos2 {
+  position: absolute;
+  width: 150px;
+  height: 26px;
+  right: calc(var(--cell_size) * 12 / 48);
+  top: 90px;
 }
 
 div#poster-preview {
@@ -2109,23 +2251,10 @@ div#poster-preview {
   padding: 8px;
   width: 180px;
   /* height: 100px; */
-  left: 340px;
+  right: calc(var(--cell_size) * 12 / 48);
   top: 120px;
   font-size: 14px;
   background: rgba(255, 255, 255, 0.6);
-}
-
-.mobile div#poster-preview {
-  left: 10vw;
-  width: 80vw;
-}
-
-button#leave-poster-on-map {
-  position: absolute;
-  width: 150px;
-  height: 26px;
-  left: 370px;
-  top: 90px;
 }
 
 #access-log-notice {
@@ -2208,7 +2337,7 @@ button#leave-poster-on-map {
 #all-connection-status {
   position: absolute;
   top: 35px;
-  left: 300px;
+  left: calc(var(--cell_size) * 11 - 188px);
   font-weight: bold;
   font-size: 10px;
 }
@@ -2216,7 +2345,7 @@ button#leave-poster-on-map {
 #connection-status {
   position: absolute;
   top: 35px;
-  left: 450px;
+  left: calc(var(--cell_size) * 11 - 78px);
   font-weight: bold;
   font-size: 10px;
 }
@@ -2237,15 +2366,16 @@ button#leave-poster-on-map {
 
 #message {
   position: absolute;
-  top: 500px;
-  left: 100px;
-  width: 350px;
+  top: calc(50px + var(--cell_size) * 11 - 78px);
+  left: calc(var(--cell_size) * 0.5 + 8px);
+  width: calc(var(--cell_size) * 10);
   height: 60px;
   font-size: 12px;
   padding: 8px;
-  background: rgba(234, 252, 243, 0.4);
+  background: rgba(234, 252, 243, 0.7);
   box-shadow: 2px 2px 2px #8c8;
   /* animation: opacity 1s linear; */
+  z-index: 100;
 }
 
 .poster_active #message {
@@ -2267,14 +2397,15 @@ button#leave-poster-on-map {
 #person-info {
   position: absolute;
   word-break: break-all;
-  top: 400px;
-  left: 50px;
-  width: 440px;
+  top: calc(50px + var(--cell_size) * 11 - 178px);
+  left: calc(var(--cell_size) * 0.5 + 8px);
+  width: calc(var(--cell_size) * 10);
   height: 160px;
   font-size: 12px;
   padding: 8px;
   background: rgba(200, 200, 255, 0.9);
   box-shadow: 2px 2px 2px #8c8;
+  z-index: 100;
   /* animation: opacity 1s linear; */
 }
 
@@ -2287,6 +2418,32 @@ button#leave-poster-on-map {
 }
 
 #person-info.hide {
+  display: none;
+}
+
+#object-info {
+  position: absolute;
+  word-break: break-all;
+  top: calc(50px + var(--cell_size) * 11 - 178px);
+  left: calc(var(--cell_size) * 0.5 + 8px);
+  width: calc(var(--cell_size) * 10);
+  height: 160px;
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(200, 200, 255, 0.9);
+  box-shadow: 2px 2px 2px #8c8;
+  z-index: 100;
+}
+
+#object-info-close {
+  border: 1px solid black;
+  font-size: 14px !important ;
+  font-weight: bold !important;
+  float: right;
+  cursor: pointer;
+}
+
+#object-info.hide {
   display: none;
 }
 
@@ -2318,58 +2475,32 @@ button#leave-poster-on-map {
   opacity: 0.3;
 }
 
-#app-main.mobile {
-  height: 100%;
-  margin: 0px 0px calc(100vw / 6) 0px;
-}
-
-#mobile-menu {
-  position: fixed;
-  width: 100%;
-  height: calc(100vw / 6 + 5px);
-  margin: 0px;
-  top: calc(100vh - 100vw / 6);
-  z-index: 100;
-}
-
-.mobile-menu-item {
-  background: #bbb;
-  width: calc(100vw / 6);
-  height: 105%;
-  margin: 0px;
-  margin-bottom: 30px;
-  float: left;
-}
-
-.mobile-menu-item img {
-  width: 10vw;
-  margin: calc((100vw / 6 - 10vw) / 2);
-  display: block;
-  text-align: center;
-}
-
-.mobile-menu-item.disabled img {
-  opacity: 0.3;
-}
-
-.mobile-menu-item-active {
-  position: absolute;
-  background: #33f;
-  width: calc(100vw / 6);
-  height: calc(100vw / 6 / 10);
-  bottom: 0px;
-}
-
 #tools-on-map {
   position: absolute;
   top: 0px;
-  left: 0px;
+  left: calc(var(--cell_size) * 11);
+  width: 0px;
   height: calc(200px);
   z-index: 10;
 }
 
+#tools-on-map > * {
+  z-index: 100;
+}
+
 .with-tool-tip .tooltip {
   position: absolute;
+  display: none;
+  background: black;
+  border-radius: 5px;
+  padding: 5px;
+  color: white;
+  z-index: 300;
+}
+
+.with-tool-tip.right .tooltip {
+  position: absolute;
+  right: 0px;
   display: none;
   background: black;
   border-radius: 5px;

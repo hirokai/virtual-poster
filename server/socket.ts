@@ -31,6 +31,9 @@ import {
   SocketMessageFromUser,
   PosterCommentDecrypted,
   RoomUpdateSocketData,
+  MapUpdateEntry,
+  MapUpdateSocketData,
+  MapReplaceSocketData,
 } from "../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -118,6 +121,13 @@ export class Emit {
       }
       this.socketQueue[msg][d.room].push(s)
       this.emitter.to(d.room + ":" + d.user).emit("Moved", s)
+
+      const s2 = encodeMoved(d, true)
+      const room_observe = d.room + ":__observe__"
+      if (!this.socketQueue[msg][room_observe]) {
+        this.socketQueue[msg][room_observe] = []
+      }
+      this.socketQueue[msg][room_observe].push(s2)
     } else if (msg == "person") {
       const rooms: RoomId[] = Object.keys(this.socketQueue[msg])
       for (const room of rooms) {
@@ -132,6 +142,12 @@ export class Emit {
 
   room(d: RoomUpdateSocketData, socket: Emitter = this.emitter) {
     socket.emit("Room", d)
+  }
+  mapUpdate(ds: MapUpdateSocketData, socket: Emitter = this.emitter) {
+    socket.emit("MapUpdate", ds)
+  }
+  mapReplace(d: MapReplaceSocketData, socket: Emitter = this.emitter) {
+    socket.emit("MapReplace", d)
   }
   peopleNew(d: PersonInMap[], socket: Emitter = this.emitter): void {
     this.log.debug("PersonNew", d)
@@ -415,7 +431,11 @@ export function setupSocketHandlers(
           return
         }
 
-        socket.join(room)
+        if (observe_only) {
+          socket.join(room + ":__observe__") // This will give room ID for Moved socket.
+        } else {
+          socket.join(room)
+        }
         socket.join(user)
         socket.join(room + ":" + user)
 

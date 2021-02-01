@@ -1,5 +1,5 @@
 <template>
-  <div id="minimap-container">
+  <div id="minimap-container" :style="cssVars">
     <canvas
       id="minimap-canvas"
       :style="{
@@ -34,7 +34,7 @@
     >
       <g>
         <g
-          v-for="person in people"
+          v-for="person in peopleFiltered"
           :key="person.id"
           :transform="
             'translate (' + person.x * size + ' ' + person.y * size + ')'
@@ -172,13 +172,45 @@ import {
   Person,
   Direction,
   VisualStyle,
+  CellVisibility,
+  Room,
 } from "@/@types/types"
 import { abstractColorOfAvatar } from "./util"
-import { Poster } from "@/api/@types"
+import { PersonInMap, Poster } from "@/api/@types"
 import { compact, flatten, keyBy } from "@/common/util"
+
+function calcSize(
+  rows: number,
+  cols: number,
+  mainMapCellSize: number,
+  mobile: boolean
+) {
+  if (!mobile) {
+    return rows == 0
+      ? 0
+      : Math.floor(
+          Math.max(
+            1,
+            Math.min(
+              (mainMapCellSize * 11) / cols,
+              (window.innerHeight - mainMapCellSize * 11 - 85) / rows
+            )
+          )
+        )
+  } else {
+    return rows == 0
+      ? 0
+      : Math.floor(
+          Math.max(2, Math.min(400 / cols, (window.innerHeight - 8) / rows))
+        )
+  }
+}
 
 export default defineComponent({
   props: {
+    room: {
+      type: Object as PropType<Room>,
+    },
     people_typing: {
       type: Object as PropType<{ [index: string]: boolean }>,
       required: true,
@@ -196,7 +228,7 @@ export default defineComponent({
       required: true,
     },
     people: {
-      type: Object as PropType<{ [index: string]: Person }>,
+      type: Object as PropType<{ [index: string]: PersonInMap }>,
       required: true,
     },
     posters: {
@@ -230,6 +262,14 @@ export default defineComponent({
       type: String as PropType<VisualStyle>,
       required: true,
     },
+    mainMapCellSize: {
+      type: Number,
+      required: true,
+    },
+    cellVisibility: {
+      type: Array as PropType<CellVisibility[][]>,
+      required: true,
+    },
   },
 
   setup(props, context) {
@@ -246,43 +286,23 @@ export default defineComponent({
                 )
               )
             ),
+      mapBaseCanvas: undefined as undefined | HTMLCanvasElement,
     })
     let rtime
     let timeout = false
     const delta = 200
-
-    watch([props.cells], () => {
-      state.size =
-        props.cells.length == 0
-          ? 0
-          : Math.floor(
-              Math.max(
-                1,
-                Math.min(
-                  528 / props.cells[0].length,
-                  (window.innerHeight - 612 - 8) / props.cells.length
-                )
-              )
-            )
-    })
 
     function resizeend() {
       if (Date.now() - rtime < delta) {
         setTimeout(resizeend, delta)
       } else {
         timeout = false
-        state.size =
-          props.cells.length == 0
-            ? 1
-            : Math.floor(
-                Math.max(
-                  1,
-                  Math.min(
-                    528 / props.cells[0].length,
-                    (window.innerHeight - 612 - 8) / props.cells.length
-                  )
-                )
-              )
+        state.size = calcSize(
+          props.cells.length,
+          props.cells[0] ? props.cells[0].length : 0,
+          props.mainMapCellSize,
+          props.isMobile
+        )
       }
     }
 
@@ -338,7 +358,16 @@ export default defineComponent({
         x: Math.floor(ev.offsetX / state.size),
         y: Math.floor(ev.offsetY / state.size),
       }
-      context.emit("dbl-click", p)
+      if (
+        props.room?.minimap_visibility == "all_initial" ||
+        props.room?.minimap_visibility == "map_initial" ||
+        (props.cellVisibility[p.y] &&
+          props.cellVisibility[p.y][p.x] != "not_visited")
+      ) {
+        context.emit("dbl-click", p)
+      } else {
+        alert("未探索のエリアにはダブルクリックで一括移動できません")
+      }
       ev.stopPropagation()
     }
 
@@ -381,8 +410,8 @@ export default defineComponent({
       })
     }
 
-    const drawMap = async () => {
-      console.log("drawMap()", imgs)
+    const drawBaseMap = () => {
+      console.log("drawBaseMap()", imgs)
       const ti = performance.now()
       const canvas = document.getElementById(
         "minimap-canvas"
@@ -392,13 +421,21 @@ export default defineComponent({
       canvas.height = s * props.cells.length
       canvas.width = s * (props.cells[0] || []).length
 
+      state.mapBaseCanvas = document.createElement("canvas")
+      state.mapBaseCanvas.width = canvas.width
+      state.mapBaseCanvas.height = canvas.height
+      const ctx = state.mapBaseCanvas.getContext("2d")
+      if (!ctx) {
+        console.error("Canvas context null")
+        return
+      }
+
       // const s = 3.5
       // console.log("Minimap cell size", s, props.cells.length)
       if (pictureStyle.value) {
         // Draw a image.
 
         // console.log("Map size", props.cells[0]?.length, props.cells.length)
-        const ctx = canvas.getContext("2d")!
         ctx.font = "bold " + s * 0.7 + "px 'sans-serif'"
         ctx.textAlign = "center"
         for (const y in props.cells) {
@@ -473,7 +510,6 @@ export default defineComponent({
           }
         }
       } else {
-        const ctx = canvas.getContext("2d")!
         ctx.font = "bold " + s * 0.7 + "px 'sans-serif'"
         ctx.textAlign = "center"
         const colors = {
@@ -525,6 +561,72 @@ export default defineComponent({
       )
     }
 
+    const peopleFiltered = computed(() => {
+      const v = props.room?.minimap_visibility
+      if (v == "all_initial") {
+        return props.people
+      }
+      const res: { [user_id: string]: Person } = {}
+      for (const p of Object.values(props.people)) {
+        if (
+          props.cellVisibility[p.y] &&
+          props.cellVisibility[p.y][p.x] != "not_visited"
+        ) {
+          res[p.id] = p
+        }
+      }
+      return res
+    })
+
+    const drawMapOverlay = () => {
+      console.log("drawMapOverlay")
+      const canvas = document.getElementById(
+        "minimap-canvas"
+      ) as HTMLCanvasElement
+
+      const ctxOn = canvas.getContext("2d")!
+      const ctx = state.mapBaseCanvas?.getContext("2d")
+      if (!ctx) {
+        console.error("Context not found")
+        return
+      }
+
+      ctxOn.putImageData(
+        ctx.getImageData(0, 0, canvas.width, canvas.height),
+        0,
+        0
+      )
+      const sx = state.size
+      const sy = state.size
+      for (const y in props.cells) {
+        for (const x in props.cells[y]) {
+          if (
+            props.room!.minimap_visibility != "all_initial" &&
+            props.room!.minimap_visibility != "map_initial" &&
+            props.cellVisibility[+y] &&
+            props.cellVisibility[+y][+x] == "not_visited"
+          ) {
+            ctxOn.fillStyle = "black"
+            ctxOn.fillRect(+x * sx, +y * sy, sx, sy)
+          }
+        }
+      }
+    }
+
+    watch(
+      () => props.cells,
+      () => {
+        state.size = calcSize(
+          props.cells.length,
+          props.cells[0] ? props.cells[0].length : 0,
+          props.mainMapCellSize,
+
+          props.isMobile
+        )
+        requestAnimationFrame(drawBaseMap)
+      }
+    )
+
     watch(
       () => [state.size, props.cells, props.visualStyle, props.posters],
       async (newValues, oldValues) => {
@@ -559,13 +661,34 @@ export default defineComponent({
               }
             }
           }
-          await requestAnimationFrame(drawMap)
+          requestAnimationFrame(drawBaseMap)
+          if (props.room) {
+            requestAnimationFrame(drawMapOverlay)
+          }
         }
       },
       { deep: true }
     )
+
+    watch(
+      () => [props.cellVisibility, props.room],
+      async () => {
+        await requestAnimationFrame(drawMapOverlay)
+        // if (
+        //   props.room?.minimap_visibility == "all_only_visited" ||
+        //   props.room?.minimap_visibility == "map_only_visited"
+        // ) {
+        //   await requestAnimationFrame(drawMapOverlay)
+        // } else {
+        //   await requestAnimationFrame(drawBaseMap)
+        //   await requestAnimationFrame(drawMapOverlay)
+        // }
+      },
+      { deep: true }
+    )
+
     // onMounted(async () => {
-    //   await drawMap()
+    //   await drawBaseMap()
     // })
 
     const monochromeStyle = computed(() => {
@@ -573,6 +696,12 @@ export default defineComponent({
         props.visualStyle == "monochrome" ||
         props.visualStyle == "abstract_monochrome"
       )
+    })
+
+    const cssVars = reactive({
+      "--main_cell_size": computed(() => {
+        return "" + props.mainMapCellSize + "px"
+      }),
     })
 
     return {
@@ -586,6 +715,8 @@ export default defineComponent({
       pictureStyle,
       abstractColorOfAvatar,
       monochromeStyle,
+      peopleFiltered,
+      cssVars,
     }
   },
 })
@@ -594,7 +725,7 @@ export default defineComponent({
 <style lang="css">
 svg#minimap {
   position: absolute;
-  top: 612px;
+  top: calc(var(--main_cell_size) * 11 + 84px);
   left: 8px;
   user-select: none;
   transition: opacity 0.5s linear;
@@ -626,7 +757,7 @@ svg#minimap.monochrome {
 
 canvas#minimap-canvas {
   position: absolute;
-  top: 612px;
+  top: calc(var(--main_cell_size) * 11 + 84px);
   left: 8px;
   transition: opacity 0.3s linear;
   /* border: 2px solid #ccc; */

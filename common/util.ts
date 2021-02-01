@@ -12,12 +12,14 @@ import {
   PersonPos,
   Tree,
   AppNotification,
+  MapUpdateEntry,
 } from "@/@types/types"
 import fromPairs from "lodash/fromPairs"
 import minBy from "lodash/minBy"
 import groupBy from "lodash/groupBy"
 
 import * as bunyan from "bunyan"
+import { getCellOpenFromString } from "./maps"
 const log = bunyan.createLogger({ name: "util", src: true, level: 1 })
 
 // Native
@@ -74,6 +76,9 @@ export function mapValues<A, B>(
 }
 
 export function removeUndefined<T>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return obj
+  }
   const newObj = {} as T
   Object.keys(obj).forEach(key => {
     if (obj[key] === Object(obj[key])) newObj[key] = removeUndefined(obj[key])
@@ -101,6 +106,22 @@ export const getPos = (
 export function isOpenCell(c: Cell) {
   return c.open
   // return c.kind == "grass" || c.kind == "poster_seat" || c.kind == "mud"
+}
+
+export function updateMapCell(cell: Cell, c: MapUpdateEntry) {
+  for (const k of Object.keys(c)) {
+    if (k == "x" || k == "y") {
+      continue
+    }
+    if (c[k] == null) {
+      cell[k] = undefined
+    } else if (c[k] != undefined) {
+      cell[k] = c[k]
+    }
+  }
+  if (c.kind) {
+    cell.open = getCellOpenFromString(c.kind)
+  }
 }
 
 export function encodeMoved(d: PersonPos, room = false): string {
@@ -708,20 +729,24 @@ export function decodeNotificationData(
   }
 }
 
-export const showProfileKind = (key: string, p: { metadata: any }): string => {
+export const showProfileKind = (
+  key: string,
+  p?: { metadata: any },
+  locale: "ja" | "en" = "ja"
+): string => {
   console.log("showProfileKind", p)
   if (key == "url") {
     return "URL"
   } else if (key == "display_name_short") {
-    return "表示名（短縮）"
+    return locale == "ja" ? "表示名（短縮）" : "Display name"
   } else if (key == "display_name_full") {
-    return "表示名（フル）"
+    return locale == "ja" ? "表示名（フル）" : "Display name (full)"
   } else if (key == "affiliation") {
-    return "所属"
+    return locale == "ja" ? "所属" : "Affiliation"
   } else if (key == "email") {
     return "Email"
   } else if (key == "avatar") {
-    return "アバター"
+    return locale == "ja" ? "アバター" : "Avatar"
   } else if (key == "url") {
     return "URL"
   } else if (key == "url2") {
@@ -729,6 +754,6 @@ export const showProfileKind = (key: string, p: { metadata: any }): string => {
   } else if (key == "url3") {
     return "URL 3"
   } else {
-    return p.metadata?.key_display_name || key
+    return p?.metadata?.key_display_name || key
   }
 }

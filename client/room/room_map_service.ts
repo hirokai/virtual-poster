@@ -47,7 +47,7 @@ import {
 
 import { getClosestAdjacentPoints, isAdjacent, range } from "@/common/util"
 
-const BATCH_MOVE_INTERVAL = 100
+const BATCH_MOVE_INTERVAL = 300
 import { AxiosStatic, AxiosInstance } from "axios"
 import axiosClient from "@aspida/axios"
 import api from "@/api/$api"
@@ -79,11 +79,11 @@ export const personInFront: (
 export const objectCellInFront: (
   props: RoomAppProps,
   state: RoomAppState
-) => ComputedRef<Cell | undefined> = (
+) => ComputedRef<{ cell?: Cell; object: boolean }> = (
   props: RoomAppProps,
   state: RoomAppState
 ) =>
-  computed(() => {
+  computed<{ cell?: Cell; object: boolean }>(() => {
     const me = state.people[props.myUserId]
     const p = me ? lookingAt(me) : undefined
     const c = p
@@ -93,10 +93,12 @@ export const objectCellInFront: (
       : undefined
     if (c) {
       if (c.link_url || c.poster_number) {
-        return c
+        return { cell: c, object: true }
+      } else {
+        return { cell: c, object: false }
       }
     }
-    return undefined
+    return { object: false }
   })
 
 export const playBGM = (props: RoomAppProps, state: RoomAppState) => () => {
@@ -155,26 +157,40 @@ export function showMessage(props: RoomAppProps, state: RoomAppState) {
   }
 }
 
+export function showMyStatus(props: RoomAppProps, state: RoomAppState) {
+  return (
+    person: PersonInMap,
+    in_menu: boolean,
+    timeout = 5000,
+    color: string | undefined = undefined
+  ): void => {
+    state.people[person.id] = person
+  }
+}
+
 export function showPersonInfo(props: RoomAppProps, state: RoomAppState) {
   return (
     person: Person,
+    in_menu: boolean,
     timeout = 5000,
     color: string | undefined = undefined
   ): void => {
     state.personInfo.person = person
     state.personInfo.color = color
-    state.personInfo.hide = false
-    if (state.personInfo.timer) {
-      window.clearTimeout(state.personInfo.timer)
-      state.personInfo.timer = undefined
-    }
-    if (timeout > 0) {
-      state.personInfo.timer = window.setTimeout(() => {
-        if (state.personInfo) {
-          state.personInfo.hide = true
-          state.personInfo.person = undefined
-        }
-      }, timeout)
+    if (!in_menu) {
+      state.personInfo.hide = false
+      if (state.personInfo.timer) {
+        window.clearTimeout(state.personInfo.timer)
+        state.personInfo.timer = undefined
+      }
+      if (timeout > 0) {
+        state.personInfo.timer = window.setTimeout(() => {
+          if (state.personInfo) {
+            state.personInfo.hide = true
+            state.personInfo.person = undefined
+          }
+        }, timeout)
+      }
     }
   }
 }
@@ -182,6 +198,7 @@ export function showPersonInfo(props: RoomAppProps, state: RoomAppState) {
 export function showObjectInfo(props: RoomAppProps, state: RoomAppState) {
   return (
     cell: Cell,
+    in_menu: boolean,
     timeout = 5000,
     color: string | undefined = undefined
   ): void => {
@@ -192,18 +209,20 @@ export function showObjectInfo(props: RoomAppProps, state: RoomAppState) {
           (cell.poster_number == undefined ? "不明" : cell.poster_number)
         : ""
     state.objectInfo.color = color
-    state.objectInfo.hide = false
-    if (state.objectInfo.timer) {
-      window.clearTimeout(state.objectInfo.timer)
-      state.objectInfo.timer = undefined
-    }
-    if (timeout > 0) {
-      state.objectInfo.timer = window.setTimeout(() => {
-        if (state.objectInfo) {
-          state.objectInfo.hide = true
-          state.objectInfo.text = ""
-        }
-      }, timeout)
+    if (!in_menu) {
+      state.objectInfo.hide = false
+      if (state.objectInfo.timer) {
+        window.clearTimeout(state.objectInfo.timer)
+        state.objectInfo.timer = undefined
+      }
+      if (timeout > 0) {
+        state.objectInfo.timer = window.setTimeout(() => {
+          if (state.objectInfo) {
+            state.objectInfo.hide = true
+            state.objectInfo.text = ""
+          }
+        }, timeout)
+      }
     }
   }
 }
@@ -672,6 +691,28 @@ export const moveByArrow = (
   return { ok: true, moved }
 }
 
+const highlightMinimap = (props: RoomAppProps, state: RoomAppState) => (
+  regions: [number, number][][]
+) => {
+  state.miniMapHighlighted = regions
+  if (state.miniMapHighlightedTimer) {
+    window.clearInterval(state.miniMapHighlightedTimer)
+    state.miniMapHighlightedTimer = undefined
+  }
+  let count = 0
+  state.miniMapHighlightedTimer = window.setInterval(() => {
+    count += 1
+    state.miniMapHighlighted =
+      count % 2 == 0
+        ? (state.miniMapHighlighted = regions)
+        : (state.miniMapHighlighted = undefined)
+    if (count > 10) {
+      window.clearInterval(state.miniMapHighlightedTimer)
+      state.miniMapHighlightedTimer = undefined
+    }
+  }, 800)
+}
+
 export const cellsMag = (
   state: RoomAppState,
   radiusX: number,
@@ -830,10 +871,28 @@ export const dblClickHandler = (
       if (!r) {
         return
       }
-      await client.maps
+      const r2 = await client.maps
         ._roomId(props.room_id)
         .poster_slots._posterNumber(poster_location)
         .$post({ body: {} })
+      if (r2.ok) {
+        showMessage(
+          props,
+          state
+        )(`ポスター板（${poster_location}番）を確保しました。`)
+      } else {
+        if (r2.allowed_regions) {
+          highlightMinimap(
+            props,
+            state
+          )(r2.allowed_regions as [number, number][][])
+        }
+        if (r2.suggested_message) {
+          alert(r2.suggested_message)
+        } else {
+          alert("ポスター板を確保できませんでした。")
+        }
+      }
     }
 
     if (!person && !poster) {

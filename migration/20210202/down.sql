@@ -1,3 +1,7 @@
+DROP TABLE IF EXISTS map_rule;
+
+DROP TABLE IF EXISTS map_region;
+
 DROP TABLE IF EXISTS person_in_people_group;
 
 DROP TABLE IF EXISTS people_group;

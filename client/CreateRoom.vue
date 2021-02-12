@@ -48,6 +48,7 @@
                 }}マス）
               </div>
               <div>
+                <h4 class="title is-4">セル</h4>
                 <table class="table">
                   <thead>
                     <tr>
@@ -65,6 +66,61 @@
                       <td>{{ v.custom_image }}</td>
                       <td>{{ v.link_url }}</td>
                       <td>{{ numCellsByCellTypeId(k) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="room_info.regions">
+                <h4 class="title is-4">領域</h4>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>名前</th>
+                      <th>説明</th>
+                      <th>座標 左上</th>
+                      <th>座標 右下</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="v in room_info.regions" :key="v.name">
+                      <td>{{ v.name }}</td>
+                      <td>{{ v.description }}</td>
+                      <td>{{ v.rect.x1 }}, {{ v.rect.y1 }}</td>
+                      <td>{{ v.rect.x2 }}, {{ v.rect.y2 }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="room_info.permissions">
+                <h4 class="title is-4">ルール</h4>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>グループ</th>
+                      <th>領域</th>
+                      <th>アクション</th>
+                      <th>許可</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="v in room_info.permissions"
+                      :key="
+                        v.group_names + ':' + v.region_names + ':' + v.operation
+                      "
+                    >
+                      <td>{{ v.group_names.join(", ") }}</td>
+                      <td>{{ v.region_names.join(", ") }}</td>
+                      <td>{{ v.operation }}</td>
+                      <td>
+                        {{
+                          v.allow == "allow"
+                            ? "OK"
+                            : v.allow == "disallow"
+                            ? "NG"
+                            : "(invalid)"
+                        }}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -206,6 +262,17 @@ export default defineComponent({
         }
         cells: (Cell & { cell_type_id: string })[][]
         userGroups: { name: string; description?: string }[]
+        regions?: {
+          name: string
+          description?: string
+          rect: { x1: number; y1: number; x2: number; y2: number }
+        }[]
+        permissions?: {
+          group_names: string[]
+          region_names: string[]
+          operation: "poster_paste" | "drop_area"
+          allow: "allow" | "disallow"
+        }[]
       }
     } = {
       small: {
@@ -286,6 +353,17 @@ export default defineComponent({
             }
             cells: (Cell & { cell_type_id: string })[][]
             userGroups?: { name: string; description?: string }[]
+            regions?: {
+              name: string
+              description?: string
+              rect: { x1: number; y1: number; x2: number; y2: number }
+            }[]
+            permissions?: {
+              group_names: string[]
+              region_names: string[]
+              operation: "poster_paste" | "drop_area"
+              allow: "allow" | "disallow"
+            }[]
           }
         | undefined,
     })
@@ -395,12 +473,7 @@ export default defineComponent({
       })
       if (r.ok && r.room_id) {
         state.result.message = "部屋が作成されました。"
-        const groups = state.room_info?.userGroups
-        if (groups) {
-          await client.maps
-            ._roomId(r.room_id)
-            .people_groups.$post({ body: { groups } })
-        }
+
         state.result.ok = true
         state.result.room_id = r.room_id
         // location.href = "/mypage#rooms"
@@ -477,6 +550,8 @@ export default defineComponent({
               cellTable: r.cell_table,
               cells: r.cells,
               userGroups: r.userGroups || [],
+              regions: r.regions,
+              permissions: r.permissions,
             }
             state.room_info = roomInfoTable["custom"]
 

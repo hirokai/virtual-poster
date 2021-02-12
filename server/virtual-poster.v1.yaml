@@ -1579,13 +1579,15 @@ paths:
       description: Logout from the app and remove cookie
   "/maps/{roomId}/poster_slots/{posterNumber}":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
         in: path
         required: true
       - schema:
-          type: number
+          type: string
         name: posterNumber
         in: path
         required: true
@@ -1608,6 +1610,20 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  error:
+                    type: string
+                  suggested_message:
+                    type: string
+                  allowed_regions:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: array
+                        items:
+                          type: number
+                required:
+                  - ok
       operationId: post-maps-roomId-take_slot-posterLocation
       description: Take a poster slot. The poster title and user ID can be optionally passed.
       requestBody:
@@ -1642,6 +1658,8 @@ paths:
         - debugToken: []
   "/maps/{roomId}/poster_slots_multi":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -1686,7 +1704,7 @@ paths:
                     type: object
                     properties:
                       poster_number:
-                        type: integer
+                        type: string
                       user:
                         $ref: "#/components/schemas/UserId"
                       title:
@@ -2341,6 +2359,8 @@ paths:
       description: "Get a signed URL of   a poster image. This is only allowed when the user is viewing poster.  "
   "/maps/{roomId}/access_code/{accessCode}/renew":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2377,6 +2397,8 @@ paths:
       description: "Renew access code.  "
   "/maps/{roomId}/people/{userId}":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2437,8 +2459,24 @@ paths:
                     - user
               required:
                 - role
+    get:
+      summary: Get person info in room
+      operationId: get-maps-roomId-people-userId
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonInMap"
+      tags:
+        - people
+        - map
+      description: Get person info in room. It includes person stats.
   "/maps/{roomId}/access_code":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2493,6 +2531,8 @@ paths:
                   type: boolean
   "/maps/{roomId}/access_code/{accessCode}":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2552,6 +2592,8 @@ paths:
       description: "Delete room access code  "
   "/maps/{roomId}/posters/refresh_files":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2579,6 +2621,8 @@ paths:
       description: "Refresh file_uploaded flags by actual exitence of files  "
   "/maps/{roomId}/people_multi":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2626,11 +2670,17 @@ paths:
                         type: string
                       assign_position:
                         type: boolean
+                      groups:
+                        type: array
+                        items:
+                          type: string
                     required:
                       - email
       description: Add users to a map.
   "/maps/{roomId}/people_allowed":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2658,8 +2708,13 @@ paths:
                       properties:
                         email:
                           type: string
+                        groups:
+                          type: array
+                          items:
+                            type: string
                       required:
                         - email
+                        - groups
                 required:
                   - ok
                   - people
@@ -2698,6 +2753,8 @@ paths:
         - people
   "/maps/{roomId}/people_allowed/{email}":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2729,8 +2786,39 @@ paths:
                   - ok
       operationId: delete-maps-roomId-people_allowed-email
       description: "Delete user access by email. The user can be just email stub who are not registered, and does not necessarily have an user ID."
+    patch:
+      summary: Update people groups the user belongs to
+      operationId: patch-maps-roomId-people_allowed-email
+      responses:
+        "200":
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                groups:
+                  type: array
+                  items:
+                    type: string
+                add_groups:
+                  type: array
+                  items:
+                    type: string
+                remove_groups:
+                  type: array
+                  items:
+                    type: string
+        description: ""
+      description: "Update people groups the user belongs to. This applies to the email address of (possibly not-yet-existing) account.  "
+      tags:
+        - people
+        - map
   "/comments/{commentId}/read":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: commentId
@@ -2768,6 +2856,8 @@ paths:
                 - read
   "/maps/{roomId}/notifications":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2818,6 +2908,8 @@ paths:
       operationId: post-maps-roomId-reset_cache
   "/posters/{posterId}/file_upload_url":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: posterId
@@ -2856,6 +2948,8 @@ paths:
           required: true
   "/posters/{posterId}/file_upload_done":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: posterId
@@ -2890,6 +2984,8 @@ paths:
                 - mime_type
   "/maps/{roomId}/cells":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -2991,6 +3087,8 @@ paths:
       description: Get map layout of the room
   "/maps/{roomId}/people_groups":
     parameters:
+      - $ref: "#/components/parameters/debug_token"
+      - $ref: "#/components/parameters/debug_as"
       - schema:
           type: string
         name: roomId
@@ -3038,6 +3136,35 @@ paths:
               required:
                 - groups
       parameters: []
+  "/gen_id/{entity}":
+    parameters:
+      - schema:
+          type: string
+          enum:
+            - comment
+            - map_cell
+            - notification
+            - chat_group
+            - user_group
+            - poster
+            - room
+            - user
+        name: entity
+        in: path
+        required: true
+    get:
+      summary: Generate a new ID
+      tags:
+        - misc
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+      operationId: get-gen_id-entity
+      description: Generate a new ID.
 components:
   parameters:
     debug_token:
@@ -3142,7 +3269,7 @@ components:
         open:
           type: boolean
         poster_number:
-          type: integer
+          type: string
         custom_image:
           type: string
         link_url:
@@ -3390,7 +3517,7 @@ components:
         location:
           type: string
         poster_number:
-          type: integer
+          type: string
         x:
           type: number
         "y":
@@ -3405,6 +3532,10 @@ components:
           description: Allow access only when the author is online
         file_size:
           type: integer
+        viewed:
+          type: boolean
+        metadata:
+          type: object
       required:
         - id
         - last_updated
@@ -3469,7 +3600,6 @@ components:
         - name
         - last_updated
         - moving
-        - stats
     PersonStat:
       title: PersonStat
       type: object
@@ -3484,11 +3614,14 @@ components:
           type: integer
         chat_char_count:
           type: integer
+        viewed_posters:
+          type: integer
       required:
         - walking_steps
         - people_encountered
         - chat_count
         - chat_char_count
+        - viewed_posters
     CommentId:
       title: CommentId
       type: string
@@ -3500,7 +3633,8 @@ components:
         kind:
           type: string
           enum:
-            - poster_comments
+            - new_chat_comments
+            - new_poster_comments
         data:
           $ref: "#/components/schemas/NotificationPosterCommentsData"
         timestamp:

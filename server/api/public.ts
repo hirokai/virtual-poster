@@ -4,6 +4,7 @@ import _ from "lodash"
 import { UserId, PostIdTokenResponse } from "../../@types/types"
 import { verifyIdToken } from "../auth"
 import { config } from "../config"
+import { addEmailToQueue } from "../email"
 
 const USER_REGISTRATION = config.user_registration
 const PRODUCTION = process.env.NODE_ENV == "production"

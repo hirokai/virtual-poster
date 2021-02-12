@@ -234,7 +234,11 @@ describe("Posters", () => {
     }
     console.log(JSON.stringify((await mm.getStaticMap()).cells))
     const p = await createUser(mm.room_id)
-    const { ok, poster, error } = await mm.assignPosterLocation(1, p.id, false)
+    const { ok, poster, error } = await mm.assignPosterLocation(
+      "1",
+      p.id,
+      false
+    )
     expect(ok).toBeTruthy()
     expect(poster).toBeDefined()
     expect(error).toBeUndefined()

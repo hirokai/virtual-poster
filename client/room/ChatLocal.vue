@@ -261,9 +261,8 @@
               {{ formatTime(c.timestamp, locale) }}: {{ lang("joined") }}
             </span>
             <span v-else-if="c.event_type == 'join'" class="gray">
-              {{ formatTime(c.timestamp, locale) }}: チャットに{{
-                people[c.event_data.from_user]?.name
-              }}が加わりました
+              {{ formatTime(c.timestamp, locale) }}:
+              {{ people[c.event_data.from_user]?.name }}がチャットに参加しました
             </span>
             <span
               v-else-if="
@@ -272,13 +271,13 @@
               class="gray"
             >
               {{ formatTime(c.timestamp, locale) }}:
-              {{ people[c.event_data.to_user].name }}をチャットに加えました
+              {{ people[c.event_data.to_user].name }}をチャットに追加しました
             </span>
             <span v-else-if="c.event_type == 'add'" class="gray">
               {{ formatTime(c.timestamp, locale) }}:
               {{ people[c.event_data.to_user].name }}が{{
                 people[c.event_data.from_user].name
-              }}によりチャットに加えられました
+              }}によりチャットに追加されました
             </span>
             <span
               v-else-if="
@@ -611,12 +610,12 @@ export default defineComponent({
     const onInput = async ev => {
       const text = ev.target.value
       state.chatInputValue = text
-      console.log("watch ChatInput", text)
+      // console.log("watch ChatInput", text)
       if (!text || text == "") {
         state.numInputRows = 1
       }
       const c = countLines(ev.target)
-      console.log("countLines", c)
+      // console.log("countLines", c)
       state.numInputRows = Math.min(c, 15)
       context.emit("on-input-text-change")
     }

@@ -3,6 +3,7 @@ import {
   CellType,
   MapUpdateEntry,
   MinimapVisibility,
+  ParsedMapData,
   UserGroup,
 } from "@/@types/types"
 
@@ -10,6 +11,9 @@ import Papa from "papaparse"
 import { flatten } from "./util"
 
 export function getCellOpenFromString(s: string): boolean {
+  if (!s) {
+    return false
+  }
   if (s[0] == "+") {
     return true
   } else if (s[0] == "-") {
@@ -22,6 +26,9 @@ export function getCellOpenFromString(s: string): boolean {
 }
 
 export function getCellKindFromString(s: string): CellType | null {
+  if (!s) {
+    return null
+  }
   if (s.match(/[+-]?grass$/)) {
     return "grass"
   } else if (s.match(/[+-]?wall$/)) {
@@ -57,17 +64,7 @@ export function mkKindString(t: CellType, open: boolean): string {
 export function loadCustomMapCsv(
   str: string,
   genMapCellId?: () => string
-): {
-  name?: string
-  cells: (Cell & { cell_type_id: string })[][]
-  numRows: number
-  numCols: number
-  numCells: number
-  cell_table: { [cell_name: string]: { custom_image?: string; kind: CellType } }
-  allowPosterAssignment?: boolean
-  minimapVisibility?: MinimapVisibility
-  userGroups?: { name: string; description?: string }[]
-} | null {
+): ParsedMapData | null {
   let name: string | undefined = undefined
   let allow_poster_assignment: boolean | undefined = undefined
   let minimap_visibility: MinimapVisibility | undefined = undefined
@@ -77,7 +74,28 @@ export function loadCustomMapCsv(
   let userGroups:
     | { name: string; description?: string }[]
     | undefined = undefined
-  type CsvSection = "Config" | "UserGroups" | "Cells" | "Layout"
+  let regions:
+    | {
+        name: string
+        description?: string
+        rect: { x1: number; y1: number; x2: number; y2: number }
+      }[]
+    | undefined = undefined
+  let permissions:
+    | {
+        group_names: string[]
+        region_names: string[]
+        operation: "poster_paste" | "drop_area"
+        allow: "allow" | "disallow"
+      }[]
+    | undefined = undefined
+  type CsvSection =
+    | "Config"
+    | "Regions"
+    | "UserGroups"
+    | "Permissions"
+    | "Cells"
+    | "Layout"
   const data = Papa.parse<string[]>(str, { comments: "#" })
   if (!data.data) {
     return null
@@ -100,7 +118,16 @@ export function loadCustomMapCsv(
     if (row.length == 1 && row[0] == "") {
       continue
     }
-    if (["Config", "UserGroups", "Cells", "Layout"].indexOf(row[0]) != -1) {
+    if (
+      [
+        "Config",
+        "Regions",
+        "UserGroups",
+        "Permissions",
+        "Cells",
+        "Layout",
+      ].indexOf(row[0]) != -1
+    ) {
       section = row[0] as CsvSection
       console.log("Entering section: ", section)
       if (section == "Layout") {
@@ -137,6 +164,34 @@ export function loadCustomMapCsv(
             description: row[1] || undefined,
           })
         }
+      } else if (section == "Regions") {
+        if (row[0]) {
+          if (!regions) {
+            regions = []
+          }
+          regions.push({
+            name: row[0],
+            description: row[1],
+            rect: {
+              x1: parseInt(row[2]),
+              y1: parseInt(row[3]),
+              x2: parseInt(row[4]),
+              y2: parseInt(row[5]),
+            },
+          })
+        }
+      } else if (section == "Permissions") {
+        if (row[0]) {
+          if (!permissions) {
+            permissions = []
+          }
+          permissions.push({
+            group_names: row[0].split(";;"),
+            region_names: row[1].split(";;"),
+            operation: row[2] as "poster_paste" | "drop_area",
+            allow: row[3] as "allow" | "disallow",
+          })
+        }
       } else if (section == "Cells") {
         const kind = getCellKindFromString(row[1]) || "grass"
         const open = getCellOpenFromString(row[1])
@@ -144,7 +199,7 @@ export function loadCustomMapCsv(
         if (row[0] == "__default__") {
           default_cell = {
             kind: getCellKindFromString(row[1]) || "grass",
-            open,
+            open: open == null ? true : open,
             id: "",
             x: -1,
             y: -1,
@@ -156,7 +211,7 @@ export function loadCustomMapCsv(
         } else {
           cell_table[row[0]] = {
             kind,
-            open,
+            open: open == null ? true : open,
             x: -1,
             y: -1,
             id: "",
@@ -215,26 +270,30 @@ export function loadCustomMapCsv(
     allowPosterAssignment: allow_poster_assignment,
     minimapVisibility: minimap_visibility,
     userGroups,
+    regions,
+    permissions,
   }
 }
 
 export function verifyMapUpdateEntries(changes: any): MapUpdateEntry[] | null {
-  if (typeof changes != "object") {
+  if (typeof changes != "object" || !Array.isArray(changes)) {
     return null
   }
   const res: MapUpdateEntry[] = []
   for (const c of changes) {
+    console.log(c)
     if (typeof c.x != "number") {
       return null
     }
     if (typeof c.y != "number") {
       return null
     }
+    const open = getCellOpenFromString(c.kind)
     const d: MapUpdateEntry = {
       x: c.x,
       y: c.y,
       kind: getCellKindFromString(c.kind) || undefined,
-      open: getCellOpenFromString(c.kind),
+      open: open == null ? true : open,
       //FIXME: Complete this.
     }
     res.push(d)

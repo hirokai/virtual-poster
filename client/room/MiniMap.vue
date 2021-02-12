@@ -238,6 +238,9 @@ export default defineComponent({
     selectedPos: {
       type: Object as PropType<{ x: number; y: number }>,
     },
+    miniMapHighlighted: {
+      type: Array as PropType<[number, number][][]>,
+    },
     center: {
       type: Object as PropType<{ x: number; y: number }>,
       required: true,
@@ -611,6 +614,19 @@ export default defineComponent({
           }
         }
       }
+      if (props.miniMapHighlighted) {
+        console.log({ miniMapHighlighted: props.miniMapHighlighted })
+        ctxOn.fillStyle = "rgba(255,0,0,0.5)"
+        for (const region of props.miniMapHighlighted) {
+          ctxOn.beginPath()
+          ctxOn.moveTo(region[0][0] * state.size, region[0][1] * state.size)
+          for (const p of region.slice(1)) {
+            ctxOn.lineTo(p[0] * state.size, p[1] * state.size)
+          }
+          ctxOn.closePath()
+          ctxOn.fill()
+        }
+      }
     }
 
     watch(
@@ -628,24 +644,35 @@ export default defineComponent({
     )
 
     watch(
+      () => props.miniMapHighlighted,
+      () => {
+        requestAnimationFrame(drawMapOverlay)
+      }
+    )
+
+    watch(
       () => [state.size, props.cells, props.visualStyle, props.posters],
       async (newValues, oldValues) => {
         if (state.size > 0) {
           if (oldValues[0] != newValues[0]) {
             const image_names = [
-              "kusa.png",
-              "yama.png",
-              "water.png",
-              "mud.png",
-              "kusa_red.png",
-              "post.png",
-            ].concat(
-              compact(
-                flatten(props.cells).map(c => {
-                  return c.custom_image
-                })
-              )
-            )
+              ...new Set(
+                [
+                  "kusa.png",
+                  "yama.png",
+                  "water.png",
+                  "mud.png",
+                  "kusa_red.png",
+                  "post.png",
+                ].concat(
+                  compact(
+                    flatten(props.cells).map(c => {
+                      return c.custom_image
+                    })
+                  )
+                )
+              ),
+            ]
             console.log("Loading images", state.size, image_names)
 
             const ps = image_names

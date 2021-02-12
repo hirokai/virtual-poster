@@ -106,7 +106,7 @@ async function routes(
         name: string
         email: string
         rooms: { id: RoomId; groups: UserGroupId[] }[]
-        posters: { room: RoomId; loc: number; title?: string }[]
+        posters: { room: RoomId; loc: string; title?: string }[]
       }[] = _.compact(
         Papa.parse<string[]>(text)
           .data.slice(1)
@@ -120,7 +120,7 @@ async function routes(
                   ? []
                   : r3.split(";").map(s => {
                       const [a, b] = s.split(":")
-                      return { room: a, loc: parseInt(b) }
+                      return { room: a, loc: b }
                     })
               const titles = r4 != "" ? r4.split("@@@@") : []
               const rooms =
@@ -139,7 +139,7 @@ async function routes(
                 rooms,
                 posters: posters.map((p, i): {
                   room: RoomId
-                  loc: number
+                  loc: string
                   title?: string
                 } => {
                   if (titles[i]) {
@@ -237,20 +237,17 @@ async function routes(
         throw { statusCode: 404 }
       }
       const csv_string = new TextDecoder().decode(req["file"].buffer)
-      const posters = _.filter(
-        Papa.parse<string[]>(csv_string, {
-          skipEmptyLines: true,
+      const posters = Papa.parse<string[]>(csv_string, {
+        skipEmptyLines: true,
+      })
+        .data.slice(1)
+        .map(row => {
+          return {
+            author: row[0] as UserId,
+            poster_number: row[1],
+            title: row[2] == "" ? undefined : (row[2] as string),
+          }
         })
-          .data.slice(1)
-          .map(row => {
-            return {
-              author: row[0] as UserId,
-              poster_number: parseInt(row[1]),
-              title: row[2] == "" ? undefined : (row[2] as string),
-            }
-          }),
-        e => !isNaN(e.poster_number)
-      )
       const poster_assigned = await map.importPosterAssignment(posters, true)
       emit.channel(req.params.room).posterReset()
 
@@ -261,12 +258,12 @@ async function routes(
   fastify.post<any>("/maps/:roomId/poster_slots_multi", async req => {
     const { roomId } = req.params
     const posters = req.body.posters as {
-      poster_number: number
+      poster_number: string
       user: UserId
       title?: string
     }[]
-    const added: number[] = []
-    const error_entries: number[] = []
+    const added: string[] = []
+    const error_entries: string[] = []
     for (const p of posters) {
       const r = await model.maps[roomId].assignPosterLocation(
         p.poster_number,

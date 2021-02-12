@@ -41,6 +41,7 @@ import { promisify } from "util"
 import fs from "fs"
 import path from "path"
 import { random_str } from "./util"
+import PolyBool from "polybooljs"
 const readFile = promisify(fs.readFile)
 
 const USE_S3_CDN = config.aws.s3.via_cdn
@@ -244,7 +245,7 @@ export class MapModel {
             allow_poster_assignment,
             minimap_visibility,
             array_agg(DISTINCT concat(cd.code, ' ', cd.active, ' ', cd.granted_right, ' ', cd.timestamp)) AS access_codes,
-            array_agg(DISTINCT concat(pg.id, ' ', pg.name, ' ', pg.description)) AS people_groups
+            array_agg(DISTINCT concat(pg.id, ';;', pg.name, ';;', pg.description)) AS people_groups
         FROM
             room
             LEFT JOIN room_access_code AS cd ON cd.room = room.id
@@ -284,7 +285,7 @@ export class MapModel {
     const people_groups: UserGroup[] | undefined = admin
       ? (d["people_groups"] as string[])
           .map((s: string) => {
-            const ts = s.split(" ")
+            const ts = s.split(";;")
             return {
               id: ts[0],
               name: ts[1],
@@ -332,47 +333,105 @@ export class MapModel {
     )
   }
 
-  async addUserToUserGroups(
-    user_email: string,
-    user_id: UserId | null,
-    groups: UserGroupId[]
+  async createRegion(
+    name: string,
+    rect: { x1: number; y1: number; x2: number; y2: number },
+    description?: string
   ) {
-    if (user_id) {
-      for (const g of groups) {
-        const rows = await db.query(
-          `SELECT 1 FROM people_group WHERE id=$1 AND room=$2`,
-          [g, this.room_id]
-        )
-        if (rows.length == 0) {
-          continue
-        }
+    await db.query(
+      `INSERT INTO map_region (room, name,description,x1,y1,x2,y2) values ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        this.room_id,
+        name,
+        description || null,
+        rect.x1,
+        rect.y1,
+        rect.x2,
+        rect.y2,
+      ]
+    )
+  }
+
+  async createRule(
+    group_names: string[],
+    region_names: string[],
+    operation: "poster_paste" | "drop_area",
+    allow: "allow" | "disallow",
+    order: number
+  ): Promise<number> {
+    let order1 = order
+    for (const g of group_names) {
+      for (const r of region_names) {
         await db.query(
-          `DELETE FROM person_in_people_group WHERE people_group=$1 AND person_id=$2`,
-          [g, user_id]
+          `INSERT INTO map_rule (room, group_name, region_name, operation, allow, rule_order) values ($1,$2,$3,$4,$5,$6)`,
+          [this.room_id, g, r, operation, allow == "allow", order1]
         )
-        await db.query(
-          `INSERT INTO person_in_people_group (people_group, person_id) values ($1,$2)`,
-          [g, user_id]
-        )
+        order1 += 1
       }
-    } else {
-      for (const g of groups) {
-        const rows = await db.query(
-          `SELECT 1 FROM people_group WHERE id=$1 AND room=$2`,
-          [g, this.room_id]
-        )
-        if (rows.length == 0) {
-          continue
-        }
-        await db.query(
-          `DELETE FROM person_in_people_group WHERE people_group=$1 AND person_email=$2`,
-          [g, user_email]
-        )
+    }
+    return group_names.length * region_names.length
+  }
+
+  async getPeopleGroupIds(): Promise<UserGroupId[]> {
+    return (
+      await db.query(`SELECT id FROM people_group WHERE room=$1`, [
+        this.room_id,
+      ])
+    ).map(r => r.id)
+  }
+
+  async addUserToUserGroups(user_email: string, groups: UserGroupId[]) {
+    const groups_in_room = await this.getPeopleGroupIds()
+    const group_filtered = _.intersection(groups, groups_in_room)
+    try {
+      for (const g of group_filtered) {
         await db.query(
           `INSERT INTO person_in_people_group (people_group, person_email) values ($1,$2) `,
           [g, user_email]
         )
       }
+      return true
+    } catch (err) {
+      log.error(err)
+      return false
+    }
+  }
+
+  async removeUserFromUserGroups(user_email: string, groups: UserGroupId[]) {
+    const groups_in_room = await this.getPeopleGroupIds()
+    const group_filtered = _.intersection(groups, groups_in_room)
+    try {
+      for (const g of group_filtered) {
+        await db.query(
+          `DELETE FROM person_in_people_group WHERE people_group=$1 AND person_email=$2`,
+          [g, user_email]
+        )
+      }
+      return true
+    } catch (err) {
+      log.error(err)
+      return false
+    }
+  }
+
+  async updateUserGroupsOfUser(user_email: string, groups: UserGroupId[]) {
+    const groups_in_room = await this.getPeopleGroupIds()
+    const group_filtered = _.intersection(groups, groups_in_room)
+    try {
+      await db.query(
+        `DELETE FROM person_in_people_group WHERE people_group IN ($1:csv) AND person_email=$2`,
+        [groups_in_room, user_email]
+      )
+      for (const g of group_filtered) {
+        await db.query(
+          `INSERT INTO person_in_people_group (people_group, person_email) values ($1,$2) `,
+          [g, user_email]
+        )
+      }
+      return true
+    } catch (err) {
+      log.error(err)
+      return false
     }
   }
 
@@ -400,7 +459,14 @@ export class MapModel {
         (await model.people.getUserIdFromEmail(user_email)) ||
         undefined
 
-      await this.addUserToUserGroups(user_email, user_id || null, groups)
+      if (user_id) {
+        await db.query(
+          `INSERT INTO person_stats (person,room) VALUES ($1,$2) ON CONFLICT ON CONSTRAINT person_stats_pkey DO NOTHING`,
+          [user_id, this.room_id]
+        )
+      }
+
+      await this.addUserToUserGroups(user_email, groups)
       if (assignPosition) {
         if (!user_id) {
           return {
@@ -455,13 +521,13 @@ export class MapModel {
       //FIXME: Delete other activities such as comments, groups, posters, etc.
       if (user_id) {
         await db.query(
-          `DELETE FROM person_in_people_group WHERE person_id=$1 AND people_group IN (SELECT id FROM people_group WHERE room=$2)`,
-          [user_id, this.room_id]
-        )
-        await db.query(
           `DELETE FROM person_position WHERE room=$1 AND person=$2`,
           [this.room_id, user_id]
         )
+        await db.query(`DELETE FROM person_stats WHERE person=$1 AND room=$2`, [
+          user_id,
+          this.room_id,
+        ])
         await model.redis.accounts.srem(
           "connected_users:room:" + this.room_id + ":__all__",
           user_id
@@ -472,6 +538,10 @@ export class MapModel {
         )
         await model.redis.sockets.del("room:" + this.room_id + ":" + user_id)
       }
+      await db.query(
+        `DELETE FROM person_in_people_group WHERE person_email=$1 AND people_group IN (SELECT id FROM people_group WHERE room=$2)`,
+        [user_email, this.room_id]
+      )
       await db.query(
         `DELETE FROM person_room_access WHERE room=$1 AND email=$2`,
         [this.room_id, user_email]
@@ -582,6 +652,7 @@ export class MapModel {
         await db.query(q + condition)
       }
       await db.query(`COMMIT`)
+      await this.writeRedisCache()
     } catch (err) {
       console.error(err)
       await db.query(`ROLLBACK`)
@@ -957,7 +1028,7 @@ export class MapModel {
     return map
   }
   async importPosterAssignment(
-    posters: { author: UserId; poster_number: number; title?: string }[],
+    posters: { author: UserId; poster_number: string; title?: string }[],
     overwrite: boolean
   ): Promise<Poster[]> {
     const result: Poster[] = []
@@ -1020,7 +1091,7 @@ export class MapModel {
     position?: Point
   }> {
     log.debug("assignUserPosition()", user_id)
-    const user = await model.people.get(user_id, undefined, true)
+    const user = await model.people.get(user_id, true)
     if (!user) {
       return { ok: false, status: "DoesNotExist" }
     }
@@ -1031,7 +1102,14 @@ export class MapModel {
     if (r[0].count == 0) {
       return { ok: false, status: "NoAccess" }
     }
-    const pos: PosDir | null = await this.assignRandomOpenPos(user_id)
+    const user_email = await model.people.getEmail(user_id)
+    if (!user_email) {
+      return { ok: false, status: "NoAccess" }
+    }
+    const pos: PosDir | null = await this.assignRandomOpenPos(
+      user_id,
+      user_email
+    )
     if (!pos) {
       log.error("No open space")
       return { ok: false, status: "NoSpace" }
@@ -1043,6 +1121,10 @@ export class MapModel {
       { x: pos.x, y: pos.y },
       pos.direction,
       true
+    )
+    await model.db.query(
+      `INSERT INTO person_stats (person,room) VALUES ($1,$2) ON CONFLICT ON CONSTRAINT person_stats_pkey DO NOTHING`,
+      [user_id, this.room_id]
     )
     return { ok: true, status: "New", position: { x: pos.x, y: pos.y } }
   }
@@ -1063,6 +1145,10 @@ export class MapModel {
     }
     const rows = await db.query(
       `SELECT * FROM person_position where person=$1 and room=$2;`,
+      [user_id, this.room_id]
+    )
+    await db.query(
+      `INSERT INTO person_stats (person,room) VALUES ($1,$2) ON CONFLICT ON CONSTRAINT person_stats_pkey DO NOTHING`,
       [user_id, this.room_id]
     )
     if (rows.length == 0) {
@@ -1154,15 +1240,39 @@ export class MapModel {
     return { ok: true }
   }
 
-  async getPeopleWithAccess(): Promise<{ email: string }[]> {
+  async getPeopleWithAccess(): Promise<
+    { email: string; groups: UserGroupId[] }[]
+  > {
     const rows = await db.query(
-      `SELECT email FROM person_room_access WHERE room=$1;`,
+      `SELECT
+            ra.email,
+            array_agg(pg.people_group) as groups
+        FROM
+            person_room_access AS ra
+            LEFT JOIN person_in_people_group AS pg ON ra.email = pg.person_email
+        WHERE
+            ra.room = $1
+        GROUP BY
+            ra.email;`,
       [this.room_id]
     )
+    const group_id_list: string[] = (
+      await db.query(`SELECT id FROM people_group WHERE room=$1`, [
+        this.room_id,
+      ])
+    ).map(r => r.id)
+    const group_ids = new Set(group_id_list)
     return rows.map(r => {
-      return { email: r["email"] as string }
+      const groups = r["groups"]
+      return {
+        email: r["email"] as string,
+        groups: (groups[0] == null ? [] : (groups as string[])).filter(s =>
+          group_ids.has(s)
+        ),
+      }
     })
   }
+
   async setTyping(user: UserId, typing: boolean): Promise<void> {
     await redis.accounts.set(
       "typing:" + this.room_id + ":" + user,
@@ -1170,8 +1280,61 @@ export class MapModel {
     )
   }
 
+  async getRegion(
+    name: string
+  ): Promise<{ x1: number; y1: number; x2: number; y2: number } | null> {
+    if (name == "__all__") {
+      const numCols = await this.numCols()
+      const numRows = await this.numRows()
+      return { x1: 0, y1: 0, x2: numCols, y2: numRows }
+    }
+    const rows = await db.query(
+      `SELECT * FROM map_region WHERE room=$1 AND name=$2`,
+      [this.room_id, name]
+    )
+    return rows[0]
+      ? { x1: rows[0].x1, y1: rows[0].y1, x2: rows[0].x2, y2: rows[0].y2 }
+      : null
+  }
+
+  async mkQueryRegion(
+    region_conditions: {
+      region_name: string
+      allow: boolean
+    }[]
+  ): Promise<string> {
+    let s = ""
+    let count = 0
+    if (region_conditions.length == 0) {
+      return ""
+    }
+    s += "AND"
+    for (const cond of region_conditions) {
+      count += 1
+      const r = await this.getRegion(cond.region_name)
+      if (r) {
+        const last = count == region_conditions.length
+        if (cond.allow) {
+          s +=
+            `((x >= ${r?.x1} AND y >= ${r.y1} AND x <= ${r.x2} AND y <= ${r.y2})` +
+            (last
+              ? new Array(region_conditions.length).fill(")").join("")
+              : " OR ")
+        } else {
+          s +=
+            `(NOT (x >= ${r?.x1} AND y >= ${r.y1} AND x <= ${r.x2} AND y <= ${r.y2})` +
+            (last
+              ? new Array(region_conditions.length).fill(")").join("")
+              : " AND ")
+        }
+      }
+    }
+    return s
+  }
+
   async assignRandomOpenPos(
     user_id: UserId,
+    user_email: string,
     remove_old = false
   ): Promise<PosDir | null> {
     const last_updated = Date.now()
@@ -1182,6 +1345,34 @@ export class MapModel {
         [this.room_id, user_id]
       )
     }
+    const region_conditions: {
+      region_name: string
+      allow: boolean
+    }[] = await db.query(
+      `SELECT
+            region_name,
+            allow
+        FROM
+            map_rule
+        WHERE
+            room = $1
+            AND operation = 'drop_area'
+            AND ((group_name IN (
+                SELECT
+                    name
+                FROM
+                    people_group AS g
+                    JOIN person_in_people_group AS pg ON g.id = pg.people_group
+                WHERE
+                    room = $1
+                    AND pg.person_email = $2))
+                OR group_name='__all__')
+        ORDER BY rule_order
+      `,
+      [this.room_id, user_email]
+    )
+    const region_condition_str = await this.mkQueryRegion(region_conditions)
+    console.log(region_condition_str)
     const rows = await db.query(
       `INSERT INTO person_position
             (room,person,last_updated,x,y,direction)
@@ -1193,6 +1384,9 @@ export class MapModel {
                 (SELECT x,y FROM person_position WHERE room=$1)
             AND kind IN ('grass', 'mud', 'poster_seat', '+water', '+wall', '+poster')
             AND (no_initial_position IS NULL OR no_initial_position='f')
+            ` +
+        region_condition_str +
+        `
         ORDER BY RANDOM()
         LIMIT 1
             RETURNING x,y;
@@ -1299,6 +1493,22 @@ export class MapModel {
     }
   }
 
+  async logMove(user_id: UserId, pos: Point, my_move = true) {
+    const cell = await this.getStaticMapAt(pos.x, pos.y)
+    if (cell) {
+      await db.query(
+        `INSERT INTO cell_visit_history (person,"location",last_updated,state) VALUES ($1,$2,$3,$4) ON CONFLICT ON CONSTRAINT cell_visit_history_pkey DO UPDATE SET last_updated=$3,state=$4;`,
+        [user_id, cell.id, Date.now(), "visited"]
+      )
+      if (my_move) {
+        await db.query(
+          `UPDATE person_stats SET walking_steps = walking_steps + 1 WHERE person=$1 AND room=$2`,
+          [user_id, this.room_id]
+        )
+      }
+    }
+  }
+
   async anotherPersonAt(myself: UserId, pos: Point): Promise<UserId | null> {
     const rows = await db.query(
       `SELECT person FROM person_position WHERE room=$1 AND person<>$2 AND x=$3 AND y=$4`,
@@ -1338,8 +1548,114 @@ export class MapModel {
     })
   }
 
+  async checkPosterTakeOk(
+    user_email: string,
+    x: number,
+    y: number
+  ): Promise<{ ok: boolean; allowed_regions?: [number, number][][] }> {
+    const region_conditions: {
+      region_name: string
+      allow: boolean
+    }[] = await db.query(
+      `SELECT
+            region_name,
+            allow
+        FROM
+            map_rule
+        WHERE
+            room = $1
+            AND operation = 'poster_paste'
+            AND ((group_name IN (
+                        SELECT
+                            name
+                        FROM
+                            people_group AS g
+                            JOIN person_in_people_group AS pg ON g.id = pg.people_group
+                        WHERE
+                            room = $1
+                            AND pg.person_email = $2))
+                    OR group_name = '__all__')
+        ORDER BY
+            rule_order
+      `,
+      [this.room_id, user_email]
+    )
+    const regions: {
+      allow: boolean
+      x1: number
+      y1: number
+      x2: number
+      y2: number
+    }[] = []
+    console.log({ region_conditions })
+    for (const cond of region_conditions) {
+      const r = await this.getRegion(cond.region_name)
+      console.log("getRegion result", r, cond.allow)
+      if (r) {
+        regions.push({
+          allow: cond.allow,
+          ...r,
+        })
+      }
+    }
+    for (const r of regions) {
+      if (r.x1 <= x && r.y1 <= y && x <= r.x2 && y <= r.y2) {
+        if (r.allow) {
+          return { ok: true }
+        } else {
+          //Calculated allowed regions
+          let polygon = {
+            regions: [
+              [
+                [0, 0],
+                [0, 1],
+                [1, 1],
+                [1, 0],
+              ],
+            ] as [number, number][][],
+            inverted: false,
+          }
+          for (let i = regions.length - 1; i >= 0; i--) {
+            console.log({ i, r: regions[i] })
+            if (regions[i].allow) {
+              const p = regions[i]
+              polygon = PolyBool.union(polygon, {
+                regions: [
+                  [
+                    [p.x1, p.y1],
+                    [p.x1, p.y2 + 1],
+                    [p.x2 + 1, p.y2 + 1],
+                    [p.x2 + 1, p.y1],
+                  ],
+                ],
+                inverted: false,
+              })
+            } else {
+              const p = regions[i]
+              polygon = PolyBool.difference(polygon, {
+                regions: [
+                  [
+                    [p.x1, p.y1],
+                    [p.x1, p.y2 + 1],
+                    [p.x2 + 1, p.y2 + 1],
+                    [p.x2 + 1, p.y1],
+                  ],
+                ],
+                inverted: false,
+              })
+            }
+            console.log({ polygon: JSON.stringify(polygon.regions) })
+          }
+          return { ok: false, allowed_regions: polygon.regions }
+        }
+      }
+    }
+
+    return { ok: true }
+  }
+
   async assignPosterLocation(
-    poster_number: number,
+    poster_number: string,
     author: UserId,
     overwrite: boolean,
     title?: string,
@@ -1349,6 +1665,7 @@ export class MapModel {
     ok: boolean
     poster?: Poster
     error?: string
+    allowed_regions?: [number, number][][]
     poster_count?: number
   }> {
     log.debug("assignPosterLocation()", poster_number, author, title, overwrite)
@@ -1358,15 +1675,44 @@ export class MapModel {
       `SELECT * FROM map_cell WHERE room=$1 AND poster_number=$2;`,
       [this.room_id, poster_number]
     )
+    console.log({ cells })
     if (cells.length != 1) {
       return { ok: false, error: "Cannot find the poster cell" }
     }
     let res: any[] = []
+    const cell = cells[0]
+    const author_email = await model.people.getEmail(author)
+    if (!author_email) {
+      return {
+        ok: false,
+        error: "User email is not found",
+      }
+    }
+    const r = await this.checkPosterTakeOk(author_email, cell.x, cell.y)
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: "Cannot take this board.",
+        allowed_regions: r.allowed_regions,
+      }
+    }
+    const poster_award_nominated: boolean = await model.people.isGroupMember(
+      author,
+      this.room_id,
+      "__poster_nominees"
+    )
+    console.log({ poster_award_nominated })
     const location = cells[0].id
     try {
       if (overwrite) {
         res = await db.query(
-          `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only,file_uploaded) VALUES ($1,$2,$3,$4,$5,$6,$7,'f') ON CONFLICT ON CONSTRAINT poster_location_key DO UPDATE SET id=$1,last_updated=$2,title=$3,author=$4 RETURNING id;`,
+          `INSERT INTO poster (id, last_updated, title, author, "location", access_log, author_online_only, file_uploaded, attr1_key, attr1_val)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, 'f', 'poster_award_nominated:boolean', $8)
+            ON CONFLICT ON CONSTRAINT poster_location_key
+                DO UPDATE SET
+                    id = $1, last_updated = $2, title = $3, author = $4, attr1_key = 'poster_award_nominated:boolean', attr1_val = 'f'
+                RETURNING
+                    id;`,
           [
             poster_id,
             last_updated,
@@ -1375,12 +1721,13 @@ export class MapModel {
             location,
             access_log,
             author_online_only,
+            poster_award_nominated ? "t" : "f",
           ]
         )
         log.debug("poster overwrite", res)
       } else {
         res = await db.query(
-          `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only,file_uploaded) VALUES ($1,$2,$3,$4,$5,$6,$7,'f') RETURNING id;`,
+          `INSERT INTO poster (id,last_updated,title,author,location,access_log,author_online_only,file_uploaded,attr1_key,attr1_val) VALUES ($1,$2,$3,$4,$5,$6,$7,'f','poster_award_nominated:boolean',$8) RETURNING id;`,
           [
             poster_id,
             last_updated,
@@ -1389,6 +1736,7 @@ export class MapModel {
             location,
             access_log,
             author_online_only,
+            poster_award_nominated ? "t" : "f",
           ]
         )
       }
@@ -1426,13 +1774,16 @@ export class MapModel {
         //   : "/api/posters/" + poster_id + "/file",
         access_log,
         author_online_only,
+        metadata: {
+          poster_award_nominated,
+        },
       },
       poster_count,
     }
   }
 
   async freePosterLocation(
-    poster_number: number,
+    poster_number: string,
     requester: UserId,
     forceRemoveComments = false
   ): Promise<{
@@ -1597,6 +1948,50 @@ export class MapModel {
 
       await db.query(
         `
+      DELETE FROM person_in_people_group
+      WHERE people_group IN (SELECT id FROM people_group WHERE room=$1)
+      `,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
+      DELETE FROM people_group
+      WHERE room=$1
+      `,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
+      DELETE FROM map_region
+      WHERE room=$1
+      `,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
+      DELETE FROM map_rule
+      WHERE room=$1
+      `,
+        [this.room_id]
+      )
+
+      await db.query(`DELETE FROM people_interaction WHERE room=$1`, [
+        this.room_id,
+      ])
+
+      await db.query(
+        `
+      DELETE FROM person_stats
+      WHERE room=$1
+      `,
+        [this.room_id]
+      )
+
+      await db.query(
+        `
         DELETE FROM poster_viewer
         WHERE poster IN (
                 SELECT
@@ -1701,26 +2096,36 @@ export class MapModel {
 
   static async getAllowedRoomsFromCode(
     code: string
-  ): Promise<{ id: RoomId; groups: UserGroupId[] }[] | undefined> {
-    // If it has non-existent room ID, return undefined
+  ): Promise<{
+    rooms: { id: RoomId; groups: UserGroupId[] }[]
+    error?: string
+  }> {
+    // If it has non-existent room ID, return error
     const codes = code.split(":")
-    const rooms_ok: { id: RoomId; groups: UserGroupId[] }[] = []
+    const rooms: { id: RoomId; groups: UserGroupId[] }[] = []
     for (const code of codes) {
       const rows = await model.db.query(
-        `SELECT room,granted_right FROM room_access_code WHERE code=$1`,
+        `SELECT active,room,granted_right FROM room_access_code WHERE code=$1`,
         [code]
       )
       const rid: string | undefined = rows[0]?.room
       const granted_right_str: string = rows[0]?.granted_right || ""
+      const active: boolean = rows[0]?.active
       const groups = granted_right_str.split(";;")
       if (rid) {
         const mm = model.maps[rid]
         if (mm) {
-          rooms_ok.push({ id: rid, groups })
+          if (active) {
+            rooms.push({ id: rid, groups })
+          } else {
+            return { rooms: [], error: "Inactive access code" }
+          }
+        } else {
+          return { rooms: [], error: "Invalid access code" }
         }
       }
     }
-    return rooms_ok
+    return { rooms }
   }
 
   static getDefaultRooms(): { id: RoomId; groups: UserGroupId[] }[] {

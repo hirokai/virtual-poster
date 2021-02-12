@@ -4,7 +4,10 @@
     <div v-if="notifications.length == 0">{{ lang("none") }}</div>
     <div class="notification-entry" v-for="(n, i) in notifications" :key="i">
       <hr v-if="i > 0" />
-      <div v-if="n.kind == 'new_comments'" @click="highlightUnreadComments">
+      <div
+        v-if="n.kind == 'new_chat_comments'"
+        @click="highlightUnreadComments"
+      >
         <div class="header">{{ formatTime(n.timestamp, locale) }}</div>
         {{ n.data?.count }} {{ locale == "ja" ? "件の" : ""
         }}<span style="color: rgb(255, 174, 22); font-weight: bold"
@@ -20,7 +23,7 @@
         <small style="line-height: 0.7em">{{ lang("unread_note") }}</small>
       </div>
       <div
-        v-if="n.kind == 'poster_comments'"
+        v-if="n.kind == 'new_poster_comments'"
         @click="$emit('approach-poster', n.data.poster)"
       >
         {{

@@ -6,7 +6,7 @@ import shortid from "shortid"
 import { Poster, RoomId, UserId, PosterId } from "../../@types/types"
 import { log, db, people, redis } from "./index"
 import { config } from "../config"
-import { isAdjacent } from "../../common/util"
+import { isAdjacent, removeUndefined } from "../../common/util"
 import { promisify } from "util"
 const readFileAsync = promisify(fs.readFile)
 import { ChildProcessWithoutNullStreams, spawn } from "child_process"
@@ -87,7 +87,7 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
 
 export async function getByNumber(
   room_id: RoomId,
-  num: number
+  num: string
 ): Promise<Poster | null> {
   const rows = await db.query(
     `
@@ -173,22 +173,119 @@ export async function deletePoster(poster_id: string): Promise<boolean> {
   return true
 }
 
-export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
+export async function getAll(
+  room_id: RoomId | null,
+  requester?: UserId
+): Promise<Poster[]> {
   const rows = await (room_id
     ? db.query(
-        `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id where location in (SELECT id from map_cell where room=$1);`,
+        `SELECT
+              p.*,
+              c.room,
+              c.x,
+              c.y,
+              c.poster_number,
+              c.custom_image
+          FROM
+              poster AS p
+              JOIN map_cell AS c ON p.location = c.id
+          WHERE
+              LOCATION IN (
+                  SELECT
+                      id
+                  FROM
+                      map_cell
+                  WHERE
+                      room = $1);
+    `,
         [room_id]
       )
     : db.query(
-        `SELECT p.*,c.room,c.x,c.y,c.poster_number,c.custom_image from poster as p join map_cell as c on p.location=c.id;`
+        `SELECT
+              p.*,
+              c.room,
+              c.x,
+              c.y,
+              c.poster_number,
+              c.custom_image
+          FROM
+              poster AS p
+              JOIN map_cell AS c ON p.location = c.id;`
       ))
+
+  const viewed_posters: Set<PosterId> =
+    room_id && requester
+      ? new Set(
+          (
+            await db.query(
+              `
+      SELECT
+        poster
+      FROM
+          poster_viewer
+      WHERE
+          person = $1
+          AND poster IN (
+              SELECT
+                  id
+              FROM
+                  poster
+              WHERE
+                  LOCATION IN (
+                      SELECT
+                          id
+                      FROM
+                          map_cell
+                      WHERE
+                          room = $2));
+  `,
+              [requester, room_id]
+            )
+          ).map(r => r.poster)
+        )
+      : new Set()
+  const parse = (
+    s: string,
+    typ: "boolean" | "string" | "integer" | "float"
+  ) => {
+    if (typ == "string") {
+      return s
+    } else if (typ == "boolean") {
+      return s == "t" || s == "true"
+    } else if (typ == "integer") {
+      const v = parseInt(s)
+      return isNaN(v) ? null : v
+    } else if (typ == "float") {
+      const v = parseFloat(s)
+      return isNaN(v) ? null : v
+    }
+    return null
+  }
   return rows.map(d => {
     const file_url = d.file_uploaded
       ? config.aws.s3.upload
         ? "not_disclosed"
         : "/api/posters/" + d["id"] + "/file"
       : undefined
-    return {
+
+    let metadata: { [index: string]: number | string | boolean } | undefined
+    for (const i of [1, 2, 3, 4, 5]) {
+      const key_k = "attr" + i + "_key"
+      const key_v = "attr" + i + "_val"
+      if (d[key_k]) {
+        const key = d[key_k].split(":")[0]
+        const typ = d[key_k].split(":")[1]
+        const p = parse(d[key_v], typ)
+        if (p) {
+          if (!metadata) {
+            metadata = {}
+          }
+          metadata[key] = p
+        }
+      }
+    }
+    console.log({ metadata })
+    return removeUndefined({
       id: d.id,
       title: d.title,
       author: d.author,
@@ -203,7 +300,9 @@ export async function getAll(room_id: RoomId | null): Promise<Poster[]> {
       author_online_only: d.author_online_only,
       poster_number: d.poster_number,
       watermark: d.watermark,
-    }
+      viewed: viewed_posters.has(d.id),
+      metadata,
+    })
   })
 }
 

@@ -19,7 +19,6 @@ export type Person = {
   name: string
   avatar?: string
   connected?: boolean
-  stats: PersonStat
   public_key?: string
   email?: string
   profiles?: {
@@ -37,6 +36,7 @@ export type PersonInMap = Person & {
   y: number
   direction: Direction
   moving: boolean
+  stats?: PersonStat
   poster_viewing?: PosterId
   email?: string
   role?: "admin" | "user" | "owner"
@@ -46,11 +46,11 @@ export type PersonInMap = Person & {
 // Used for map administration. This can be just reference to a future user stub with only email.
 export type PersonWithMapAccess = {
   email: string
+  people_groups: UserGroupId[]
   registered?: {
     id: string
     avatar: string
     connected: boolean
-    stats: PersonStat
     public_key?: string
     last_updated: number
     name: string
@@ -58,6 +58,7 @@ export type PersonWithMapAccess = {
   in_room?: {
     x: number
     y: number
+    stats?: PersonStat
     direction: Direction
     moving: boolean
     poster_viewing?: PosterId
@@ -89,6 +90,13 @@ export type PersonUpdate = {
   role?: "admin" | "user" | "owner"
 }
 
+export type PersonUpdateByEmail = {
+  email: string
+  room?: RoomId
+  last_updated: number
+  people_groups?: UserGroupId[]
+}
+
 export type PersonRDB = {
   id: UserId
   last_updated: number
@@ -103,6 +111,7 @@ export type PersonWithEmailRooms = Person & { email: string; rooms: RoomId[] }
 
 export type PersonStat = {
   walking_steps: number
+  viewed_posters: number
   people_encountered: string[]
   chat_count: number
   chat_char_count: number
@@ -265,30 +274,46 @@ type RoomAppState = {
   posterContainerWidth: number
 
   locale: "en" | "ja"
+
+  miniMapHighlighted: [number, number][][] | undefined
+  miniMapHighlightedTimer?: number
+
+  menu: {
+    mode: "menu" | "info_object" | "info_person" | "info_status"
+    show: boolean
+    items: Tree<{ text: string; action?: string }>
+    cursor: number[]
+  }
 }
 
+type NotificationKind =
+  | "new_chat_comments"
+  | "new_poster_comments"
+  | "reply_chat_comments"
+  | "reply_poster_comments"
+
 interface NotificationEntry {
-  kind: "reply" | "new_comments" | "poster_comments"
+  kind: NotificationKind
   timestamp: number
   data?: any
 }
 
 interface NewCommentNotification extends NotificationEntry {
-  kind: "new_comments"
+  kind: "new_chat_comments"
   data: {
     count: number
   }
 }
 
 interface ReplyNotification extends NotificationEntry {
-  kind: "reply"
+  kind: "reply_chat_comments"
   data: {
     user: UserId
   }
 }
 
 interface PosterCommentNotification extends NotificationEntry {
-  kind: "poster_comments"
+  kind: "new_poster_comments"
   data: {
     poster: PosterId
     count: number
@@ -307,6 +332,29 @@ type RoomAccessCode = {
   active: boolean
   access_granted: string[]
   timestamp: number
+}
+
+type ParsedMapData = {
+  name?: string
+  cells: (Cell & { cell_type_id: string })[][]
+  numRows: number
+  numCols: number
+  numCells: number
+  cell_table: { [cell_name: string]: { custom_image?: string; kind: CellType } }
+  allowPosterAssignment?: boolean
+  minimapVisibility?: MinimapVisibility
+  userGroups?: { name: string; description?: string }[]
+  regions?: {
+    name: string
+    description?: string
+    rect: { x1: number; y1: number; x2: number; y2: number }
+  }[]
+  permissions?: {
+    group_names: string[]
+    region_names: string[]
+    operation: "poster_paste" | "drop_area"
+    allow: "allow" | "disallow"
+  }[]
 }
 
 type Room = {
@@ -344,7 +392,7 @@ export type Cell = {
   kind: CellType
   open: boolean
   name?: string
-  poster_number?: number
+  poster_number?: string
   custom_image?: string
   link_url?: string
   no_initial_position?: boolean
@@ -363,7 +411,7 @@ type MapCellRDB = {
   x: number
   y: number
   kind: CellType
-  poster_number: number | null
+  poster_number: string | null
   custom_image: string | null
   link_url: string | null
 }
@@ -508,13 +556,15 @@ export type Poster = {
   room: RoomId
   location: MapCellId
   file_url?: string
-  poster_number: number
+  poster_number: string
   x: number
   y: number
   access_log: boolean
   author_online_only: boolean
   watermark?: number
   file_size?: number
+  viewed?: boolean
+  metadata?: { [index: string]: string | boolean | number }
 }
 
 export type Announcement = {
@@ -595,13 +645,14 @@ export interface UserOperationLog {
   data: any
 }
 
-type ChatGroupId = string
-type UserId = string
-type CommentId = string
-type PosterId = string
-type RoomId = string
-type MapCellId = string
-type UserGroupId = string
+type CommentId = string // C*****
+type MapCellId = string // E*****
+type NotificationId = string // F*****
+type ChatGroupId = string // G*****
+type UserGroupId = string // H*****
+type PosterId = string // P*****
+type RoomId = string // R*****
+type UserId = string // U*****
 
 declare global {
   namespace Express {
@@ -673,7 +724,7 @@ type MapUpdateEntry = {
   kind?: CellType
   open?: boolean
   name?: string | null
-  poster_number?: number | null
+  poster_number?: string | null
   custom_image?: string | null
   link_url?: string | null
   no_initial_position?: boolean
@@ -743,6 +794,7 @@ export type AppNotification =
   | "Person"
   | "PersonNew"
   | "PersonUpdate"
+  | "PersonUpdateByEmail"
   | "PersonRemove"
   | "AuthError"
   | "Moved"

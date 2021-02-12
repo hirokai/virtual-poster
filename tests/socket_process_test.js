@@ -119,9 +119,9 @@ function runForSocketIO(uid) {
       token: debug_token,
       debug_as: myUserId,
     })
-    socket.emit("Subscribe", {
-      channel: room,
-    })
+    // socket.emit("Subscribe", {
+    //   channel: room,
+    // })
     console.log(`Waiting to start: ${initial_wait_time.toFixed(0)} ms.`)
     // socket.send(JSON.stringify({ type: "Active" }))
   })

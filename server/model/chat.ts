@@ -19,6 +19,10 @@ import * as model from "../model"
 import shortid from "shortid"
 import { allPointsConnected } from "../../common/util"
 import { config } from "../config"
+import {
+  processChatCommentNotifications,
+  processPosterCommentNotifications,
+} from "./notification"
 
 const PRODUCTION = process.env.NODE_ENV == "production"
 
@@ -55,23 +59,23 @@ export async function getGroupList(
     id: string
     room: string
     color: string
-    users: string
+    users: string[]
     last_updated: string
     kind: "people" | "poster"
   }[] = await (room_id
     ? db.query(
-        `SELECT g.*,string_agg(pcg.person,'::::') as users from chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat WHERE g.room=$1 GROUP BY g.id`,
+        `SELECT g.*,array_agg(pcg.person) as users from chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat WHERE g.room=$1 GROUP BY g.id`,
         [room_id]
       )
     : db.query(
-        `SELECT g.*,string_agg(pcg.person,'::::') as users from chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat GROUP BY g.id`
+        `SELECT g.*,array_agg(pcg.person) as users from chat_group as g join person_in_chat_group as pcg on g.id=pcg.chat GROUP BY g.id`
       ))
   return rows.map(r => {
     const d: ChatGroup = {
       id: r.id,
       room: r.room,
       color: r.color,
-      users: r.users.split("::::"),
+      users: r.users,
       kind: r.kind,
       last_updated: +r.last_updated,
     }
@@ -222,6 +226,91 @@ async function deleteComment(comment_id: string): Promise<boolean> {
     await db.query(`DELETE from comment_to_poster where comment=$1;`, [
       comment_id,
     ])
+    await db.query(
+      `DELETE FROM comment_for_notification
+        WHERE comment IN (
+                SELECT
+                    id
+                FROM
+                    comment
+                WHERE
+                    reply_to IN (
+                        SELECT
+                            id
+                        FROM
+                            comment
+                        WHERE
+                            reply_to IN (
+                                SELECT
+                                    id
+                                FROM
+                                    comment
+                                WHERE
+                                    reply_to IN (
+                                        SELECT
+                                            id
+                                        FROM
+                                            comment
+                                        WHERE
+                                            reply_to = $1))));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE FROM comment_for_notification
+        WHERE comment IN (
+                SELECT
+                    id
+                FROM
+                    comment
+                WHERE            
+                    reply_to IN (
+                        SELECT
+                            id
+                        FROM
+                            comment
+                        WHERE
+                            reply_to IN (
+                                SELECT
+                                    id
+                                FROM
+                                    comment
+                                WHERE
+                                    reply_to = $1)));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE FROM comment_for_notification
+        WHERE comment IN (
+                SELECT
+                    id
+                FROM
+                    comment
+                WHERE
+                    reply_to IN (
+                        SELECT
+                            id
+                        FROM
+                            comment
+                        WHERE
+                            reply_to = $1));`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE FROM comment_for_notification
+        WHERE comment IN (
+                SELECT
+                    id
+                FROM
+                    comment
+                WHERE
+                    reply_to = $1);`,
+      [comment_id]
+    )
+    await db.query(
+      `DELETE FROM comment_for_notification
+        WHERE comment = $1;`,
+      [comment_id]
+    )
     await db.query(
       `DELETE from comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to IN (SELECT id FROM comment WHERE reply_to=$1)));`,
       [comment_id]
@@ -409,7 +498,7 @@ export async function getPosterComments(
           c.person,
           c.x,
           c.y,
-          string_agg(cp.poster, '::::') AS to_poster,
+          array_agg(cp.poster) AS to_poster,
           c.timestamp,
           c.last_updated,
           c.kind,
@@ -437,7 +526,7 @@ export async function getPosterComments(
     poster_id
   )
   const ds: PosterCommentDecrypted[] = rows.map(r => {
-    const to_s: string[] = r["to_poster"].split("::::")
+    const to_s: string[] = r["to_poster"]
     if (to_s.length != 1) {
       console.log(
         "Comment is sent to multiple posters. This should be a bug. (DB schema should be fixed at some point.)"
@@ -589,6 +678,8 @@ export async function addPosterComment(
     }
     await db.query("COMMIT")
 
+    await processPosterCommentNotifications(c)
+
     return true
   } catch (err) {
     log.error(err)
@@ -625,7 +716,7 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
           return {
             comment: c.id,
             person: t.to,
-            comment_encrypted: t.text.replace(/::::/g, "：：：："),
+            comment_encrypted: t.text,
             encrypted: t.encrypted,
             read: false,
           }
@@ -645,6 +736,8 @@ export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
       // await model.people.set_stats(p.id, p.stats)
     }
     await db.query("COMMIT")
+
+    await processChatCommentNotifications(c)
 
     return true
   } catch (err) {
@@ -919,7 +1012,7 @@ export function genCommentId(): CommentId {
   }
 }
 
-export function genGroupId(): ChatGroupId {
+export function genChatGroupId(): ChatGroupId {
   for (;;) {
     const s = "G" + shortid.generate()
     if (s.indexOf("-") == -1) {
@@ -973,7 +1066,7 @@ export async function newGroup(
   room_id: RoomId,
   users: UserId[]
 ): Promise<{ ok: boolean; error?: string; group?: ChatGroup }> {
-  const group_id = genGroupId()
+  const group_id = genChatGroupId()
   const groups = _.keyBy(await getGroupList(room_id), "id")
   if (!_.every(users, u => u[0] == "U")) {
     return { ok: false }
@@ -1292,6 +1385,7 @@ export async function commentRead(
   read: boolean
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    const timestamp = Date.now()
     const r = await db.result(
       `UPDATE comment_to_person SET read=$3 WHERE person=$1 AND comment=$2 AND read=$4;`,
       [user_id, comment_id, read, !read]
@@ -1304,7 +1398,13 @@ export async function commentRead(
       `UPDATE poster_comment_read SET read=$3 WHERE person=$1 AND comment IN (SELECT id FROM comment WHERE id=$2 AND kind='poster') AND person=$5 AND read=$4;`,
       [user_id, comment_id, read, !read, user_id]
     )
-    log.debug(r.rowCount, r2.rowCount, r3.rowCount)
+
+    await model.notification.processCommentRead(
+      user_id,
+      comment_id,
+      read,
+      timestamp
+    )
 
     return { ok: true }
   } catch (err) {

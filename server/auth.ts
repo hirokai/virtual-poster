@@ -208,3 +208,21 @@ export const manageRoom = async (req, res) => {
     return res.status(403).send("Not an owner or admin")
   }
 }
+
+export const roomMembers = async (req, res) => {
+  const roomId = req.params.roomId
+  const map = model.maps[roomId]
+  if (!map) {
+    return res.status(404).send("Room not found")
+  }
+  if (req["requester_type"] == "admin") {
+    return
+  }
+  const is_member = !!(await model.db.oneOrNone(
+    `SELECT 1 from person_room_access WHERE email=$1 AND room=$2`,
+    [req["requester_email"], roomId]
+  ))
+  if (!is_member) {
+    return res.status(403).send("You are not a member of the room")
+  }
+}

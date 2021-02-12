@@ -383,6 +383,15 @@
               <table class="table">
                 <thead>
                   <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        name=""
+                        id=""
+                        @change="checkAllPeopleGroups"
+                        ref="checkboxAllPeopleGroups"
+                      />
+                    </th>
                     <th>ID</th>
                     <th>名前</th>
                     <th>人数</th>
@@ -396,7 +405,16 @@
                 </tbody>
                                 <tbody v-else>
                   <tr v-for='g in room.people_groups' :key='g.id'>
-                    <td>{{g.id}}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        name=""
+                        :id="'check-group-'+g.id"
+                        :checked="selectedPeopleGroup[g.id] == true"
+                        @change="checkPeopleGroup(g.id, $event)"
+                      />
+                    </td>
+                    <td><label :for="'check-group-'+g.id">{{g.id}}</label></td>
                     <td>{{g.name}}</td>
                     <td></td>
                     <td>{{g.description}}</td>
@@ -428,6 +446,12 @@
         </button>
         <button class="button is-primary is-small" @click="assignRole('user')" :disabled="countSelected == 0 || allNonAdmins">
           通常ユーザーにする
+        </button>
+         <button class="button is-primary is-small" @click="assignPeopleGroups" :disabled="countSelected == 0 || countSelectedGroups == 0">
+          グループを割り当て
+        </button>
+         <button class="button is-primary is-small" @click="unassignPeopleGroups" :disabled="countSelected == 0 || countSelectedGroups == 0">
+          グループから外す
         </button>
       </div>
       <div v-if="peopleHavingAccess.length == 0">
@@ -466,15 +490,13 @@
               <td><label :for="'check-'+p.email">{{ p.email }}</label></td>
               <td :colspan="p.registered ? 1 : 2">{{ p.registered?.id || '（未入場または未登録）' }}</td>
               <td v-if="p.registered">{{ p.registered?.name }}</td>
-              <td v-else></td>
-              <td colspan='2' v-if="!p.in_room">（未入場）</td>
               <td v-if="p.in_room">({{ p.in_room.x }}, {{p.in_room.y}})</td>
-              <td v-else></td>
+              <td v-else>（未入場）</td>
               <td v-if='p.in_room?.role == "owner"'>{{lang('owner')}}</td>
               <td v-else-if='p.in_room?.role == "admin"'>{{lang('admin')}}</td>
               <td v-else></td>
-              <td v-if='p.in_room?.people_groups && p.in_room?.people_groups?.length > 0'>
-                <span v-for="gid in p.in_room.people_groups" :key="gid" class='code-right-entry'>{{peopleGroups[gid]?.name}}</span>
+              <td v-if='p.people_groups.length > 0'>
+                <span v-for="gid in p.people_groups" :key="gid" class='code-right-entry'>{{peopleGroups[gid]?.name}}</span>
               </td>
               <td v-else>グループなし</td>
             </tr>
@@ -600,6 +622,7 @@ import {
   PersonWithMapAccess,
   PersonUpdate,
   MapUpdateEntry,
+  UserGroupId,
 } from "@/@types/types"
 import axiosDefault from "axios"
 import { AxiosStatic } from "axios"
@@ -700,6 +723,8 @@ export default defineComponent({
       },
       peopleWithAccessAllChecked: false as boolean | undefined,
       selectedHavingAccess: {} as { [email: string]: boolean },
+      peopleGroupAllChecked: false as boolean | undefined,
+      selectedPeopleGroup: {} as { [people_group_id: string]: boolean },
       searchUserText: null as string | null,
       searchUserTextComposition: false,
       poster_cells: [] as Cell[],
@@ -709,9 +734,7 @@ export default defineComponent({
       userAssignment: [] as {
         valid: boolean
         email: string
-        name: string
-        register?: boolean
-        enter?: boolean
+        groups: string[]
       }[],
       mapCells: undefined as Cell[][] | undefined,
       mapCellSize: 8,
@@ -872,11 +895,11 @@ export default defineComponent({
           if (p1) {
             return {
               email: p.email,
+              people_groups: p.groups || [],
               registered: {
                 id: p1.id,
                 avatar: p1.avatar!,
                 connected: p1.connected!,
-                stats: p1.stats,
                 public_key: p1.public_key,
                 last_updated: p1.last_updated,
                 name: p1.name,
@@ -887,16 +910,17 @@ export default defineComponent({
                     y: p2.y,
                     direction: p2.direction,
                     moving: p2.moving,
+                    stats: p2.stats,
                     poster_vieweing: p2.poster_viewing,
                     role: p2.role,
-                    people_groups: p2.people_groups,
                   }
                 : undefined,
             }
           } else {
-            return { email: p.email }
+            return { email: p.email, people_groups: p.groups || [] }
           }
         })
+        console.log(state.peopleHavingAccess)
       },
       { deep: true }
     )
@@ -1174,6 +1198,10 @@ export default defineComponent({
       return keyBy(props.room?.people_groups || [], "id")
     })
 
+    const countSelectedGroups = computed(() => {
+      return Object.values(state.selectedPeopleGroup).filter(b => b).length
+    })
+
     const allAdmins = computed(() => {
       const peopleInRoomByEmail = keyBy(
         Object.values(state.peopleInRoom),
@@ -1199,6 +1227,70 @@ export default defineComponent({
       }
       return true
     })
+
+    const checkboxAllPeopleGroups = ref<HTMLInputElement>()
+
+    const checkPeopleGroup = (group_id: UserGroupId, ev) => {
+      const checked = ev.target.checked
+      state.selectedPeopleGroup[group_id] = checked
+      checkboxAllPeopleGroups.value!.indeterminate = true
+    }
+
+    const checkAllPeopleGroups = ev => {
+      const checked = ev.target.checked
+      state.peopleGroupAllChecked = checked
+      if (!ev.target.indeterminate) {
+        for (const gid of props.room?.people_groups || []) {
+          state.selectedPeopleGroup[gid.id] = checked
+        }
+      }
+    }
+
+    const getGroupAndUsersSelection = () => {
+      const groups = Object.entries(state.selectedPeopleGroup)
+        .filter(b => b[1])
+        .map(b => b[0])
+      const user_emails = Object.entries(state.selectedHavingAccess)
+        .filter(b => b[1])
+        .map(b => b[0])
+      return [groups, user_emails]
+    }
+
+    const assignPeopleGroups = async () => {
+      const room_id = props.room?.id
+      if (!room_id) {
+        console.error("Room is not defined")
+        return [null, null]
+      }
+      const [groups, user_emails] = getGroupAndUsersSelection()
+      if (!user_emails) {
+        return
+      }
+      for (const email of user_emails) {
+        await client.maps
+          ._roomId(room_id)
+          .people_allowed._email(email)
+          .$patch({ body: { add_groups: groups } })
+      }
+    }
+
+    const unassignPeopleGroups = async () => {
+      const room_id = props.room?.id
+      if (!room_id) {
+        console.error("Room is not defined")
+        return [null, null]
+      }
+      const [groups, user_emails] = getGroupAndUsersSelection()
+      if (!user_emails) {
+        return
+      }
+      for (const email of user_emails) {
+        await client.maps
+          ._roomId(room_id)
+          .people_allowed._email(email)
+          .$patch({ body: { remove_groups: groups } })
+      }
+    }
 
     const checkboxAllPeopleHavingAccess = ref<HTMLInputElement>()
 
@@ -1309,7 +1401,7 @@ export default defineComponent({
       const people = state.userAssignment
         .filter(u => u.valid)
         .map(u => {
-          return { email: u.email, assign_position: false }
+          return { email: u.email, assign_position: false, groups: u.groups }
         })
       const r = await client.maps
         ._roomId(props.room!.id)
@@ -1380,20 +1472,16 @@ export default defineComponent({
                 continue
               }
               const email: string | undefined = r[0]
-              const name: string | undefined = r[1]
-              const register: boolean | undefined =
-                r[2] == "1" ? true : r[2] == "0" ? false : undefined
-              const enter: boolean | undefined =
-                r[3] == "1" ? true : r[2] == "0" ? false : undefined
+              const groups: string[] = r.slice(1).filter(r => r)
+
               state.userAssignment.push({
                 valid: true,
-                name,
                 email,
-                register,
-                enter,
+                groups,
               })
             }
           }
+          console.log(data, state.userAssignment)
         }
       }
       reader.readAsText(file)
@@ -1513,7 +1601,7 @@ export default defineComponent({
 
     const verifyInputPatch = (s: string) => {
       try {
-        const arr = JSON.parse(s || "{}")
+        const arr = JSON.parse(s || "[]")
         return !!verifyMapUpdateEntries(arr)
       } catch (err) {
         console.error("verifyInputPatch", err)
@@ -1644,6 +1732,12 @@ export default defineComponent({
       createAccessCode,
       renewAccessCode,
       deleteAccessCode,
+      checkAllPeopleGroups,
+      checkboxAllPeopleGroups,
+      checkPeopleGroup,
+      countSelectedGroups,
+      assignPeopleGroups,
+      unassignPeopleGroups,
       checkAllWithAccess,
       checkPersonWithAccess,
       checkboxAllPeopleHavingAccess,

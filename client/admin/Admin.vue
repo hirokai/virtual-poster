@@ -262,7 +262,6 @@ export default defineComponent({
         name: d.name || p.name,
         last_updated: d.last_updated,
         avatar: d.avatar || p.avatar,
-        stats: d.stats || p.stats,
         profiles: d.profiles || p.profiles,
         public_key: d.public_key || p.public_key,
         email: p.email,

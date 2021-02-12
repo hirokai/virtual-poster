@@ -126,10 +126,11 @@ CREATE TABLE map_cell (
     y integer NOT NULL,
     kind text NOT NULL,
     no_initial_position boolean,
-    poster_number integer,
+    poster_number text,
     custom_image text,
     link_url text,
-    UNIQUE (room, x, y)
+    UNIQUE (room, x, y),
+    UNIQUE (room, poster_number)
 );
 
 CREATE TABLE person_position (
@@ -144,10 +145,14 @@ CREATE TABLE person_position (
 );
 
 CREATE TABLE person_stats (
-    person text PRIMARY KEY REFERENCES person (id),
-    walking_steps bigint NOT NULL,
-    chat_count bigint NOT NULL,
-    chat_char_count bigint NOT NULL
+    person text REFERENCES person (id) NOT NULL,
+    room text REFERENCES room (id) NOT NULL,
+    walking_steps bigint NOT NULL DEFAULT 0,
+    viewed_posters integer NOT NULL DEFAULT 0,
+    explored_cells integer NOT NULL DEFAULT 0,
+    chat_count bigint NOT NULL DEFAULT 0,
+    chat_char_count bigint NOT NULL DEFAULT 0,
+    PRIMARY KEY (person, room)
 );
 
 CREATE TABLE stat_encountered (
@@ -174,9 +179,33 @@ CREATE TABLE people_group (
 
 CREATE TABLE person_in_people_group (
     people_group text REFERENCES people_group (id) NOT NULL,
-    person_email text,
-    person_id text REFERENCES person (id),
-    CONSTRAINT check_email_or_id CHECK (person_email IS NOT NULL OR person_id IS NOT NULL)
+    person_email text NOT NULL,
+    PRIMARY KEY (people_group, person_email)
+);
+
+CREATE TABLE map_region (
+    room text REFERENCES room (id) NOT NULL,
+    "name" text NOT NULL,
+    description text,
+    x1 integer NOT NULL,
+    y1 integer NOT NULL,
+    x2 integer NOT NULL,
+    y2 integer NOT NULL,
+    UNIQUE (room, "name")
+);
+
+CREATE TABLE map_rule (
+    room text NOT NULL,
+    group_name text NOT NULL,
+    region_name text NOT NULL,
+    -- room text REFERENCES people_group (room) NOT NULL,
+    -- group_name text REFERENCES people_group ("name") NOT NULL,
+    -- region_name text REFERENCES map_region ("name") NOT NULL,
+    operation text NOT NULL,
+    allow boolean NOT NULL,
+    rule_order integer NOT NULL,
+    UNIQUE (room, group_name, region_name, operation),
+    UNIQUE (room, rule_order)
 );
 
 CREATE TABLE comment (
@@ -315,11 +344,48 @@ CREATE TABLE cell_visit_history (
     PRIMARY KEY (person, "location")
 );
 
+CREATE TABLE notification (
+    id text PRIMARY KEY,
+    person text REFERENCES person (id) NOT NULL ON DELETE CASCADE,
+    room text REFERENCES room (id) ON DELETE CASCADE,
+    "timestamp" bigint NOT NULL,
+    kind text NOT NULL,
+    resolved_time bigint,
+    superseded_by text REFERENCES notification (id) ON DELETE CASCADE
+);
+
+CREATE TABLE comment_for_notification (
+    "notification" text NOT NULL REFERENCES notification (id) ON DELETE CASCADE,
+    "comment" text NOT NULL REFERENCES "comment" (id) ON DELETE CASCADE,
+    "read" boolean DEFAULT 'f',
+    PRIMARY KEY (notification, "comment")
+);
+
+CREATE TYPE email_status AS ENUM (
+    'queued',
+    'sending',
+    'sent',
+    'failed'
+);
+
+CREATE TABLE email_to_user (
+    id text PRIMARY KEY,
+    send_from text,
+    send_to text NOT NULL,
+    subject text NOT NULL,
+    body text NOT NULL,
+    body_html text,
+    "timestamp" bigint NOT NULL,
+    "status" email_status NOT NULL,
+    "notification" text REFERENCES "notification" (id) NOT NULL ON DELETE CASCADE,
+    retry_count integer NOT NULL DEFAULT 0
+);
+
 CREATE TABLE schema_version (
     "version" text NOT NULL,
     minor_version text
 );
 
 INSERT INTO schema_version ("version")
-    VALUES ('20210125');
+    VALUES ('20210208');
 

@@ -12,8 +12,10 @@ try {
     ? "./app_config.test.yaml"
     : "./app_config.yaml"
   const doc = yaml.safeLoad(fs.readFileSync(in_path, "utf8"))
+  //FIXME: Validation
   const json = JSON.stringify(doc)
   _config = Convert.toConfig(json)
+  // _config = doc as Config
 } catch (err) {
   console.error("Config file fail to read: app_config.yaml")
   console.log(err)

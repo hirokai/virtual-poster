@@ -33,6 +33,8 @@ import { config } from "./config"
 import axios from "axios"
 import { encodeAppNotificationData } from "../common/util"
 import { promisify } from "util"
+import { processEmailQueue } from "./email"
+import { pushNotificationToEmailQueue } from "./model/notification"
 const readFileAsync = promisify(fs.readFile)
 
 const PRODUCTION: boolean = process.env.NODE_ENV == "production"
@@ -119,15 +121,36 @@ function parseRedisURL(url: string) {
   }
 }
 
+function initEmailQueueProcessor() {
+  setInterval(() => {
+    pushNotificationToEmailQueue()
+      .then(() => {
+        //
+      })
+      .catch(err => {
+        log.error("processNotificationEmailQueue() error", err)
+      })
+    processEmailQueue()
+      .then(() => {
+        //
+      })
+      .catch(err => {
+        log.error("processEmailQueue() error", err)
+      })
+  }, 5000)
+}
+
 async function workerInitData(): Promise<boolean> {
-  const ok = await model.checkDBVersion(POSTGRES_CONNECTION_STRING)
-  if (!ok) {
-    log.error("Schema version does not match. Exiting.")
+  const r = await model.checkDBVersion(POSTGRES_CONNECTION_STRING)
+  if (!r.ok) {
+    log.error(`Schema version does not match: ${r.error}`)
+    log.info("Exiting")
     return false
   }
   await model.initMapModel(POSTGRES_CONNECTION_STRING)
   if (!(RUN_CLUSTER > 0) || cluster.isMaster) {
     await model.initDataForMaster(POSTGRES_CONNECTION_STRING)
+    initEmailQueueProcessor()
   }
   return true
 }
@@ -288,6 +311,31 @@ workerInitData()
               }
             }
           )
+
+          server.get<any>("/api/gen_id/:entity", async req => {
+            type Entities =
+              | "comment"
+              | "map_cell"
+              | "notification"
+              | "chat_group"
+              | "user_group"
+              | "poster"
+              | "room"
+              | "user"
+            const entity: Entities = req.params.entity
+            const tbl: { [key in Entities]: () => string } = {
+              comment: model.chat.genCommentId,
+              map_cell: model.MapModel.genMapCellId,
+              notification: model.notification.genNotificationId,
+              chat_group: model.chat.genChatGroupId,
+              user_group: model.people.genPeopleGroupId,
+              poster: model.posters.genPosterId,
+              room: model.MapModel.genRoomId,
+              user: model.people.genUserId,
+            }
+            const s = tbl[entity]()
+            return s
+          })
 
           server.get("/api/firebaseConfig.json", async () => {
             try {

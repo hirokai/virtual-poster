@@ -628,6 +628,24 @@ export function pickBy<T>(object: {
   return obj
 }
 
+export const getItemAt = <T>(
+  items: Tree<T>,
+  cursor: number[]
+): Tree<T> | null => {
+  if (cursor.length == 0) {
+    return items
+  } else if (cursor.length == 1) {
+    return items.children[cursor[0]] || null
+  } else {
+    const c = items.children[cursor[0]]
+    if (c == undefined) {
+      return null
+    } else {
+      return getItemAt(c, cursor.slice(1))
+    }
+  }
+}
+
 export function flattenTree<T>(
   root: Tree<T>,
   depth = 0

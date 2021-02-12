@@ -17,6 +17,7 @@ export interface Config {
   redis: string
   aws: Aws
   firebase_auth_credential: string
+  email: Email
   user_registration: boolean
   profile_keys: string[]
   cookie_expires: number
@@ -50,6 +51,14 @@ export interface S3 {
   upload: boolean
   bucket: string
   via_cdn: boolean
+}
+
+export interface Email {
+  enabled: boolean
+  domain: string
+  max_rate_per_sec: number
+  max_rate_per_day: number
+  max_rate_user_per_hour: number
 }
 
 export interface SocketServer {
@@ -110,6 +119,7 @@ const typeMap: any = {
         js: "firebase_auth_credential",
         typ: "",
       },
+      { json: "email", js: "email", typ: r("Email") },
       { json: "user_registration", js: "user_registration", typ: true },
       { json: "profile_keys", js: "profile_keys", typ: a("") },
       { json: "cookie_expires", js: "cookie_expires", typ: 0 },
@@ -151,6 +161,16 @@ const typeMap: any = {
       { json: "upload", js: "upload", typ: true },
       { json: "bucket", js: "bucket", typ: "" },
       { json: "via_cdn", js: "via_cdn", typ: true },
+    ],
+    false
+  ),
+  Email: o(
+    [
+      { json: "enabled", js: "enabled", typ: true },
+      { json: "domain", js: "domain", typ: "" },
+      { json: "max_rate_per_sec", js: "max_rate_per_sec", typ: 0 },
+      { json: "max_rate_per_day", js: "max_rate_per_day", typ: 0 },
+      { json: "max_rate_user_per_hour", js: "max_rate_user_per_hour", typ: 0 },
     ],
     false
   ),

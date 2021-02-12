@@ -61,7 +61,9 @@
               </li>
             </ul>
           </div>
-          <a href="/" id="go-to-home" class="btn">{{ lang("start") }}</a>
+          <a :href="'/?code=' + access_code" id="go-to-home" class="btn">{{
+            lang("start")
+          }}</a>
         </div>
       </transition>
 
@@ -288,6 +290,18 @@ export default defineComponent({
       } else if (data.error?.indexOf("Access code is invalid") != -1) {
         alert(
           "アクセスコードが正しくありません。修正するか，アクセスコード無しで登録してください。"
+        )
+      } else if (data.error?.indexOf("User name already exists") != -1) {
+        alert(
+          "このユーザー名は既に登録されています。別の名前を選択してください。"
+        )
+      } else {
+        alert(
+          `エラーが発生しました： 登録情報： ${{
+            email: state.user.email,
+            name: state.register_name,
+            access_code: state.access_code.slice(0, 5) + "...",
+          }} エラー${data.error || "不明なエラー"}`
         )
       }
     }

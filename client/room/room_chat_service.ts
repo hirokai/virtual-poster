@@ -317,10 +317,10 @@ export const newComment = async (
     if (d2.person != props.myUserId && (!is_new_latest || windowInactive)) {
       state.highlightUnread[d2.id] = true
       state.notifications = state.notifications.filter(
-        n => n.kind != "new_comments"
+        n => n.kind != "new_chat_comments"
       )
       state.notifications.unshift({
-        kind: "new_comments",
+        kind: "new_chat_comments",
         data: {
           count: Object.values(state.highlightUnread).length,
         },
@@ -600,7 +600,7 @@ export const initChatService = async (
       c.text_decrypted.indexOf("\\reaction ") != 0
   )
   const n: NewCommentNotification = {
-    kind: "new_comments",
+    kind: "new_chat_comments",
     timestamp: Math.max(...comments_new.map(c => c.timestamp)),
     data: {
       count: comments_new.length,

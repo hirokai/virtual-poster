@@ -22,7 +22,7 @@
         :selectedPos="selectedPos"
         :selectedUsers="selectedUsers"
         :personInFront="personInFront"
-        :objectCellInFront="objectCellInFront"
+        :objectCellInFront="objectCellInFront.cell"
         :people_typing="people_typing"
         :avatarImages="avatarImages"
         @select="updateSelectedPos"
@@ -49,6 +49,7 @@
         :selectedPos="selectedPos"
         :visualStyle="visualStyle"
         :mainMapCellSize="mapCellSize"
+        :miniMapHighlighted="miniMapHighlighted"
         @select="updateSelectedPos"
         @dbl-click="dblClick"
       />

@@ -24,7 +24,7 @@
     :selectedPos="selectedPos"
     :selectedUsers="selectedUsers"
     :personInFront="personInFront"
-    :objectCellInFront="objectCellInFront"
+    :objectCellInFront="objectCellInFront.cell"
     :people_typing="people_typing"
     :avatarImages="avatarImages"
     :visualStyle="visualStyle"
@@ -274,7 +274,7 @@
       :selectedPos="selectedPos"
       :selectedUsers="selectedUsers"
       :personInFront="personInFront"
-      :objectCellInFront="objectCellInFront"
+      :objectCellInFront="objectCellInFront.cell"
       :people_typing="people_typing"
       :avatarImages="avatarImages"
       :cellSize="mapCellSize"
@@ -303,6 +303,7 @@
       :avatarImages="avatarImages"
       :people_typing="people_typing"
       :selectedPos="selectedPos"
+      :miniMapHighlighted="miniMapHighlighted"
       :visualStyle="visualStyle"
       @select="updateSelectedPos"
       @dbl-click="dblClick"
@@ -437,6 +438,18 @@
         </span>
       </div>
     </div>
+    <MenuOnMap
+      v-show="menu.show"
+      :myself="myself"
+      :items="menuItems"
+      :cursor="menu.cursor"
+      :mode="menu.mode"
+      :objectInfo="objectInfo"
+      :personInfo="personInfo"
+      :cellVisibility="cellVisibility"
+      :visualStyle="visualStyle"
+      :locale="locale"
+    />
     <div
       id="object-info"
       v-if="!objectInfo.hide"
@@ -474,6 +487,12 @@
 
         <br />
         {{ adjacentPoster.title }}
+        <span
+          id="poster-award-nominated"
+          v-if="adjacentPoster.metadata?.poster_award_nominated"
+        >
+          {{ locale == "ja" ? "ポスター賞応募" : "Poster award nominated" }}
+        </span>
         <span id="access-log-notice" v-if="adjacentPoster.access_log">
           {{
             locale == "ja"
@@ -511,7 +530,7 @@
         id="view-info-object-on-map"
         class="map-tool-pos1"
         @click="viewInfoObjectInFront"
-        v-if="!adjacentPoster && objectCellInFront"
+        v-if="!adjacentPoster && objectCellInFront.object"
       >
         {{ lang("view_object") }}
       </button>
@@ -562,6 +581,7 @@ import {
   NewCommentNotification,
   PosterCommentNotification,
   CellVisibility,
+  Tree,
 } from "@/@types/types"
 
 import RoomMobile from "./RoomMobile.vue"
@@ -572,8 +592,15 @@ import Poster from "./Poster.vue"
 import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
 import Notification from "./Notification.vue"
+import MenuOnMap from "./MenuOnMap.vue"
 
-import { inRange, keyBy, sortBy, showProfileKind } from "@/common/util"
+import {
+  inRange,
+  keyBy,
+  sortBy,
+  showProfileKind,
+  getItemAt,
+} from "@/common/util"
 import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
@@ -601,6 +628,7 @@ import {
   showMessage as showMessage_,
   showPersonInfo as showPersonInfo_,
   showObjectInfo as showObjectInfo_,
+  showMyStatus as showMyStatus_,
   moveByArrow,
   cellsMag,
   initMapService,
@@ -625,6 +653,71 @@ import {
 import { addLatencyLog } from "./room_log_service"
 import { MySocketObject } from "../socket"
 
+const menuSubInspect = {
+  node: { text: "調べる" },
+  children: [
+    { node: { text: "目の前", action: "view-info-front" }, children: [] },
+    { node: { text: "自分自身", action: "view-self" }, children: [] },
+
+    { node: { text: "戻る", action: "back" }, children: [] },
+  ],
+}
+
+const menuDefault: Tree<{ text: string; action?: string }> = {
+  node: { text: "" },
+  children: [
+    menuSubInspect,
+    { node: { text: "ステータス", action: "view-status" }, children: [] },
+    // { node: { text: "設定", action: "config" }, children: [] },
+    { node: { text: "閉じる", action: "close" }, children: [] },
+  ],
+}
+
+const menuInFrontOfPerson = (
+  in_chat: boolean
+): Tree<{ text: string; action?: string }> => {
+  return {
+    node: { text: "" },
+    children: [
+      in_chat
+        ? {
+            node: { text: "チャットから離脱する", action: "leave-chat" },
+            children: [],
+          }
+        : { node: { text: "話しかける", action: "start-chat" }, children: [] },
+      menuSubInspect,
+      // { node: { text: "設定", action: "config" }, children: [] },
+      { node: { text: "メニューを閉じる", action: "close" }, children: [] },
+    ],
+  }
+}
+
+const menuInFrontOfPoster: Tree<{ text: string; action?: string }> = {
+  node: { text: "" },
+  children: [
+    {
+      node: { text: "ポスターを閲覧する", action: "view-poster" },
+      children: [],
+    },
+    menuSubInspect,
+    // { node: { text: "設定", action: "config" }, children: [] },
+    { node: { text: "メニューを閉じる", action: "close" }, children: [] },
+  ],
+}
+
+const menuInFrontOfPosterViewing: Tree<{ text: string; action?: string }> = {
+  node: { text: "" },
+  children: [
+    {
+      node: { text: "ポスターから離脱する", action: "leave-poster" },
+      children: [],
+    },
+    menuSubInspect,
+    // { node: { text: "設定", action: "config" }, children: [] },
+    { node: { text: "メニューを閉じる", action: "close" }, children: [] },
+  ],
+}
+
 const setupSocketHandlers = (
   props: RoomAppProps,
   state: RoomAppState,
@@ -642,10 +735,10 @@ const setupSocketHandlers = (
       token: props.jwt_hash_initial || props.debug_token,
       debug_as: props.debug_as,
     })
-    socket.emit("Subscribe", {
-      channel: props.room_id,
-      token: props.jwt_hash_initial,
-    })
+    // socket.emit("Subscribe", {
+    //   channel: props.room_id,
+    //   token: props.jwt_hash_initial,
+    // })
   }
   socket.on("connection", onConnected)
   socket.on("connect", onConnected)
@@ -693,6 +786,7 @@ export default defineComponent({
     ChatLocal,
     Notification,
     RoomMobile,
+    MenuOnMap,
   },
 
   props: {
@@ -886,6 +980,14 @@ export default defineComponent({
       locale:
         localStorage["virtual-poster:" + props.myUserId + ":config:locale"] ||
         "ja",
+      miniMapHighlighted: undefined,
+      miniMapHighlightedTimer: undefined,
+      menu: {
+        mode: "menu",
+        show: false,
+        items: menuDefault,
+        cursor: [0],
+      },
     })
 
     document.title =
@@ -995,11 +1097,30 @@ export default defineComponent({
 
     const showPersonInfo = showPersonInfo_(props, state)
 
+    const showMyStatus = showMyStatus_(props, state)
+
     const showObjectInfo = showObjectInfo_(props, state)
 
     const myChatGroup = _myChatGroup(props, state)
 
-    const viewInfoPersonInFront = async () => {
+    const menuItems = computed(() => {
+      if (personInFront.value) {
+        return menuInFrontOfPerson(!!myChatGroup.value)
+      } else {
+        const obj = objectCellInFront.value
+        if (adjacentPoster.value) {
+          if (posterLooking.value) {
+            return menuInFrontOfPosterViewing
+          } else {
+            return menuInFrontOfPoster
+          }
+        } else {
+          return menuDefault
+        }
+      }
+    })
+
+    const viewInfoPersonInFront = async (in_menu = false) => {
       const p1 = personInFront.value
       if (!p1) {
         return
@@ -1007,15 +1128,19 @@ export default defineComponent({
       const p = await client.people._userId(p1.id).$get()
       console.log("viewInfoPersonInFront", p)
 
-      showPersonInfo(p, 30 * 1000)
+      showPersonInfo(p, in_menu, 30 * 1000)
     }
 
-    const viewInfoObjectInFront = async () => {
-      const c = objectCellInFront.value
+    const viewInfoObjectInFront = async (in_menu = false) => {
+      const c = objectCellInFront.value.cell
       if (!c) {
-        return
+        return false
       }
-      showObjectInfo(c, 30 * 1000)
+      showObjectInfo(c, in_menu, 30 * 1000)
+      if (in_menu) {
+        state.menu.mode = "info_object"
+      }
+      return true
     }
 
     const startChatInFront = async () => {
@@ -1184,10 +1309,140 @@ export default defineComponent({
       }
     }
 
+    const handleMenuKey = (key: ArrowKey): void => {
+      const item = getItemAt(
+        menuItems.value,
+        state.menu.cursor.slice(0, state.menu.cursor.length - 1)
+      )
+      if (!item) {
+        return
+      }
+      if (key == "ArrowUp" || key == "k") {
+        state.menu.cursor[state.menu.cursor.length - 1] = Math.max(
+          0,
+          state.menu.cursor[state.menu.cursor.length - 1] - 1
+        )
+      } else if (key == "ArrowDown" || key == "j") {
+        state.menu.cursor[state.menu.cursor.length - 1] = Math.min(
+          item.children.length - 1,
+          state.menu.cursor[state.menu.cursor.length - 1] + 1
+        )
+      }
+    }
+
+    const leaveChat = () => {
+      const group_id = myChatGroup.value
+      if (group_id) {
+        client.maps
+          ._roomId(props.room_id)
+          .chat_groups._groupId(group_id)
+          .leave.$post()
+          .then(data => {
+            console.log(data)
+            if (data.ok) {
+              if (data.leftGroup) {
+                //Vue.set
+                state.chatGroups[group_id] = data.leftGroup
+              }
+              showMessage(lang("left_chat"))
+              state.encryption_possible_in_chat = !!state.privateKey
+              //Vue.set
+              state.people_typing[props.myUserId] = false
+            } else {
+              //
+            }
+          })
+          .catch(err => {
+            console.error(err)
+          })
+      }
+    }
+
+    const handleMenuSpaceKey = async () => {
+      console.log("handleMenuSpaceKey", state.menu)
+      if (
+        state.menu.mode == "info_status" ||
+        state.menu.mode == "info_object" ||
+        state.menu.mode == "info_person"
+      ) {
+        if (state.menu.show) {
+          state.menu.show = false
+          state.menu.mode = "menu"
+          state.menu.cursor = [0]
+          return
+        }
+      }
+      const item = getItemAt(menuItems.value, state.menu.cursor)
+      if (!item) {
+        return
+      }
+      if (item.node?.action == "close") {
+        state.menu.show = false
+        state.menu.cursor = [0]
+      } else if (item.node?.action == "back") {
+        state.menu.cursor.pop()
+      } else if (item.node?.action == "start-chat") {
+        await startChatInFront()
+        state.menu.show = false
+        state.menu.cursor = [0]
+      } else if (item.node?.action == "leave-chat") {
+        await leaveChat()
+        state.menu.show = false
+        state.menu.cursor = [0]
+      } else if (item.node?.action == "view-poster") {
+        const poster_id = adjacentPoster.value?.id
+        if (poster_id) {
+          await enterPoster(props.axios, props, state)()
+          state.menu.show = false
+          state.menu.cursor = [0]
+        }
+      } else if (item.node?.action == "view-info-front") {
+        if (personInFront.value) {
+          state.menu.mode = "info_person"
+          const p1 = personInFront.value
+          const p = await client.people._userId(p1.id).$get()
+          showPersonInfo(p, true)
+        } else {
+          state.menu.mode = "info_object"
+          await viewInfoObjectInFront(true)
+        }
+      } else if (item.node?.action == "view-self") {
+        state.menu.mode = "info_person"
+        const p = await client.people._userId(myself.value!.id).$get()
+        showPersonInfo(p, true)
+      } else if (item.node?.action == "view-status") {
+        state.menu.mode = "info_status"
+        const p = await client.maps
+          ._roomId(props.room_id)
+          .people._userId(myself.value!.id)
+          .$get()
+        console.log({ p })
+        showMyStatus(p, true)
+      } else if (item.node?.action == "leave-poster") {
+        const poster_id = adjacentPoster.value?.id
+        if (poster_id) {
+          await leavePoster()
+          state.menu.show = false
+          state.menu.cursor = [0]
+        }
+      }
+      if (
+        item.children.length > 0 ||
+        item.node?.action == "view-info-front" ||
+        item.node?.action == "view-self"
+      ) {
+        state.menu.cursor.push(0)
+      }
+    }
+
     const inputArrowKey = (key: ArrowKey): boolean => {
       const me = myself.value
       if (!me) {
         return true //Prevent further key event handling
+      }
+      if (state.menu.show) {
+        handleMenuKey(key)
+        return true
       }
       if (
         state.keyQueue &&
@@ -1210,31 +1465,44 @@ export default defineComponent({
     }
 
     const inputSpaceKey = () => {
-      if (objectCellInFront.value) {
-        if (state.objectInfo.text) {
-          state.objectInfo.hide = true
-          state.objectInfo.text = ""
-        } else {
-          viewInfoObjectInFront()
-            .then(() => {
-              //
-            })
-            .catch(() => {
-              //
-            })
-        }
-      } else if (personInFront.value) {
-        if (state.personInfo.person) {
-          state.personInfo.hide = true
-          state.personInfo.person = undefined
-        } else {
-          viewInfoPersonInFront()
-            .then(() => {
-              //
-            })
-            .catch(() => {
-              //
-            })
+      if (state.menu.show) {
+        handleMenuSpaceKey()
+          .then(() => {
+            //
+          })
+          .catch(() => {
+            //
+          })
+
+        // } else if (objectCellInFront.value) {
+        //   if (state.objectInfo.text) {
+        //     state.objectInfo.hide = true
+        //     state.objectInfo.text = ""
+        //   } else {
+        //     viewInfoObjectInFront()
+        //       .then(() => {
+        //         //
+        //       })
+        //       .catch(() => {
+        //         //
+        //       })
+        //   }
+        // } else if (personInFront.value) {
+        //   if (state.personInfo.person) {
+        //     state.personInfo.hide = true
+        //     state.personInfo.person = undefined
+        //   } else {
+        //     viewInfoPersonInFront()
+        //       .then(() => {
+        //         //
+        //       })
+        //       .catch(() => {
+        //         //
+        //       })
+        //   }
+      } else {
+        if (!state.menu.show) {
+          state.menu.show = true
         }
       }
     }
@@ -1538,12 +1806,12 @@ export default defineComponent({
             state.center.x + state.viewDistance
           )
           for (
-            let y = Math.max(0, me.y - state.viewDistance);
+            let y = Math.max(0, state.center.y - state.viewDistance);
             y <= max_y;
             y++
           ) {
             for (
-              let x = Math.max(0, me.x - state.viewDistance);
+              let x = Math.max(0, state.center.x - state.viewDistance);
               x <= max_x;
               x++
             ) {
@@ -1764,34 +2032,6 @@ export default defineComponent({
       }
     }
 
-    const leaveChat = () => {
-      const group_id = myChatGroup.value
-      if (group_id) {
-        client.maps
-          ._roomId(props.room_id)
-          .chat_groups._groupId(group_id)
-          .leave.$post()
-          .then(data => {
-            console.log(data)
-            if (data.ok) {
-              if (data.leftGroup) {
-                //Vue.set
-                state.chatGroups[group_id] = data.leftGroup
-              }
-              showMessage(lang("left_chat"))
-              state.encryption_possible_in_chat = !!state.privateKey
-              //Vue.set
-              state.people_typing[props.myUserId] = false
-            } else {
-              //
-            }
-          })
-          .catch(err => {
-            console.error(err)
-          })
-      }
-    }
-
     const setHoverWithDelay = (item: string) => {
       state.hoverElementTimer = window.setTimeout(() => {
         state.hoverElement = item
@@ -1818,11 +2058,11 @@ export default defineComponent({
             .length
           if (count == 0) {
             state.notifications = state.notifications.filter(
-              n => n.kind != "new_comments"
+              n => n.kind != "new_chat_comments"
             )
           } else {
             for (const n of state.notifications) {
-              if (n.kind == "new_comments") {
+              if (n.kind == "new_chat_comments") {
                 ;(n as NewCommentNotification).data.count = count
               }
             }
@@ -1866,11 +2106,15 @@ export default defineComponent({
           ).filter(h => h).length
           if (count == 0) {
             state.notifications = state.notifications.filter(
-              n => !(n.kind == "poster_comments" && n.data.poster == poster_id)
+              n =>
+                !(n.kind == "new_poster_comments" && n.data.poster == poster_id)
             )
           } else {
             for (const n of state.notifications) {
-              if (n.kind == "poster_comments" && n.data.poster == poster_id) {
+              if (
+                n.kind == "new_poster_comments" &&
+                n.data.poster == poster_id
+              ) {
                 ;(n as PosterCommentNotification).data.count = count
               }
             }
@@ -2063,7 +2307,6 @@ export default defineComponent({
       posterLooking: posterLooking,
       myself,
       chatGroupOfUser: chatGroupOfUser(state),
-
       posterComponent,
       enterPoster: enterPoster(props.axios, props, state),
       leavePoster,
@@ -2078,6 +2321,7 @@ export default defineComponent({
       startChatInFront,
       viewInfoPersonInFront,
       viewInfoObjectInFront,
+      menuItems,
       showProfileKind,
       lang,
       ...mapCalculatedProps,
@@ -2260,6 +2504,15 @@ div#poster-preview {
 #access-log-notice {
   font-size: 12px;
   color: rgb(205, 130, 0);
+  font-weight: bold;
+  line-height: 1.2em;
+  display: inline-block;
+  margin: 0px;
+}
+
+#poster-award-nominated {
+  font-size: 12px;
+  color: rgb(0, 133, 205);
   font-weight: bold;
   line-height: 1.2em;
   display: inline-block;

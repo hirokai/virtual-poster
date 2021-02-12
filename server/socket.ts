@@ -34,6 +34,7 @@ import {
   MapUpdateEntry,
   MapUpdateSocketData,
   MapReplaceSocketData,
+  PersonUpdateByEmail,
 } from "../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -155,6 +156,12 @@ export class Emit {
   }
   peopleUpdate(ds: PersonUpdate[], socket: Emitter = this.emitter): void {
     socket.emit("PersonUpdate", ds)
+  }
+  peopleUpdateByEmail(
+    ds: PersonUpdateByEmail[],
+    socket: Emitter = this.emitter
+  ): void {
+    socket.emit("PersonUpdateByEmail", ds)
   }
   peopleRemove(uids: UserId[], socket: Emitter = this.emitter): void {
     socket.emit("PersonRemove", uids)
@@ -408,6 +415,7 @@ export function setupSocketHandlers(
       })().catch(err => log.error(err))
     })
     addHandler(socket, "Subscribe", ({ channel }: { channel: string }) => {
+      //FIXME: Add authentication
       socket.join(channel)
     })
     addHandler(socket, "Active", ({ room, user, token, observe_only }) => {
@@ -575,20 +583,13 @@ export function setupSocketHandlers(
         socket.emit("AuthError", "User not found")
         return
       }
-      const is_admin =
-        (await model.people.getUserType(verified_user)) == "admin"
-      if (!is_admin) {
+      if (!verified_user.admin) {
         socket.emit("AuthError", "User not admin")
         return
       }
       emit.channels([d.room_id, "::mypage", "::admin"]).appReload(d.force)
     })
     socket.on("make_announcement", async (d: Announcement) => {
-      userLog({
-        userId: "__admin",
-        operation: "announce",
-        data: d,
-      })
       const verified_user = await model.people.authSocket(
         { user: "NA" },
         socket.id
@@ -597,12 +598,18 @@ export function setupSocketHandlers(
         socket.emit("AuthError", "User not found")
         return
       }
-      const is_admin =
-        (await model.people.getUserType(verified_user)) == "admin"
-      if (!is_admin) {
-        socket.emit("AuthError", "User not admin")
+      const is_room_admin = model.maps[d.room]
+        ? await model.maps[d.room].isUserOwnerOrAdmin(verified_user.user_id)
+        : undefined
+      if (!is_room_admin) {
+        socket.emit("AuthError", "The user is not admin of the room")
         return
       }
+      userLog({
+        userId: verified_user.user_id,
+        operation: "announce",
+        data: d,
+      })
       log.debug("make_announcement", d)
       if (d.room) {
         emit.channel(d.room).announce(d)

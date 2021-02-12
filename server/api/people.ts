@@ -137,6 +137,40 @@ async function routes(
     }
   )
 
+  fastify.patch<any>(
+    "/maps/:roomId/people_allowed/:email",
+    { preHandler: manageRoom },
+    async (req): Promise<{ ok: boolean }> => {
+      const roomId = req.params.roomId as string
+      const email = req.params.email as string
+      const groups = req.body.groups as string[] | undefined
+      const add_groups = req.body.add_groups as string[] | undefined
+      const remove_groups = req.body.remove_groups as string[] | undefined
+      const map = model.maps[roomId]
+
+      const last_updated = Date.now()
+      if (groups) {
+        const r = await map.updateUserGroupsOfUser(email, groups)
+        if (r) {
+          emit
+            .channels([roomId + ":admin"])
+            .peopleUpdateByEmail([
+              { email, last_updated, room: roomId, people_groups: groups },
+            ])
+        }
+        return { ok: r }
+      } else if (add_groups) {
+        const r = await map.addUserToUserGroups(email, add_groups)
+        return { ok: r }
+      } else if (remove_groups) {
+        const r = await map.removeUserFromUserGroups(email, remove_groups)
+        return { ok: r }
+      }
+      return { ok: false }
+      //FIXME: Implement update socket.
+    }
+  )
+
   fastify.delete<any>(
     "/maps/:roomId/people_allowed/:email",
     { preHandler: manageRoom },
@@ -153,6 +187,10 @@ async function routes(
           num_people_with_access: r.num_people_with_access,
         }
         emit.channels(["::admin", "::index"]).room(d)
+        const uid = await model.people.getUserIdFromEmail(email)
+        if (uid) {
+          emit.channel(roomId).peopleRemove([uid])
+        }
       }
       return r
     }
@@ -164,18 +202,33 @@ async function routes(
     async req => {
       const roomId = req.params.roomId as string
       const map = model.maps[roomId]
+      const requester: UserId = req["requester"]
 
       const people = req.body.people as {
         email: string
         assign_position?: boolean
+        groups?: string[]
       }[]
+      const groups: { [group_name: string]: UserGroupId } = {}
+      ;(
+        await model.db.query(`SELECT id,name FROM people_group WHERE room=$1`, [
+          roomId,
+        ])
+      ).map(row => {
+        groups[row["name"] as string] = row["id"] as string
+      })
       for (const p of people) {
+        const group_ids = p.groups
+          ?.map(name => groups[name])
+          ?.filter(gid => gid)
+        console.log({ group_ids })
         const r = await map.addUser(
           p.email,
-          req["requester"],
+          requester,
           !!p.assign_position,
           "user",
-          req["requester"]
+          group_ids,
+          requester
         )
         if (!r.ok) {
           return { ok: false }
@@ -223,7 +276,7 @@ async function routes(
       params: { userId },
     } = req
     const with_email = req["requester_type"] == "admin" && !!email
-    const p = await model.people.get(userId, undefined, with_email, true)
+    const p = await model.people.get(userId, with_email, true)
     if (p) {
       return p
     } else {
@@ -291,9 +344,9 @@ async function routes(
     ).toString() as string).trim()
     console.log(name, access_code)
     const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
-    if (!rooms) {
-      return { ok: false, error: "Access code is invalid" }
-    }
+    // if (rooms.error) {
+    //   return { ok: false, error: "Access code is invalid" }
+    // }
     const default_rooms = model.MapModel.getDefaultRooms()
     const avatar = model.people.randomAvatar()
     const r = await model.people.create(
@@ -301,7 +354,7 @@ async function routes(
       name,
       "user",
       avatar,
-      rooms.concat(default_rooms),
+      rooms.rooms.concat(default_rooms),
       "reject"
     )
     if (r.ok && r.user) {
@@ -322,12 +375,6 @@ async function routes(
           name: r.user.name,
           moving: false,
           avatar,
-          stats: {
-            walking_steps: 0,
-            people_encountered: [],
-            chat_count: 0,
-            chat_char_count: 0,
-          },
           profiles: {},
         }
         emit.channel(room.room_id).peopleNew([p])
@@ -364,17 +411,14 @@ async function routes(
     } else {
       const rooms = await model.MapModel.getAllowedRoomsFromCode(access_code)
       const added_rooms: RoomId[] = []
-      if (rooms) {
+      if (rooms.error) {
+        return { ok: false, error: "Access code is invalid" }
+      } else {
         req.log.debug({ rooms })
-        const p = await model.people.get(
-          req["requester"],
-          undefined,
-          false,
-          true
-        )
+        const p = await model.people.get(req["requester"], false, true)
         console.log(p)
         const rooms_already = (p?.rooms || []).map(r => r.room_id)
-        for (const room_access of rooms) {
+        for (const room_access of rooms.rooms) {
           const rid = room_access.id
           const m = model.maps[rid]
           if (!m) {
@@ -389,7 +433,6 @@ async function routes(
           if (rooms_already.indexOf(rid) != -1) {
             await m.addUserToUserGroups(
               req["requester_email"],
-              req["requester"] || null,
               room_access.groups
             )
             continue
@@ -408,9 +451,11 @@ async function routes(
           }
           added_rooms.push(rid)
         }
-        return { ok: true, added: added_rooms, primary_room: rooms[0]?.id }
-      } else {
-        return { ok: false, error: "Access code is invalid" }
+        return {
+          ok: true,
+          added: added_rooms,
+          primary_room: rooms.rooms[0]?.id,
+        }
       }
     }
   })
@@ -422,7 +467,7 @@ async function routes(
   fastify.delete<any>("/people/:userId", async req => {
     const userId: string = req.params.userId
     if (req["requester_type"] == "admin" || req["requester"] == userId) {
-      const u = await model.people.get(userId, undefined, true)
+      const u = await model.people.get(userId, true)
       if (!u) {
         throw {
           statusCode: 404,

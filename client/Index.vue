@@ -44,7 +44,18 @@
       <div v-if="registered">
         <div v-if="loggedIn == 'Yes'">
           <h1 class="is-h1 title">{{ lang("list") }}</h1>
-          <div id="rooms">
+          <div
+            id="message"
+            v-show="message.show"
+            :style="{ 'background-color': message.bgColor }"
+          >
+            <div id="message-close" @click="message.show = false">&times;</div>
+            <span style="clear: both">
+              {{ message.text }}
+            </span>
+          </div>
+          <div v-if="rooms.length == 0">{{ lang("no_room") }}</div>
+          <div v-else id="rooms">
             <a
               v-for="room in rooms"
               :key="room.id"
@@ -190,6 +201,11 @@ export default defineComponent({
           : window.matchMedia &&
             window.matchMedia("(prefers-color-scheme: dark)").matches,
       locale: (navigator.language == "ja" ? "ja" : "en") as "en" | "ja",
+      message: {
+        text: "",
+        show: false,
+        bgColor: "#fff",
+      },
     })
 
     const changeLocale = (l: "en" | "ja") => {
@@ -199,11 +215,9 @@ export default defineComponent({
       }
     }
 
-    type ui_literals = "mypage" | "logout" | "list" | "create_room" | "admin"
-
     const lang = (key: string): string => {
       const message: {
-        [key in ui_literals]: { [key in "ja" | "en"]: string }
+        [key in string]: { [key in "ja" | "en"]: string }
       } = {
         mypage: {
           ja: "マイページ",
@@ -216,6 +230,10 @@ export default defineComponent({
         list: {
           ja: "会場の一覧",
           en: "List of Rooms",
+        },
+        no_room: {
+          ja: "アクセス可能な会場なし",
+          en: "No available room",
         },
         create_room: {
           ja: "新しく会場を作成する",
@@ -324,6 +342,12 @@ export default defineComponent({
           const r = await client.people
             ._userId(user_id)
             .access_code.$post({ body: { access_code } })
+          if (r.error == "Access code is invalid") {
+            state.message.text =
+              "URLで指定された会場は現在利用できません（有効期間外であるなどの理由）。後ほど再度お試しください。"
+            state.message.bgColor = "#fee"
+            state.message.show = true
+          }
           access_code_added = r.added
           primary_room = r.primary_room
         }
@@ -555,6 +579,23 @@ a.link:visited {
 .btn-lang {
   height: 28px;
   font-size: 12px;
+}
+
+#message {
+  min-height: 40px;
+  border-radius: 5px;
+  padding: 7px;
+  font-size: 16px;
+}
+
+#message-close {
+  float: right;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  height: 20px;
+  width: 20px;
+  font-size: 15px;
+  padding: 0px 0px 0px 1px;
 }
 
 [v-cloak] {

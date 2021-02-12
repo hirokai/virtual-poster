@@ -11,6 +11,8 @@ import * as PeopleModule from "./people"
 export const people = PeopleModule
 import * as PosterModule from "./posters"
 export const posters = PosterModule
+import * as NotificationModule from "./notification"
+export const notification = NotificationModule
 export { MapModel } from "./maps"
 import _ from "lodash"
 import { config } from "../config"
@@ -59,6 +61,11 @@ export const log = bunyan.createLogger({
 const data_folder = "db"
 if (!fs.existsSync(data_folder)) {
   fs.mkdirSync(data_folder, { recursive: true })
+}
+
+const log_folder = "logs"
+if (!fs.existsSync(log_folder)) {
+  fs.mkdirSync(log_folder, { recursive: true })
 }
 
 const user_log = bunyan.createLogger({
@@ -111,7 +118,16 @@ async function repairWrongPositions() {
     if (r.poster_id) {
       await posters.endViewing(user_id, room_id, r.poster_id)
     }
-    const pos = await maps[room_id].assignRandomOpenPos(user_id, true)
+    const user_email = await people.getEmail(user_id)
+    if (!user_email) {
+      log.error("User email not found")
+      return
+    }
+    const pos = await maps[room_id].assignRandomOpenPos(
+      user_id,
+      user_email,
+      true
+    )
     if (!pos) {
       log.error("Assignment of random position failed")
     } else {
@@ -223,10 +239,18 @@ export async function initDataForMaster(pg_connection_string: string) {
 
 export async function checkDBVersion(
   pg_connection_string: string
-): Promise<boolean> {
+): Promise<{ ok: boolean; error?: string }> {
+  const required_version = "20210208c"
   db = dbWith(pg_connection_string)
   const rows = await db.query(`SELECT * FROM schema_version`)
-  return rows.length == 1 && rows[0].version == "20210125"
+  const ok = rows.length == 1 && rows[0].version == required_version
+  if (!ok) {
+    return {
+      ok: false,
+      error: `${required_version} is required, but the DB version is ${rows[0].version}`,
+    }
+  }
+  return { ok: true }
 }
 
 export async function initMapModel(

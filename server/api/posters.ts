@@ -64,27 +64,37 @@ async function routes(
       const { roomId, posterNumber } = req.params as Record<string, string>
       const user_id = (req.body.user_id || req["requester"]) as string
       const title = req.body.title as string | undefined
-      const num = parseInt(posterNumber)
-      if (isNaN(num)) {
-        return { ok: false }
-      }
-      if (req["requester_type"] != "admin") {
-        const allowed = !!(
+      console.log({ roomId, posterNumber })
+      const allowedRoom =
+        req["requester_type"] == "admin" ||
+        !!(
           await model.db.oneOrNone(
             `SELECT allow_poster_assignment FROM room WHERE id=$1`,
             [roomId]
           )
         )?.allow_poster_assignment
-        if (user_id != req["requester"] || !allowed)
-          return await reply.code(403).send("Unauthorized")
+      const is_page_admin = await model.maps[roomId]?.isUserOwnerOrAdmin(
+        req["requester"]
+      )
+      const isAllowedUser = user_id == req["requester"] || is_page_admin
+      if (!isAllowedUser || !allowedRoom) {
+        return await reply.code(403).send("Unauthorized")
       }
       const r = await model.maps[roomId].assignPosterLocation(
-        num,
-        user_id || req["requester"],
+        posterNumber,
+        user_id,
         false
       )
       if (!r.poster) {
-        return { ok: false, error: r.error }
+        return {
+          ok: false,
+          error: r.error,
+          allowed_regions: r.allowed_regions,
+          suggested_message:
+            r?.allowed_regions?.length && r?.allowed_regions?.length > 0
+              ? "このエリアは他の参加者のために予約されているため，ポスターを貼れません。ミニマップ上で色で示されたエリアで貼ってください。"
+              : "（発表登録をしていないため，ポスターは貼れません。）",
+        }
       }
       if (title) {
         r.poster.title = title
@@ -102,12 +112,8 @@ async function routes(
 
   fastify.delete<any>("/maps/:roomId/poster_slots/:posterNumber", async req => {
     const { roomId, posterNumber } = req.params as Record<string, string>
-    const num = parseInt(posterNumber)
     if (!model.maps[roomId]) {
       throw { statusCode: 404 }
-    }
-    if (isNaN(num)) {
-      return { ok: false }
     }
     const room = await model.maps[roomId]?.getMetadata()
     const permitted =
@@ -116,7 +122,7 @@ async function routes(
       throw { statusCode: 403 }
     }
     const r = await model.maps[roomId].freePosterLocation(
-      num,
+      posterNumber,
       req["requester"],
       true
     )
@@ -526,7 +532,8 @@ async function routes(
 
   fastify.get<any>("/maps/:roomId/posters", async req => {
     const room = req.params.roomId
-    return await model.posters.getAll(room)
+    const requester: string = req["requester"]
+    return await model.posters.getAll(room, requester)
   })
 
   fastify.post<any>(

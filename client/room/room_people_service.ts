@@ -86,6 +86,14 @@ export const initPeopleService = async (
   })
   socket.on("PersonRemove", (uids: UserId[]) => {
     for (const uid of uids) {
+      if (uid == props.myUserId) {
+        alert(
+          state.locale == "ja"
+            ? "会場から退出させられました"
+            : "You have been removed from the room."
+        )
+        location.href = "/"
+      }
       delete state.people[uid]
     }
   })

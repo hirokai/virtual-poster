@@ -15,9 +15,8 @@
             :class="{ 'is-active': tab == this_tab.id }"
             v-for="this_tab in tabs"
             :key="this_tab.id"
-            @click="tab = this_tab.id"
           >
-            <a>{{ this_tab.name }}</a>
+            <a :href="'#' + this_tab.id">{{ this_tab.name }}</a>
           </li>
         </ul>
       </div>
@@ -43,7 +42,7 @@
           @delete-access-code="deleteAccessCode"
           @reload-room-metadata="reloadRoomMetadata"
         />
-        <div class="tab-content" id="tab-map" v-if="tab == 'style'">
+        <div class="tab-content" id="tab-display" v-if="tab == 'display'">
           <section>
             <div style="font-size: 80%; margin: 10px 0px">
               {{ lang("display_1") }}
@@ -158,6 +157,85 @@
         </div>
         <div
           class="tab-content"
+          id="tab-notification"
+          v-if="tab == 'notification'"
+        >
+          <section>
+            <h5 class="title is-5">{{ lang("notification_settings") }}</h5>
+            <section v-for="room in rooms" :key="room.id">
+              <h5 class="title is-6">{{ lang("room") }}: {{ room.name }}</h5>
+              <div class="buttons has-addons">
+                <span style="margin-right: 10px; vertical-align: 20px">{{
+                  lang("unread_notification")
+                }}</span>
+                <!-- <button
+                  class="button"
+                  :class="{ 'is-primary': notification.interval[room.id] == 5 }"
+                  @click="changeNotificationInterval(room.id, 5)"
+                >
+                  5分
+                </button>
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == 10,
+                  }"
+                  @click="changeNotificationInterval(room.id, 10)"
+                >
+                  10分
+                </button>
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == 30,
+                  }"
+                  @click="changeNotificationInterval(room.id, 30)"
+                >
+                  30分
+                </button> -->
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == 60,
+                  }"
+                  @click="changeNotificationInterval(room.id, 60)"
+                >
+                  1時間
+                </button>
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == 360,
+                  }"
+                  @click="changeNotificationInterval(room.id, 360)"
+                >
+                  6時間
+                </button>
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == 1440,
+                  }"
+                  @click="changeNotificationInterval(room.id, 1440)"
+                >
+                  24時間
+                </button>
+                <button
+                  class="button"
+                  :class="{
+                    'is-primary': notification.interval[room.id] == -1,
+                  }"
+                  @click="changeNotificationInterval(room.id, -1)"
+                >
+                  通知しない
+                </button>
+              </div>
+              <div>{{ explainNotificationInterval }}</div>
+            </section>
+          </section>
+        </div>
+        <div
+          class="tab-content"
           id="tab-map"
           v-if="tab == 'rooms' && tab_sub == undefined"
         >
@@ -228,7 +306,6 @@
         <div class="tab-content" id="tab-account" v-if="tab == 'account'">
           <section>
             <h5 class="title is-5">{{ lang("basic_profile") }}</h5>
-            <!-- <div class="info-entry">歩数: {{ myself.stats.walking_steps }}</div> -->
             <div class="info-entry">
               <span class="key">{{ lang("user_id") }}</span> {{ myUserId }}
             </div>
@@ -729,13 +806,17 @@ export default defineComponent({
       locale: (localStorage[`virtual-poster:${myUserId}:config:locale`] ||
         "ja") as "ja" | "en",
       mapCellSize: 48,
+      notification: {
+        interval: {} as { [room_id: string]: number },
+      },
     })
 
     const tabs = computed(() => {
       return state.locale == "ja"
         ? [
             { id: "account", name: "アカウント" },
-            { id: "style", name: "表示設定" },
+            { id: "display", name: "表示" },
+            // { id: "notification", name: "通知" },
             { id: "rooms", name: "会場" },
             { id: "poster", name: "ポスター" },
             // { id: "vote", name: "投票" },
@@ -743,7 +824,8 @@ export default defineComponent({
           ]
         : [
             { id: "account", name: "Account" },
-            { id: "style", name: "Display" },
+            { id: "display", name: "Display" },
+            // { id: "notification", name: "Notification" },
             { id: "rooms", name: "Rooms" },
             { id: "poster", name: "Posters" },
             // { id: "vote", name: "Vote" },
@@ -1017,6 +1099,18 @@ export default defineComponent({
           ja: "ポスターの撤去： マイページで「ポスター画像を削除」をクリック。",
           en: "Removing a poster: Click 'Delete Poster' in Preferences",
         },
+        notification_settings: {
+          ja: "通知設定",
+          en: "Notification settings",
+        },
+        unread_notification: {
+          ja: "未読のコメントの通知までの時間",
+          en: "Notify unread comments after",
+        },
+        room: {
+          ja: "会場",
+          en: "Room",
+        },
       }
       return message[key][state.locale]
     }
@@ -1175,6 +1269,9 @@ export default defineComponent({
       state.people = keyBy(data_p, "id") as { [user_id: string]: Person }
       state.posters = keyBy(data_poster.posters || [], "id")
       state.rooms = keyBy(data_r, "id")
+      for (const room of data_r) {
+        state.notification.interval[room.id] = 10
+      }
       const jwt_hash: string | undefined =
         localStorage["virtual-poster:jwt_hash"]
       for (const room of data_r) {
@@ -1497,7 +1594,6 @@ export default defineComponent({
             name: d.name || p.name,
             last_updated: d.last_updated,
             avatar: d.avatar || p.avatar,
-            stats: d.stats || p.stats,
             profiles: d.profiles || p.profiles,
             public_key: d.public_key || p.public_key,
             email: p.email,
@@ -1836,6 +1932,43 @@ export default defineComponent({
       console.log("Blind signature verification", data3, unblinded.toString())
     }
 
+    const changeNotificationInterval = (
+      room_id: RoomId,
+      interval_minutes: number
+    ) => {
+      state.notification.interval[room_id] = interval_minutes
+    }
+
+    const explainNotificationInterval = computed(() => {
+      const res: { [room_id: string]: string } = {}
+      for (const room_id of Object.keys(state.rooms)) {
+        const f = (t: number) => {
+          return (
+            (t >= 60 ? t / 60 : t) +
+            (t >= 60
+              ? state.locale == "ja"
+                ? "時間"
+                : "hours"
+              : state.locale == "ja"
+              ? "分間"
+              : "minutes")
+          )
+        }
+        if (state.notification.interval[room_id] < 0) {
+          return state.locale == "ja"
+            ? "新着コメントは通知されません。"
+            : "Notification on new comments is never sent."
+        }
+        return state.locale == "ja"
+          ? `新着コメントが${f(
+              state.notification.interval[room_id]
+            )}未読の場合はメールで通知が届きます。`
+          : `Notification is sent if new comments are unread for ${f(
+              state.notification.interval[room_id]
+            )}.`
+      }
+    })
+
     const deleteAccount = async () => {
       const r = confirm(lang("delete_confirm"))
       if (!r) {
@@ -2114,6 +2247,8 @@ export default defineComponent({
       lang,
       tabs,
       setMapCellSize,
+      changeNotificationInterval,
+      explainNotificationInterval,
     }
   },
 })

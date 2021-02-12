@@ -405,12 +405,12 @@ export default defineComponent({
         localStorage[
           `virtual-poster:${props.myUserId}:config:admin:showAllPosterLocations`
         ] == "1",
-      assignPosterDialog: undefined as number | undefined,
+      assignPosterDialog: undefined as string | undefined,
       assignPosterBatchDialog: false,
       posterBatchAssignCsvData: undefined as string | undefined,
       posterAssignment: [] as {
         valid: boolean
-        poster_number: number
+        poster_number: string
         user: UserId
         title?: string
       }[],
@@ -506,16 +506,7 @@ export default defineComponent({
               if (r.length == 1 && r[0] == "") {
                 continue
               }
-              const poster_number = parseInt(r[0])
-              if (isNaN(poster_number)) {
-                state.posterAssignment.push({
-                  valid: false,
-                  poster_number,
-                  user: "NA",
-                  title: "NA",
-                })
-                continue
-              }
+              const poster_number = r[0]
               const user_search_txt: string | undefined = r[1]
               if (!user_search_txt) {
                 state.posterAssignment.push({
@@ -559,7 +550,7 @@ export default defineComponent({
       state.assignPosterDialog = undefined
     }
 
-    const assignPoster = async (poster_number: number) => {
+    const assignPoster = async (poster_number: string) => {
       const title = assignPosterTitle.value?.value
       const search_txt = assignPosterUser.value?.value
       console.log(title, search_txt)
@@ -624,7 +615,7 @@ export default defineComponent({
     }
 
     type PosterListEntry = {
-      poster_number: number
+      poster_number: string
       x: number
       y: number
       poster?: Poster
@@ -633,14 +624,19 @@ export default defineComponent({
     const postersSorted = computed((): PosterListEntry[] => {
       const postersByLocation = keyBy(Object.values(props.posters), "location")
       if (state.showAllPosterLocations) {
-        return props.poster_cells.map(c => {
-          return {
-            poster_number: c.poster_number!,
-            x: c.x,
-            y: c.y,
-            poster: postersByLocation[c.id],
+        return sortBy(
+          props.poster_cells.map(c => {
+            return {
+              poster_number: c.poster_number!,
+              x: c.x,
+              y: c.y,
+              poster: postersByLocation[c.id],
+            }
+          }),
+          p => {
+            return p.poster_number
           }
-        })
+        )
       } else {
         return sortBy(
           Object.values(props.posters).filter(

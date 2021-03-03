@@ -22,7 +22,6 @@ import {
   ChatGroup,
   ChatGroupId,
   NotificationEntry,
-  PosterCommentNotification,
   UserGroupId,
 } from "../../@types/types"
 import { redis, log, db, pgp, maps, chat } from "./index"
@@ -138,7 +137,8 @@ const allowed_profile_keys = [
 export async function get(
   user_id: UserId,
   with_email = false,
-  with_room_access = false
+  with_room_access = false,
+  with_role = false
 ): Promise<(Person & { rooms?: { room_id: RoomId; pos?: PosDir }[] }) | null> {
   const rows = with_room_access
     ? await db.query(
@@ -224,6 +224,7 @@ export async function get(
             : undefined,
 
           profiles,
+          role: with_role ? rows[0].role : undefined,
         }
   return p
 }
@@ -581,18 +582,92 @@ export async function create(
   }
 }
 
+export async function getAllPeopleList(opt?: {
+  with_email?: boolean
+  with_room_access?: boolean
+  with_role?: boolean
+}): Promise<(Person & { email?: string })[]> {
+  const rows = await (opt?.with_room_access
+    ? db.query<{ id: UserId; rooms: RoomId[]; public_key?: string }[]>(
+        ` SELECT
+                person.*,
+                array_agg(ra.room) AS rooms,
+                k.public_key
+            FROM
+                person
+                LEFT JOIN person_room_access AS ra ON person.email = ra.email
+                LEFT JOIN public_key AS k ON person.id = k.person
+            GROUP BY
+                person.id,
+                k.public_key;`
+      )
+    : db.query<{ id: UserId; public_key?: string }[]>(
+        `SELECT
+              person.*,
+              k.public_key
+          FROM
+              person
+              LEFT JOIN public_key AS k ON person.id = k.person
+          GROUP BY
+              person.id,
+              k.public_key;`
+      ))
+
+  const count_all_sockets_for_users = await redis.sockets.hgetall(
+    "room:" + "__any__"
+  )
+
+  log.debug(rows)
+  return rows.map(row => {
+    const uid = row["id"] as UserId
+    const r: Person & {
+      email?: string
+      rooms?: RoomId[]
+      poster_viewing?: PosterId
+    } = {
+      name: row["name"],
+      rooms: row["rooms"] || [],
+      profiles: {},
+      public_key: row["public_key"],
+      id: uid,
+      last_updated: parseInt(row["last_updated"]),
+      connected:
+        count_all_sockets_for_users[uid] &&
+        parseInt(count_all_sockets_for_users[uid]) > 0
+          ? true
+          : false,
+      avatar: row["avatar"],
+      role: opt?.with_role ? row["role"] : undefined,
+    }
+    if (opt?.with_email) {
+      r.email = row["email"]
+    }
+    return removeUndefined(r)
+  })
+}
+export async function get_multi(
+  user_ids: string[],
+  with_email = false,
+  with_room_access = true
+): Promise<(Person & { email?: string })[]> {
+  const ps = await getAllPeopleList({ with_email, with_room_access })
+  const dict = _.fromPairs(user_ids.map(u => [u, 1]))
+  return ps.filter(p => dict[p.id])
+}
+
 export async function getPeopleInRoom(
   room_id: RoomId,
   with_email: boolean,
   with_groups: boolean
-): Promise<
-  (PersonInMap & {
+): Promise<{
+  people: (PersonInMap & {
     email?: string
     rooms?: RoomId[]
     poster_viewing?: PosterId
     people_groups?: UserGroupId[]
   })[]
-> {
+  people_deleted: { id: UserId; name: string }[]
+}> {
   const rows = await db.query(
     ` SELECT
           person.*,
@@ -736,64 +811,59 @@ export async function getPeopleInRoom(
     }
     arr.push(r)
   }
-  return arr
-}
+  const people_by_id = _.keyBy(arr, "id")
+  // const poster_commenters = (
+  //   await db.query<{ person: PosterId }[]>(
+  //     `SELECT
+  //     person
+  //       FROM
+  //           comment
+  //       WHERE
+  //           id IN (
+  //               SELECT
+  //                   comment
+  //               FROM
+  //                   comment_to_poster
+  //               WHERE
+  //                   poster IN (
+  //                       SELECT
+  //                           id
+  //                       FROM
+  //                           poster
+  //                       WHERE
+  //                           LOCATION IN (
+  //                               SELECT
+  //                                   id
+  //                               FROM
+  //                                   map_cell
+  //                               WHERE
+  //                                   room = $1)))`,
+  //     [room_id]
+  //   )
+  // ).map(row => row.person)
 
-export async function getAllPeopleList(
-  with_email = false,
-  with_room_access = false
-): Promise<(PersonInMap & { email?: string })[]> {
-  const rows = await (with_room_access
-    ? db.query(
-        ` SELECT
-                person.*,
-                array_agg(ra.room) AS rooms,
-                k.public_key
-            FROM
-                person
-                LEFT JOIN person_room_access AS ra ON person.email = ra.email
-                LEFT JOIN public_key AS k ON person.id = k.person
-            GROUP BY
-                person.id,
-                k.public_key;`
-      )
-    : db.query("select * from person;"))
-
-  const count_all_sockets_for_users = await redis.sockets.hgetall(
-    "room:" + "__any__"
-  )
-
-  // log.debug(count_all_sockets_for_users)
-  return rows.map(row => {
-    const uid = row["id"] as UserId
-    const r: PersonInMap & {
-      email?: string
-      rooms?: RoomId[]
-      poster_viewing?: PosterId
-    } = {
-      name: row["name"],
-      rooms: row["rooms"] || [],
-      profiles: {},
-      public_key: row["public_key"],
-      id: uid,
-      last_updated: parseInt(row["last_updated"]),
-      connected:
-        count_all_sockets_for_users[uid] &&
-        parseInt(count_all_sockets_for_users[uid]) > 0
-          ? true
-          : false,
-      room: null,
-      avatar: row["avatar"],
-      x: row["x"],
-      y: row["y"],
-      direction: row["direction"],
-      moving: false,
-    }
-    if (with_email) {
-      r.email = row["email"]
-    }
-    return r
+  const commenters_in_room = (
+    await db.query<{ person: PosterId }[]>(
+      `SELECT
+      person
+        FROM
+            comment
+        WHERE
+            room = $1`,
+      [room_id]
+    )
+  ).map(row => row.person)
+  const people_deleted_ids = commenters_in_room.filter(uid => {
+    return !people_by_id[uid]
   })
+  const people_deleted = await get_multi(people_deleted_ids)
+
+  return {
+    people: arr,
+    people_deleted: people_deleted.map(p => {
+      return { id: p.id, name: p.name }
+    }),
+  }
 }
 
 export async function getAdmin(): Promise<UserId[] | null> {
@@ -1111,15 +1181,7 @@ export async function getPosMulti(
     }
   })
 }
-export async function get_multi(
-  user_ids: string[],
-  with_email = false,
-  with_room_access = true
-): Promise<(Person & { email?: string })[]> {
-  const ps = await getAllPeopleList(with_email, with_room_access)
-  const dict = _.fromPairs(user_ids.map(u => [u, 1]))
-  return ps.filter(p => dict[p.id])
-}
+
 // Set person data with updated timestamp and socket notification
 // For moving, you need to call a function `MapModel.movePerson`, instead of
 export async function set(
@@ -1555,40 +1617,10 @@ export async function removePerson(
   }
 }
 
-export async function getNotifications(
-  user_id: UserId,
-  room_id: RoomId
-): Promise<NotificationEntry[]> {
-  const rows = await db.query(
-    `SELECT
-          poster,
-          array_agg(comment) as comments,
-          max(timestamp) as max_timestamp
-      FROM
-          comment_to_poster AS cp
-          LEFT JOIN comment AS c ON cp.comment = c.id
-      WHERE
-          c.id IN (
-              SELECT
-                  comment
-              FROM
-                  poster_comment_read
-              WHERE
-                  person = $1
-                  AND read = 'f')
-          AND c.room = $2
-      GROUP BY poster;
-          `,
-    [user_id, room_id]
-  )
-  return rows.map(row => {
-    return {
-      kind: "new_poster_comments",
-      data: {
-        count: row.comments.length,
-        poster: row.poster,
-      },
-      timestamp: +row.max_timestamp,
-    } as PosterCommentNotification
-  })
+export async function getByName(name: string): Promise<UserId | null> {
+  const id = (
+    await db.oneOrNone(`SELECT id FROM person WHERE name=$1;`, [name])
+  )?.id
+  console.log({ id, name })
+  return id || null
 }

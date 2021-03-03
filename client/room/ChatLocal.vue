@@ -1,4 +1,9 @@
 <template>
+  <div id="chat-local-toolbar">
+    <button class="small-button" @click="exportChatLog">
+      {{ lang("save_chat_log") }}
+    </button>
+  </div>
   <div
     id="chat-local"
     class="chat-container"
@@ -213,12 +218,17 @@
         :key="'' + c.timestamp + c.person + c.to + c.kind"
         :class="{
           'comment-entry': c.event == 'comment',
+          selected: isMobile && mobileSelectedComment == c.id,
           highlight: highlightUnread[c.id],
           'date-entry': c.event == 'new_date',
           replying: replying && c.id == replying.id,
           editing: editingOld && c.id == editingOld,
           hidden: contentHidden,
         }"
+        @click="
+          mobileSelectedComment =
+            mobileSelectedComment == c.id ? undefined : c.id
+        "
         @mouseenter="$emit('read-comment', c.id, true)"
       >
         <!-- <Picker
@@ -245,7 +255,7 @@
               {{
                 [c.event_data.from_user]
                   .concat(c.event_data.to_users)
-                  .map(u => people[u]?.name)
+                  .map(u => (people[u] || people_deleted[u])?.name)
                   .filter(Boolean)
                   .join(",")
               }}
@@ -262,7 +272,12 @@
             </span>
             <span v-else-if="c.event_type == 'join'" class="gray">
               {{ formatTime(c.timestamp, locale) }}:
-              {{ people[c.event_data.from_user]?.name }}がチャットに参加しました
+              {{
+                (
+                  people[c.event_data.from_user] ||
+                  people_deleted[c.event_data.from_user]
+                )?.name
+              }}がチャットに参加しました
             </span>
             <span
               v-else-if="
@@ -271,12 +286,25 @@
               class="gray"
             >
               {{ formatTime(c.timestamp, locale) }}:
-              {{ people[c.event_data.to_user].name }}をチャットに追加しました
+              {{
+                (
+                  people[c.event_data.to_user] ||
+                  people_deleted[c.event_data.to_user]
+                )?.name
+              }}をチャットに追加しました
             </span>
             <span v-else-if="c.event_type == 'add'" class="gray">
               {{ formatTime(c.timestamp, locale) }}:
-              {{ people[c.event_data.to_user].name }}が{{
-                people[c.event_data.from_user].name
+              {{
+                (
+                  people[c.event_data.to_user] ||
+                  people_deleted[c.event_data.to_user]
+                )?.name
+              }}が{{
+                (
+                  people[c.event_data.from_user] ||
+                  people_deleted[c.event_data.from_user]
+                ).name
               }}によりチャットに追加されました
             </span>
             <span
@@ -289,13 +317,21 @@
             <span v-else-if="c.event_type == 'leave'" class="gray">
               {{ formatTime(c.timestamp, locale) }}:
               {{
-                people[c.event_data.left_user].name
+                (
+                  people[c.event_data.left_user] ||
+                  people_deleted[c.event_data.left_user]
+                )?.name
               }}がチャットから離脱しました
             </span>
             <span v-else-if="c.event_type == 'kick'" class="gray">
               {{ formatTime(c.timestamp, locale) }}:
-              {{ people[c.event_data.left_user].name }}が{{
-                people[c.person].name
+              {{
+                (
+                  people[c.event_data.left_user] ||
+                  people_deleted[c.event_data.left_user]
+                )?.name
+              }}が{{
+                (people[c.person] || people_deleted[c.person])?.name
               }}によりチャットから退出されられました
             </span>
             <span v-else>
@@ -314,7 +350,7 @@
         >
           <div class="local-entry-header">
             <span class="comment-name">
-              {{ people[c.person] ? people[c.person].name : null }}
+              {{ (people[c.person] || people_deleted[c.person])?.name }}
             </span>
             <span class="comment-time">{{
               formatTime(c.timestamp, locale)
@@ -326,7 +362,7 @@
                 v-for="t in notSender(c.person, c.texts)"
                 :key="t.to"
               >
-                {{ people[t.to] ? people[t.to].name : "" }}
+                {{ (people[t.to] || people_deleted[t.to])?.name }}
               </span>
               <span v-if="c.encrypted_for_all">&#x1F512; </span>
             </span>
@@ -425,6 +461,7 @@ import {
 } from "vue"
 
 import MyPicker from "./MyPicker.vue"
+import { download } from "../mypage/mypage_service"
 // import data from "../../emoji-mart-vue-fast/data/all.json"
 // import { Picker, EmojiIndex } from "../../emoji-mart-vue-fast/src"
 // import "../../emoji-mart-vue-fast/css/emoji-mart.css"
@@ -470,6 +507,10 @@ export default defineComponent({
     },
     people: {
       type: Object as PropType<{ [index: string]: Person }>,
+      required: true,
+    },
+    people_deleted: {
+      type: Object as PropType<{ [index: string]: { name: string } }>,
       required: true,
     },
     editingOld: {
@@ -543,6 +584,7 @@ export default defineComponent({
           "virtual-poster:" + props.myself?.id + ":config:show_empty_sessions"
         ] != "0",
       initialScrollDone: false,
+      mobileSelectedComment: undefined as CommentId | undefined,
     })
 
     const lang = (key: string): string => {
@@ -600,6 +642,10 @@ export default defineComponent({
         abort_reply: {
           ja: "返信中止",
           en: "Abort reply",
+        },
+        save_chat_log: {
+          ja: "コメント書き出し",
+          en: "Export chat log",
         },
       }
       return message[key][props.locale]
@@ -1108,6 +1154,34 @@ export default defineComponent({
       })
     })
 
+    const exportChatLog = () => {
+      const el1 = document.querySelector("#chat-local-history")
+      if (el1) {
+        const el = el1.cloneNode(true)
+        const html = document.createElement("html")
+        const body = document.createElement("body")
+        body.appendChild(el)
+        body.querySelector("#chat-local-history")!.removeAttribute("style")
+        const head = document.createElement("head")
+        const meta = document.createElement("meta")
+        meta.setAttribute("charset", "utf-8")
+        head.appendChild(meta)
+        const style = document.createElement("style")
+        style.innerHTML =
+          `.comment-entry-tool {visibility: hidden} .chat_event { font-size: 12px; font-style: italic; } .chat_event .gray { color: #999; }` +
+          `.chat-container{font-family:Lato,sans-serif}.mobile .chat-container{font-size:18px}.chat-history{overflow:scroll;border:1px solid #000}.dark #chat-local-history{scrollbar-base-color:#000}.chat-history>p{margin:0}.chat-input-container{box-shadow:1px 1px 2px #222;background:#fff;border:1px solid #ccc}.dark .chat-input-container{background:#000}.chat-input-container.replying{border:2px solid #00f}.chat-input-container.editing{border:2px solid #a25707}button.chat-tool-button{width:40px;height:26px}img.icon{margin:0;height:20px;vertical-align:-5px}button:disabled img.icon{opacity:.4}.running img#voice-input{filter:invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg) brightness(95%) contrast(112%)}button#dictation.running{font-weight:700;animation-name:glowing_bg;animation-duration:2s;animation-direction:normal;animation-iteration-count:infinite}button#submit{margin-left:10px;vertical-align:7px}button#dictation{width:80px;margin-left:10px;vertical-align:7px}button#abort-reply{width:90px;float:right;margin-right:10px;vertical-align:7px}button#show_emoji_picker{font-size:20px;width:40px;height:26px;margin-left:10px;vertical-align:-1px}.comment-entry{padding:0 10px}.desktop .comment-entry:hover,.mobile .comment-entry.selected{background:#eee}.desktop .dark .comment-entry:hover,.mobile .dark .comment-entry.selected{background:#333}.comment-entry-tool{float:right;display:block;font-size:12px;cursor:pointer;visibility:hidden;margin:0 4px}.desktop .comment-entry:hover .comment-entry-tool,.mobile .comment-entry.selected .comment-entry-tool{visibility:visible}.comment-delete{color:red}.my-reaction{background:rgba(29,155,209,.1);box-shadow:#1d9bd1 0 0 0 .8px inset}.reaction-entry .count{font-size:10px}div.comment-entry{border:2px solid transparent;border-radius:3px}div.comment-entry.replying{border:2px solid #00f;border-radius:3px}div.comment-entry.editing{border:2px solid #a25707;border-radius:3px}div.comment-entry.hidden{opacity:0;transition:opacity .5s linear}.reactions{height:20px}.reaction-entry{cursor:pointer;font-size:14px;background-color:rgba(29,28,29,.04);border-radius:6px;margin:0 3px;padding:1px 3px}.date_event{text-align:center;font-size:12px}.date_event span{display:block;margin:-10px auto 0 auto;background:#fff;width:150px;border:1px solid #000;border-radius:5px;text-align:center}.dark .date_event span{background:#222}.date_event hr{margin:10px 0 0 0;background-color:#ccc;height:1px;border:0}.comment-entry{line-height:1em;word-break:break-all}.comment-name{font-size:11px;color:#1d1c1d;font-weight:900}.dark .comment-name{color:#fff}.comment-time{font-size:10px;color:#616061}.dark .comment-time{color:#ccc}.comment-recipients{font-size:11px;color:#1d1c1d}.dark .comment-recipients{font-size:11px;color:#eee}.comment-content{font-size:14px;color:#1d1c1d;line-height:1.3em}.dark .comment-content{color:#fff}.mobile .comment-content{font-size:18px}.dark textarea{background:#333;color:#fff}.comment-entry{transition:background .5s linear}.comment-entry.highlight{background:rgba(255,174,22,.331);margin-bottom:0}
+`
+        head.appendChild(style)
+        html.appendChild(head)
+        html.appendChild(body)
+        const html_str = html.outerHTML || ""
+        download(
+          props.locale == "ja" ? `チャットの記録.html` : "Chat logs.html",
+          html_str
+        )
+      }
+    }
+
     return {
       ...toRefs(state),
       ChatInput,
@@ -1130,6 +1204,7 @@ export default defineComponent({
       startReply,
       inRange,
       lang,
+      exportChatLog,
     }
   },
 })
@@ -1290,5 +1365,17 @@ span.with-tool-tip {
 
 .tooltip {
   margin-left: 10px;
+}
+
+#chat-local-toolbar {
+  position: absolute;
+  top: 5px;
+  right: 15px;
+  z-index: 3000;
+}
+
+.small-button {
+  font-size: 11px;
+  height: 22px;
 }
 </style>

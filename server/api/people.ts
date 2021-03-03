@@ -36,10 +36,11 @@ async function routes(
   fastify.get<any>("/people", async req => {
     try {
       const with_email = req["requester_type"] == "admin" && !!req.query.email
-      const rows = await model.people.getAllPeopleList(
+      const rows = await model.people.getAllPeopleList({
+        with_role: req["requester_type"] == "admin",
         with_email,
-        req["requester_type"] == "admin"
-      )
+        with_room_access: req["requester_type"] == "admin",
+      })
       return rows
     } catch (err) {
       req.log.error(err)
@@ -102,8 +103,14 @@ async function routes(
     async (req, res) => {
       const roomId = req.params.roomId as string
       const map = model.maps[roomId]
-      const people = await map.getPeopleWithAccess()
-      return { ok: true, people }
+      const requester_type: "admin" | "user" = req["requester_type"]
+
+      const with_id = requester_type == "admin"
+
+      console.log({ with_id, requester_type })
+
+      const people = await map.getPeopleWithAccess({ with_id })
+      return { ok: true, with_id, people }
     }
   )
 
@@ -276,7 +283,9 @@ async function routes(
       params: { userId },
     } = req
     const with_email = req["requester_type"] == "admin" && !!email
-    const p = await model.people.get(userId, with_email, true)
+    const requester_type: "admin" | "user" = req["requester_type"]
+    const is_site_admin = requester_type == "admin"
+    const p = await model.people.get(userId, with_email, true, is_site_admin)
     if (p) {
       return p
     } else {

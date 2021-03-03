@@ -21,7 +21,7 @@ import * as model from "./model"
 import fs from "fs"
 import path from "path"
 import { registerSocket } from "./socket"
-import { AppNotification } from "../@types/types"
+import { AppEvent } from "../@types/types"
 import * as bunyan from "bunyan"
 import io from "socket.io-emitter"
 import cluster from "cluster"
@@ -31,7 +31,7 @@ import swaggerValidation from "openapi-validator-middleware"
 import fastifyCookie from "fastify-cookie"
 import { config } from "./config"
 import axios from "axios"
-import { encodeAppNotificationData } from "../common/util"
+import { encodeAppEventData } from "../common/util"
 import { promisify } from "util"
 import { processEmailQueue } from "./email"
 import { pushNotificationToEmailQueue } from "./model/notification"
@@ -80,8 +80,8 @@ class HTTPEmitter {
   constructor(channels: string[] = []) {
     this.channels = channels
   }
-  emit(cmd: AppNotification, cmd_data?: any) {
-    const data_to_send = encodeAppNotificationData(cmd, cmd_data)
+  emit(cmd: AppEvent, cmd_data?: any) {
+    const data_to_send = encodeAppEventData(cmd, cmd_data)
     if (!data_to_send) {
       log.error("Error in encoding notification", cmd, cmd_data)
       return
@@ -137,7 +137,7 @@ function initEmailQueueProcessor() {
       .catch(err => {
         log.error("processEmailQueue() error", err)
       })
-  }, 5000)
+  }, 10000)
 }
 
 async function workerInitData(): Promise<boolean> {

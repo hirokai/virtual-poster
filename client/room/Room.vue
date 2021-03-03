@@ -76,7 +76,12 @@
   <div
     id="app-main"
     v-if="!isMobile"
-    :class="{ poster_active: posterLooking, mobile: isMobile, dark: darkMode }"
+    :class="{
+      poster_active: posterLooking,
+      mobile: isMobile,
+      desktop: !isMobile,
+      dark: darkMode,
+    }"
     @click="visibleNotification = false"
     v-cloak
     :style="cssVars"
@@ -127,11 +132,11 @@
           height="25"
         />
         <div
-          v-if="notifications.length > 0"
+          v-if="Object.keys(notifications).length > 0"
           class="badge"
           @click.stop="visibleNotification = !visibleNotification"
         >
-          {{ notifications.length }}
+          {{ Object.keys(notifications).length }}
         </div>
 
         <div class="tooltip">{{ lang("notification") }}</div>
@@ -143,6 +148,7 @@
           :notifications="notifications"
           :posters="posters"
           @approach-poster="approachPoster"
+          @remove-notification="removeNotification"
           @highlight-unread-comments="highlightUnreadComments"
           @close="visibleNotification = false"
         />
@@ -321,6 +327,7 @@
       :commentTree="commentTree"
       :events="chat_events"
       :people="people"
+      :people_deleted="people_deleted"
       :editingOld="editingOld"
       :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
       :inputFocused="inputFocused"
@@ -356,6 +363,7 @@
       :comments="posterComments"
       :commentTree="posterCommentTree"
       :people="people"
+      :people_deleted="people_deleted"
       :editingOld="editingOld"
       :posterChatGroup="posterChatGroup"
       :darkMode="darkMode"
@@ -577,11 +585,14 @@ import {
   CommentId,
   CommentEvent,
   PosterCommentDecrypted,
-  VisualStyle,
-  NewCommentNotification,
-  PosterCommentNotification,
   CellVisibility,
   Tree,
+  NewChatCommentNotification,
+  NewPosterCommentNotification,
+  NotificationEntry,
+  NotificationId,
+  ReplyChatCommentNotification,
+  ReplyPosterNotification,
 } from "@/@types/types"
 
 import RoomMobile from "./RoomMobile.vue"
@@ -773,6 +784,17 @@ const setupSocketHandlers = (
       }
     }, Math.random() * RELOAD_DELAY_MEAN * 2)
   })
+
+  socket.on("Notification", (ns: NotificationEntry[]) => {
+    for (const n of ns) {
+      state.notifications[n.id] = n
+    }
+  })
+  socket.on("NotificationRemove", (ns: NotificationId[]) => {
+    for (const n of ns) {
+      delete state.notifications[n]
+    }
+  })
 }
 
 const ArrowKeyInterval = 100
@@ -877,6 +899,7 @@ export default defineComponent({
       enableMiniMap: !props.isMobile,
 
       people: {} as { [index: string]: PersonInMap },
+      people_deleted: {} as { [index: string]: { id: UserId; name: string } },
       posters: {} as { [index: string]: PosterTyp },
       posterComments: {} as { [comment_id: string]: PosterCommentDecrypted },
       posterInputComment: "" as string | undefined,
@@ -972,7 +995,7 @@ export default defineComponent({
       hoverElement: undefined,
       posterUploadProgress: undefined,
       visibleNotification: false,
-      notifications: [],
+      notifications: {},
       highlightUnread: {},
       highlightUnreadPoster: {},
       playingBGM: undefined,
@@ -2054,16 +2077,22 @@ export default defineComponent({
       setTimeout(
         () => {
           delete state.highlightUnread[comment_id]
-          const count = Object.values(state.highlightUnread).filter(h => h)
-            .length
-          if (count == 0) {
-            state.notifications = state.notifications.filter(
-              n => n.kind != "new_chat_comments"
-            )
-          } else {
-            for (const n of state.notifications) {
-              if (n.kind == "new_chat_comments") {
-                ;(n as NewCommentNotification).data.count = count
+          for (const n of Object.values(state.notifications)) {
+            if (n.kind == "new_chat_comments") {
+              const n1 = n as NewChatCommentNotification
+              n1.data.comments = n1.data.comments.filter(
+                c => state.highlightUnread[c]
+              )
+              if (n1.data.comments.length == 0) {
+                delete state.notifications[n.id]
+              }
+            } else if (n.kind == "reply_chat_comments") {
+              const n1 = n as ReplyChatCommentNotification
+              n1.data.comments = n1.data.comments.filter(
+                c => state.highlightUnread[c]
+              )
+              if (n1.data.comments.length == 0) {
+                delete state.notifications[n.id]
               }
             }
           }
@@ -2090,32 +2119,37 @@ export default defineComponent({
         console.warn("readPosterComment() not found comment", comment_id)
         return
       }
+      if (state.posterComments[comment_id].read) {
+        return
+      }
+
       state.posterComments[comment_id].read = true
       setTimeout(
         () => {
           if (!state.highlightUnreadPoster[poster_id]) {
-            console.error(
-              "highlightUnreadPoster undefined",
+            console.warn(
+              "highlightUnreadPoster read",
               state.highlightUnreadPoster
             )
             return
           }
           delete state.highlightUnreadPoster[poster_id][comment_id]
-          const count = Object.values(
-            state.highlightUnreadPoster[poster_id]
-          ).filter(h => h).length
-          if (count == 0) {
-            state.notifications = state.notifications.filter(
-              n =>
-                !(n.kind == "new_poster_comments" && n.data.poster == poster_id)
-            )
-          } else {
-            for (const n of state.notifications) {
-              if (
-                n.kind == "new_poster_comments" &&
-                n.data.poster == poster_id
-              ) {
-                ;(n as PosterCommentNotification).data.count = count
+          for (const n of Object.values(state.notifications)) {
+            if (n.kind == "new_poster_comments") {
+              const n1 = n as NewPosterCommentNotification
+              n1.data.comments = n1.data.comments.filter(
+                c => state.highlightUnread[c]
+              )
+              if (n1.data.comments.length == 0) {
+                delete state.notifications[n.id]
+              }
+            } else if (n.kind == "reply_poster_comments") {
+              const n1 = n as ReplyPosterNotification
+              n1.data.comments = n1.data.comments.filter(
+                c => state.highlightUnread[c]
+              )
+              if (n1.data.comments.length == 0) {
+                delete state.notifications[n.id]
               }
             }
           }
@@ -2217,8 +2251,8 @@ export default defineComponent({
       })
     }
 
-    const approachPoster = async (poster_id: PosterId) => {
-      console.log("approachPoster", poster_id)
+    const approachPoster = async (poster_id: PosterId, highlight?: boolean) => {
+      console.log("approachPoster", poster_id, highlight)
       if (posterLooking.value && posterLooking.value != poster_id) {
         await leavePoster()
         await sleepAsync(500)
@@ -2229,7 +2263,9 @@ export default defineComponent({
         await dblClick(state.posters[poster_id])
       }
 
-      highlightUnreadPosterComments(poster_id, true)
+      if (highlight) {
+        highlightUnreadPosterComments(poster_id, true)
+      }
     }
 
     const setPoster = (pid: PosterId, poster: PosterTyp) => {
@@ -2239,6 +2275,13 @@ export default defineComponent({
     const setPosterContainerWidth = (w: number) => {
       console.log("setPosterContainerWidth", w)
       state.posterContainerWidth = w
+    }
+
+    const removeNotification = async (notification_id: NotificationId) => {
+      await client.maps
+        ._roomId(props.room_id)
+        .notifications._notificationId(notification_id)
+        .$delete()
     }
 
     watch(
@@ -2323,6 +2366,7 @@ export default defineComponent({
       viewInfoObjectInFront,
       menuItems,
       showProfileKind,
+      removeNotification,
       lang,
       ...mapCalculatedProps,
       ...mapEventHandlers,
@@ -2394,6 +2438,7 @@ body {
   width: calc(var(--cell_size) * 11);
   height: 38px;
   margin: 0px;
+  z-index: 1000;
   /* background: #ccc; */
 }
 

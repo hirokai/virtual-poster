@@ -69,7 +69,7 @@ async function checkRateLimitForSystem(): Promise<"day" | "sec" | "ok"> {
   const row: {
     count: number
   } | null = await model.db.oneOrNone(
-    `SELECT count(*) as count FROM email_to_user WHERE "status"='sent' AND "timestamp">$1`,
+    `SELECT count(*) as count FROM email_to_user WHERE ("status"='sent' OR "status"='sending') AND "timestamp">$1`,
     [ts_since]
   )
   const count = row?.count
@@ -82,7 +82,7 @@ async function checkRateLimitForSystem(): Promise<"day" | "sec" | "ok"> {
   const row2: {
     count: number
   } | null = await model.db.oneOrNone(
-    `SELECT count(*) as count FROM email_to_user WHERE "status"='sent' AND "timestamp">$1`,
+    `SELECT count(*) as count FROM email_to_user WHERE ("status"='sent' OR "status"='sending') AND "timestamp">$1`,
     [ts_since2]
   )
   const count2 = row2?.count
@@ -98,22 +98,29 @@ async function checkRateLimitForUser(
   user_email: string
 ): Promise<"hour" | "ok"> {
   const ts_since = Date.now() - 1000 * 60 * 60
-  const row: {
-    count: number
-  } | null = await model.db.oneOrNone(
+  const rows: {
+    id: string
+    timestamp: string
+  }[] = await model.db.query(
     `SELECT
-          count(*) AS count
+          id,timestamp
       FROM
           email_to_user
       WHERE
-          "status" = 'sent'
+          ("status"='sent' OR "status"='sending')
           AND notification IS NOT NULL
           AND send_to = $2
           AND "timestamp" > $1`,
     [ts_since, user_email]
   )
-  const count = row?.count
+  const count = rows.length
   if (count == null || count >= config.email.max_rate_user_per_hour) {
+    log.info(
+      "checkRateLimitForUser(): Recent emails: ",
+      rows.map(r => {
+        return { id: r.id, timestamp: +r.timestamp }
+      })
+    )
     //Rate limit exceeded
     return "hour"
   }
@@ -236,7 +243,7 @@ export async function processEmailQueue(dry_run?: boolean) {
     [config.email.max_rate_per_sec]
   )
   for (const row of rows) {
-    // Notification is resolved after email queue was set.
+    // In the case where notification is resolved after email queue was set, that email should be removed from the queue.
     if (row["resolved_time"] || row["superseded_by"]) {
       await model.db.query(`DELETE FROM email_to_user WHERE id=$1`, [row["id"]])
       continue

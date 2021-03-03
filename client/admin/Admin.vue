@@ -120,7 +120,7 @@ import {
   RoomId,
   ActiveUsersSocketData,
   Announcement,
-  AppNotification,
+  AppEvent,
   Room,
   PersonUpdate,
   RoomUpdateSocketData,
@@ -270,7 +270,7 @@ export default defineComponent({
       state.people[d.id] = person
     }
 
-    const on_socket = (msg: AppNotification, data: any) => {
+    const on_socket = (msg: AppEvent, data: any) => {
       // console.log("socket", msg, data)
       state.socketHistory.push({
         msg,
@@ -407,7 +407,7 @@ export default defineComponent({
         "AppReload",
       ]) {
         props.socket.on(k, d => {
-          on_socket(k as AppNotification, d)
+          on_socket(k as AppEvent, d)
         })
       }
 

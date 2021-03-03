@@ -96,11 +96,11 @@ button#show_emoji_picker {
   padding: 0px 10px;
 }
 
-.comment-entry:hover {
+.desktop .comment-entry:hover, .mobile .comment-entry.selected {
   background: #eee;
 }
 
-.dark .comment-entry:hover {
+.desktop .dark .comment-entry:hover, .mobile .dark .comment-entry.selected {
   background: #333;
 }
 
@@ -113,7 +113,7 @@ button#show_emoji_picker {
   margin: 0px 4px;
 }
 
-.comment-entry:hover .comment-entry-tool {
+.desktop .comment-entry:hover .comment-entry-tool, .mobile .comment-entry.selected .comment-entry-tool {
   visibility: visible;
 }
 

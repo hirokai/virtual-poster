@@ -1,6 +1,11 @@
 import * as model from "../model"
 import { FastifyInstance } from "fastify"
-import { Poster, PosterId, PosterCommentDecrypted } from "../../@types/types"
+import {
+  Poster,
+  PosterId,
+  PosterCommentDecrypted,
+  UserId,
+} from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute, manageRoom } from "../auth"
 import { userLog } from "../model"
@@ -267,8 +272,12 @@ async function routes(
         return { ok: false, error: "Poster not found" }
       }
       const room = await model.maps[poster.room]?.getMetadata()
+      const is_page_admin = await model.maps[poster.room]?.isUserOwnerOrAdmin(
+        req["requester"]
+      )
       const permitted =
         req["requester_type"] == "admin" ||
+        is_page_admin ||
         (room?.allow_poster_assignment && req["requester"] == poster.author)
       if (!permitted) {
         throw { statusCode: 403 }
@@ -295,8 +304,12 @@ async function routes(
         return { ok: false, error: "Poster not found" }
       }
       const room = await model.maps[poster.room]?.getMetadata()
+      const is_page_admin = await model.maps[poster.room]?.isUserOwnerOrAdmin(
+        req["requester"]
+      )
       const permitted =
         req["requester_type"] == "admin" ||
+        is_page_admin ||
         (room?.allow_poster_assignment && req["requester"] == poster.author)
       if (!permitted) {
         throw { statusCode: 403 }
@@ -446,9 +459,13 @@ async function routes(
         timestamp: timestamp,
         last_updated: timestamp,
       }
-      const r = await model.chat.addPosterComment(c)
-      if (r) {
+      const notifications = await model.chat.addPosterComment(c)
+      if (notifications) {
+        console.log({ notifications })
         emit.channel(c.poster).posterComment(c)
+        for (const n of notifications) {
+          emit.channel(n.person).notification([n])
+        }
         return { ok: true }
       } else {
         return { ok: false }
@@ -522,9 +539,10 @@ async function routes(
 
   fastify.get<any>("/posters/:posterId/comments", async req => {
     const posterId: PosterId = req.params.posterId
-    const v = await model.posters.isViewing(req["requester"], posterId)
+    const requester: UserId = req["requester"]
+    const v = await model.posters.isViewing(requester, posterId)
     if (v.viewing == true) {
-      return await model.chat.getPosterComments(posterId)
+      return await model.chat.getPosterComments(posterId, requester)
     } else {
       throw { statusCode: 400, message: "Not viewing a poster" }
     }
@@ -532,7 +550,7 @@ async function routes(
 
   fastify.get<any>("/maps/:roomId/posters", async req => {
     const room = req.params.roomId
-    const requester: string = req["requester"]
+    const requester: UserId = req["requester"]
     return await model.posters.getAll(room, requester)
   })
 

@@ -10,6 +10,7 @@ import {
   isOpenCell,
   lookingAt,
   updateMapCell,
+  keyBy,
 } from "@/common/util"
 import {
   startChat,
@@ -1070,10 +1071,14 @@ export const initMapService = async (
     }
   }
 
-  state.notifications = await client.maps
-    ._roomId(props.room_id)
-    .notifications.$get()
-    .catch(() => [])
+  state.notifications = keyBy(
+    await client.maps
+      ._roomId(props.room_id)
+      .people._userId(props.myUserId)
+      .notifications.$get()
+      .catch(() => []),
+    "id"
+  )
 
   return true
 }

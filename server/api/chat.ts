@@ -6,6 +6,7 @@ import {
   ChatComment,
   CommentId,
   PosterCommentDecrypted,
+  UserId,
 } from "../../@types/types"
 import _ from "lodash"
 import { protectedRoute } from "../auth"
@@ -240,11 +241,15 @@ async function routes(
   fastify.post<any>("/comments/:commentId/read", async req => {
     const comment_id: string = req.params.commentId
     const read: boolean = req.body.read
-    const { ok, error } = await model.chat.commentRead(
-      req["requester"],
-      comment_id,
-      read
-    )
+    const requester: UserId = req["requester"]
+    const {
+      ok,
+      error,
+      removed_notification_ids,
+    } = await model.chat.commentRead(req["requester"], comment_id, read)
+    if (removed_notification_ids && removed_notification_ids.length > 0) {
+      emit.channel(requester).notificationRemove(removed_notification_ids)
+    }
 
     return { ok, error }
   })

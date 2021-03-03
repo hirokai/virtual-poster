@@ -216,6 +216,11 @@
         v-if="poster && (!isMobile || mobilePane == 'poster_chat')"
       >
         {{ lang("poster_comments") }}
+        <span style="float: right; display: inline-block; margin-right: 5px"
+          ><button class="tiny-button" @click="exportPosterComments">
+            {{ lang("export") }}
+          </button></span
+        >
       </h3>
     </transition>
     <transition :name="isMobile ? '' : 'fade'">
@@ -240,7 +245,7 @@
             :class="{
               replying: replying && replying.id == c.id,
               editing: editingOld && c.id == editingOld,
-              highlight: !c.read,
+              highlight: c.read == false,
             }"
             :key="c.timestamp + c.person + c.to + c.kind"
             :id="'poster-comment-entry-' + c.id"
@@ -260,7 +265,9 @@
             >
               <div class="local-entry-header">
                 <span class="comment-name">{{
-                  people[c.person]?.name || "名前不明" + JSON.stringify(c)
+                  people[c.person]?.name ||
+                  people_deleted[c.person]?.name ||
+                  "（名前不明）"
                 }}</span>
                 <span class="comment-time">{{ formatTime(c.timestamp) }}</span>
 
@@ -392,6 +399,7 @@ import {
 
 import MyPicker from "./MyPicker.vue"
 import { PosterId } from "@/api/@types"
+import { download } from "../mypage/mypage_service"
 
 const drawWaterMark = async (
   image_base64: string,
@@ -476,6 +484,10 @@ export default defineComponent({
     },
     people: {
       type: Object as PropType<{ [index: string]: Person }>,
+      required: true,
+    },
+    people_deleted: {
+      type: Object as PropType<{ [index: string]: { name: string } }>,
       required: true,
     },
     editingOld: {
@@ -605,6 +617,10 @@ export default defineComponent({
           ja: "バイト",
           en: "bytes",
         },
+        export: {
+          ja: "コメント書き出し",
+          en: "Export comments",
+        },
       }
       return message[key][props.locale]
     }
@@ -676,6 +692,15 @@ export default defineComponent({
       PosterCommentInput.value.value = props.comments[cid].text_decrypted
       PosterCommentInput.value.focus()
     }
+    watch(
+      () => [props.poster?.id],
+      () => {
+        if (!props.poster) {
+          state.posterDataURI = ""
+          state.replying = undefined
+        }
+      }
+    )
     watch(
       () => [props.poster?.last_updated, props.poster?.file_url],
       async () => {
@@ -1074,6 +1099,41 @@ export default defineComponent({
       }),
     })
 
+    const exportPosterComments = () => {
+      const el1 = document.querySelector("#poster-comments-container")
+      if (el1) {
+        const author_name = (
+          props.people[props.poster?.author || ""]?.name || ""
+        ).replaceAll(/\/\\/g, "_")
+        const title = props.poster?.title || "（タイトル無し）"
+
+        const el = el1.cloneNode(true)
+        const html = document.createElement("html")
+        const body = document.createElement("body")
+        const header = document.createElement("div")
+        header.innerHTML =
+          props.locale == "ja"
+            ? `<h1>${author_name}さんのポスターへのコメント： ${title}</h1>`
+            : `<h1>${author_name}'s poster comments: ${title}</h1>`
+        body.appendChild(header)
+        body.appendChild(el)
+        const head = document.createElement("head")
+        const meta = document.createElement("meta")
+        meta.setAttribute("charset", "utf-8")
+        head.appendChild(meta)
+        const style = document.createElement("style")
+        style.innerHTML =
+          `h1 {font-size: 16px ! important;} .comment-entry-tool {visibility: hidden} .chat_event { font-size: 12px; font-style: italic; } .chat_event .gray { color: #999; } div#poster-comments-container { width: 100%; overflow: scroll; font-size: 12px; background: white; border: 1px solid #888; border-radius: 4px; }` +
+          `.chat-container{font-family:Lato,sans-serif}.mobile .chat-container{font-size:18px}.chat-history{overflow:scroll;border:1px solid #000}.dark #chat-local-history{scrollbar-base-color:#000}.chat-history>p{margin:0}.chat-input-container{box-shadow:1px 1px 2px #222;background:#fff;border:1px solid #ccc}.dark .chat-input-container{background:#000}.chat-input-container.replying{border:2px solid #00f}.chat-input-container.editing{border:2px solid #a25707}button.chat-tool-button{width:40px;height:26px}img.icon{margin:0;height:20px;vertical-align:-5px}button:disabled img.icon{opacity:.4}.running img#voice-input{filter:invert(15%) sepia(95%) saturate(6932%) hue-rotate(358deg) brightness(95%) contrast(112%)}button#dictation.running{font-weight:700;animation-name:glowing_bg;animation-duration:2s;animation-direction:normal;animation-iteration-count:infinite}button#submit{margin-left:10px;vertical-align:7px}button#dictation{width:80px;margin-left:10px;vertical-align:7px}button#abort-reply{width:90px;float:right;margin-right:10px;vertical-align:7px}button#show_emoji_picker{font-size:20px;width:40px;height:26px;margin-left:10px;vertical-align:-1px}.comment-entry{padding:0 10px}.desktop .comment-entry:hover,.mobile .comment-entry.selected{background:#eee}.desktop .dark .comment-entry:hover,.mobile .dark .comment-entry.selected{background:#333}.comment-entry-tool{float:right;display:block;font-size:12px;cursor:pointer;visibility:hidden;margin:0 4px}.desktop .comment-entry:hover .comment-entry-tool,.mobile .comment-entry.selected .comment-entry-tool{visibility:visible}.comment-delete{color:red}.my-reaction{background:rgba(29,155,209,.1);box-shadow:#1d9bd1 0 0 0 .8px inset}.reaction-entry .count{font-size:10px}div.comment-entry{border:2px solid transparent;border-radius:3px}div.comment-entry.replying{border:2px solid #00f;border-radius:3px}div.comment-entry.editing{border:2px solid #a25707;border-radius:3px}div.comment-entry.hidden{opacity:0;transition:opacity .5s linear}.reactions{height:20px}.reaction-entry{cursor:pointer;font-size:14px;background-color:rgba(29,28,29,.04);border-radius:6px;margin:0 3px;padding:1px 3px}.date_event{text-align:center;font-size:12px}.date_event span{display:block;margin:-10px auto 0 auto;background:#fff;width:150px;border:1px solid #000;border-radius:5px;text-align:center}.dark .date_event span{background:#222}.date_event hr{margin:10px 0 0 0;background-color:#ccc;height:1px;border:0}.comment-entry{line-height:1em;word-break:break-all}.comment-name{font-size:11px;color:#1d1c1d;font-weight:900}.dark .comment-name{color:#fff}.comment-time{font-size:10px;color:#616061}.dark .comment-time{color:#ccc}.comment-recipients{font-size:11px;color:#1d1c1d}.dark .comment-recipients{font-size:11px;color:#eee}.comment-content{font-size:14px;color:#1d1c1d;line-height:1.3em}.dark .comment-content{color:#fff}.mobile .comment-content{font-size:18px}.dark textarea{background:#333;color:#fff}.comment-entry{transition:background .5s linear}.comment-entry.highlight{background:rgba(255,174,22,.331);margin-bottom:0}
+`
+        head.appendChild(style)
+        html.appendChild(head)
+        html.appendChild(body)
+        const html_str = html.outerHTML || ""
+        download(`poster_comments ${author_name} ${title}.html`, html_str)
+      }
+    }
+
     return {
       ...toRefs(state),
       isMyPoster,
@@ -1106,6 +1166,7 @@ export default defineComponent({
       editPoster,
       lang,
       cssVars,
+      exportPosterComments,
     }
   },
 })
@@ -1238,6 +1299,7 @@ h3#poster-comment-title {
   position: absolute;
   top: calc(var(--cell_size) * 5 + 80px);
   left: 10px;
+  width: calc(var(--cell_size) * 11);
 }
 
 .mobile h3#poster-comment-title {
@@ -1359,7 +1421,7 @@ textarea#poster-chat-input {
   position: absolute;
   left: 8px;
   bottom: 20px;
-  width: 527px;
+  width: calc(var(--cell_size) * 11);
   z-index: 100 !important;
   padding: 10px;
 }
@@ -1395,5 +1457,10 @@ textarea#poster-chat-input {
 #poster-tools .toolbar-icon {
   /* opacity: 0.5; */
   margin: 0px 3px;
+}
+
+.tiny-button {
+  font-size: 9px;
+  height: 18px;
 }
 </style>

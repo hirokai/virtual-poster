@@ -16,6 +16,7 @@ import {
   UserGroupId,
   RoomAccessCode,
   UserGroup,
+  Person,
 } from "../../@types/types"
 import shortid from "shortid"
 import { redis, log, db, pgp, POSTGRES_CONNECTION_STRING } from "./index"
@@ -27,6 +28,7 @@ import {
   isOpenCell,
   range,
   flatten,
+  removeUndefined,
 } from "../../common/util"
 import {
   getCellOpenFromString,
@@ -629,7 +631,7 @@ export class MapModel {
       false,
       false
     )
-    await setRedisPeoplePosition(this.room_id, people)
+    await setRedisPeoplePosition(this.room_id, people.people)
   }
 
   async updateMapCells(
@@ -1240,10 +1242,11 @@ export class MapModel {
     return { ok: true }
   }
 
-  async getPeopleWithAccess(): Promise<
-    { email: string; groups: UserGroupId[] }[]
-  > {
-    const rows = await db.query(
+  async getPeopleWithAccess(
+    opt: { with_id?: boolean } = {}
+  ): Promise<{ user_id?: string; email: string; groups: UserGroupId[] }[]> {
+    console.log("getPeopleWithAccess", opt)
+    const rows = await db.query<{ email: string; groups: UserGroupId[] }[]>(
       `SELECT
             ra.email,
             array_agg(pg.people_group) as groups
@@ -1262,14 +1265,28 @@ export class MapModel {
       ])
     ).map(r => r.id)
     const group_ids = new Set(group_id_list)
+    let all_users_by_email: { [user_id: string]: Person } = {}
+    if (opt?.with_id) {
+      const all_users = await model.people.getAllPeopleList({
+        with_email: true,
+      })
+      all_users_by_email = _.keyBy(all_users, "email")
+      console.log({ all_users_by_email })
+    }
     return rows.map(r => {
+      const email = r["email"] as string
       const groups = r["groups"]
-      return {
-        email: r["email"] as string,
+      console.log(
+        "all_users_by_email[email]?.id",
+        all_users_by_email[email]?.id
+      )
+      return removeUndefined({
+        user_id: all_users_by_email[email]?.id,
+        email,
         groups: (groups[0] == null ? [] : (groups as string[])).filter(s =>
           group_ids.has(s)
         ),
-      }
+      })
     })
   }
 

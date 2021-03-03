@@ -71,7 +71,7 @@
           </h2>
           <div class="poster_title">{{ poster.poster?.title }}</div>
         </div>
-        <img :src="poster.poster?.file_url" />
+        <img :src="file_urls[poster.poster?.id]" />
       </div>
       <div style="clear:both"></div>
     </div>
@@ -145,13 +145,13 @@
             </td>
             <td>
               {{
-                poster.poster ? (poster.poster?.file_url ? "あり" : "なし") : ""
+                poster.poster ? (file_urls[poster.poster.id] ? "あり" : "なし") : ""
               }}
               <span v-if="poster.poster?.file_size">
               ({{ Math.round(poster.poster?.file_size / 1000).toLocaleString() }} kB)
               </span>
               <div
-                v-if="poster.poster && !poster.poster?.file_url"
+                v-if="poster.poster && !file_urls[poster.poster.id]"
                 class="button is-primary is-small"
                 :class="{ dropping: dragOverUploadButton[poster.poster.id] }"
                 @drop.prevent="onDropPoster($event, poster.poster.id, 'table')"
@@ -166,7 +166,7 @@
                 ファイルをドロップ
               </div>
               <button
-                v-if="poster.poster && poster.poster?.file_url"
+                v-if="poster.poster && file_urls[poster.poster.id]"
                 class="remove-poster button is-danger is-small"
                 @click="removePosterFile(poster.poster.id)"
               >
@@ -460,6 +460,29 @@ export default defineComponent({
         assignPosterBatchFile.value?.focus()
       })
     }
+
+    const loadPosterFileUrls = () => {
+      for (const p of Object.values(props.posters)) {
+        if (p.file_url == "not_disclosed") {
+          client.posters
+            ._posterId(p.id)
+            .file_url.$get()
+            .then(r => {
+              state.file_urls[p.id] = r.url || p.file_url || ""
+            })
+            .catch(() => {
+              //
+            })
+        }
+        // if (p.file_url) {
+        //   p.file_url += "?timestamp=" + p.last_updated  //CloudFront gives error
+        // }
+      }
+    }
+
+    watch(() => props.posters, loadPosterFileUrls, { deep: true })
+
+    loadPosterFileUrls()
 
     const cancelAssignPosterBatchDialog = () => {
       state.assignPosterBatchDialog = false

@@ -12,12 +12,14 @@ import {
   CommentId,
   CommentEncryptedEntry,
   PosterCommentDecrypted,
+  NotificationEntry,
+  NotificationId,
 } from "../../@types/types"
 import * as bunyan from "bunyan"
 import { db, pgp } from "../model"
 import * as model from "../model"
 import shortid from "shortid"
-import { allPointsConnected } from "../../common/util"
+import { allPointsConnected, removeUndefined } from "../../common/util"
 import { config } from "../config"
 import {
   processChatCommentNotifications,
@@ -490,7 +492,8 @@ export async function getAllComments(
 }
 
 export async function getPosterComments(
-  poster_id: PosterId
+  poster_id: PosterId,
+  user_id: UserId
 ): Promise<PosterCommentDecrypted[]> {
   const rows = await db.query(
     `SELECT
@@ -523,8 +526,22 @@ export async function getPosterComments(
       ORDER BY
           c.timestamp
       `,
-    poster_id
+    [poster_id]
   )
+
+  const comment_ids = rows.map(r => r.id)
+  const reads: { comment: CommentId; read: boolean | null }[] =
+    comment_ids.length == 0
+      ? []
+      : (
+          await db.query(
+            `SELECT comment,read FROM poster_comment_read WHERE comment IN ($1:csv) AND person=$2`,
+            [comment_ids, user_id]
+          )
+        ).map(r => {
+          return { comment: r.comment, read: r.read }
+        })
+  const readsDict = _.keyBy(reads, "comment")
   const ds: PosterCommentDecrypted[] = rows.map(r => {
     const to_s: string[] = r["to_poster"]
     if (to_s.length != 1) {
@@ -534,7 +551,8 @@ export async function getPosterComments(
     }
     // Assuming there is only one to_s.
     const poster = to_s[0]
-    const r2: PosterCommentDecrypted = {
+    const read = readsDict[r.id]?.read
+    const r2: PosterCommentDecrypted = removeUndefined({
       id: r.id,
       timestamp: parseInt(r["timestamp"]),
       last_updated: parseInt(r["last_updated"]),
@@ -545,8 +563,8 @@ export async function getPosterComments(
       text_decrypted: r.text,
       poster,
       reply_to: r["reply_to"] || undefined,
-      read: true, // FIXME: 'read' should be fetched from another table.
-    }
+      read: read == true ? true : read == false ? false : undefined,
+    })
     return r2
   })
   return ds
@@ -617,11 +635,11 @@ export async function getPosterComment(
 
 export async function addPosterComment(
   c: PosterCommentDecrypted
-): Promise<boolean> {
+): Promise<NotificationEntry[] | undefined> {
   log.debug(c)
   const poster = await model.posters.get(c.poster)
   if (!poster) {
-    return false
+    return undefined
   }
 
   try {
@@ -646,7 +664,10 @@ export async function addPosterComment(
     )
     await db.query(s)
 
-    const subscribers: UserId[] = await model.posters.getSubscribers(poster.id)
+    const subscribers: UserId[] = await model.posters.getSubscribers(
+      poster.id,
+      [c]
+    )
 
     const values = subscribers
       .filter(id => id != c.person)
@@ -678,14 +699,30 @@ export async function addPosterComment(
     }
     await db.query("COMMIT")
 
-    await processPosterCommentNotifications(c)
+    const notifications = await processPosterCommentNotifications(c)
 
-    return true
+    return notifications
   } catch (err) {
     log.error(err)
     await db.query("ROLLBACK")
-    return false
+    return undefined
   }
+}
+
+export async function findMentions(text: string): Promise<UserId[]> {
+  const regex1 = new RegExp("@([^@\\s]+)", "g")
+  let array1: RegExpExecArray | null
+  const user_ids: UserId[] = []
+  while ((array1 = regex1.exec(text)) !== null) {
+    console.log({ array1 })
+    const name = array1[1]
+    const user = await model.people.getByName(name)
+    if (user) {
+      user_ids.push(user)
+    }
+  }
+  log.debug("findMentions", { user_ids })
+  return user_ids
 }
 
 export async function addCommentEncrypted(c: ChatComment): Promise<boolean> {
@@ -1383,7 +1420,11 @@ export async function commentRead(
   user_id: UserId,
   comment_id: CommentId,
   read: boolean
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean
+  removed_notification_ids?: NotificationId[]
+  error?: string
+}> {
   try {
     const timestamp = Date.now()
     const r = await db.result(
@@ -1399,14 +1440,17 @@ export async function commentRead(
       [user_id, comment_id, read, !read, user_id]
     )
 
-    await model.notification.processCommentRead(
+    const {
+      ok,
+      removed_notification_ids,
+    } = await model.notification.processCommentRead(
       user_id,
       comment_id,
       read,
       timestamp
     )
 
-    return { ok: true }
+    return { ok, removed_notification_ids }
   } catch (err) {
     log.error(err)
     return { ok: false, error: "DB error" }

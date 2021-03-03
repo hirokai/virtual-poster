@@ -36,7 +36,10 @@ async function routes(
   })
 
   fastify.get("/admin/export/people", async (req, res) => {
-    const people = await model.people.getAllPeopleList(true)
+    const people = await model.people.getAllPeopleList({
+      with_room_access: true,
+      with_email: true,
+    })
     await res.type("application/json")
     return JSON.stringify(people, null, 2)
   })

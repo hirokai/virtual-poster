@@ -2,7 +2,7 @@ import {
   SocketMessageFromUser,
   RoomAppProps,
   RoomAppState,
-  AppNotification,
+  AppEvent,
 } from "@/@types/types"
 import { decodeNotificationData } from "../common/util"
 
@@ -95,7 +95,7 @@ export class MySocketObject {
     this.ws.onmessage = d => {
       const dat = JSON.parse(d.data)
       //   console.log("WebSocket received: ", dat)
-      const msg: AppNotification = dat.type
+      const msg: AppEvent = dat.type
       const decoded = decodeNotificationData(msg, dat)
       if (decoded == null) {
         console.error("Decode error for WebSocket notification: ", msg, dat)

@@ -17,7 +17,7 @@ import cluster from "cluster"
 import SocketIO from "socket.io"
 import redis, { RedisAdapter } from "socket.io-redis"
 import * as model from "./model"
-import { AppNotification } from "../@types/types"
+import { AppEvent } from "../@types/types"
 import dotenv from "dotenv"
 import { config } from "./config"
 import bodyParser from "body-parser"
@@ -91,7 +91,7 @@ app.post("/input/:debug_token", (req, res) => {
     return
   }
   log.info("Emit input received", req.body)
-  const data: { type: AppNotification } & any = req.body.data
+  const data: { type: AppEvent } & any = req.body.data
   const topics: string[] = req.body.topics
   if (data.type == "Group") {
     emit.channel(topics[0]).group(data.group)

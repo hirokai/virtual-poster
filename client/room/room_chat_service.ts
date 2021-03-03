@@ -17,7 +17,7 @@ import {
   MySocketObject,
   CommentEncryptedEntry,
   Tree,
-  NewCommentNotification,
+  PosterCommentDecrypted,
 } from "@/@types/types"
 import { keyBy, compact, sortTree } from "@/common/util"
 import * as encryption from "../encryption"
@@ -249,6 +249,7 @@ export const decryptIfNeeded = async (
       "Sender's public key not found",
       comment.person,
       public_keys[comment.person],
+      public_keys,
       pub_str
     )
     return {
@@ -312,20 +313,6 @@ export const newComment = async (
           el.scrollTop = el.scrollHeight
         }
       })
-    }
-    const windowInactive = false
-    if (d2.person != props.myUserId && (!is_new_latest || windowInactive)) {
-      state.highlightUnread[d2.id] = true
-      state.notifications = state.notifications.filter(
-        n => n.kind != "new_chat_comments"
-      )
-      state.notifications.unshift({
-        kind: "new_chat_comments",
-        data: {
-          count: Object.values(state.highlightUnread).length,
-        },
-        timestamp: Date.now(),
-      } as NewCommentNotification)
     }
   } catch (err) {
     console.error(err)
@@ -454,6 +441,55 @@ export const kickFromChat = async (
   return { ok: data.ok, group_removed: !!data.group_removed, users: data.users }
 }
 
+export async function processCommentsAndEvents(
+  comments: (ChatEvent | ChatComment)[],
+  public_keys: { [user_id: string]: { public_key?: string } },
+  myUserId: UserId,
+  myPrivateKey: CryptoKey | null
+): Promise<{
+  events: ChatEvent[]
+  comments_decrypted: ChatCommentDecrypted[]
+}> {
+  const decrypted: ChatCommentDecrypted[] = []
+  const events: ChatEvent[] = []
+  for (const c of comments) {
+    if (c.kind == "event") {
+      const ev: ChatEvent = {
+        kind: "event",
+        room: c.room,
+        group: c.group,
+        person: c.person,
+        event_type: c.event_type,
+        event_data: c.event_data,
+        timestamp: c.timestamp,
+      }
+      events.push(ev)
+    } else {
+      const r = await decryptIfNeeded(myUserId, public_keys, c, myPrivateKey)
+      // console.log("decryptIfNeeded() result", r)
+      const comment_decr: ChatCommentDecrypted = {
+        id: c.id,
+        timestamp: c.timestamp,
+        last_updated: c.last_updated,
+        text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
+        texts: c.texts.map(t => {
+          return { to: t.to, encrypted: t.encrypted }
+        }),
+        room: c.room,
+        x: c.x,
+        y: c.y,
+        person: c.person,
+        kind: c.kind,
+        reply_to: c.reply_to,
+        read: !!(c as ChatComment).read,
+      }
+      // comment.encrypted = r.encrypted || false
+      decrypted.push(comment_decr)
+    }
+  }
+  return { events, comments_decrypted: decrypted }
+}
+
 export const initChatService = async (
   axios: AxiosStatic | AxiosInstance,
   socket: SocketIOClient.Socket | MySocketObject,
@@ -548,67 +584,15 @@ export const initChatService = async (
   ])
   state.chatGroups = keyBy(groups, "id")
 
-  const decrypted: ChatCommentDecrypted[] = []
-  const events: ChatEvent[] = []
-  for (const c of comments) {
-    if (c.kind == "event") {
-      const ev: ChatEvent = {
-        kind: "event",
-        room: props.room_id,
-        group: c.group,
-        person: c.person,
-        event_type: c.event_type,
-        event_data: c.event_data,
-        timestamp: c.timestamp,
-      }
-      events.push(ev)
-    } else {
-      const r = await decryptIfNeeded(
-        props.myUserId,
-        state.people,
-        c,
-        state.privateKey
-      )
-      // console.log("decryptIfNeeded() result", r)
-      const comment_decr: ChatCommentDecrypted = {
-        id: c.id,
-        timestamp: c.timestamp,
-        last_updated: c.last_updated,
-        text_decrypted: r.ok && r.text ? r.text : "（暗号化）",
-        texts: c.texts.map(t => {
-          return { to: t.to, encrypted: t.encrypted }
-        }),
-        room: c.room,
-        x: c.x,
-        y: c.y,
-        person: c.person,
-        kind: c.kind,
-        reply_to: c.reply_to,
-        read: !!(c as ChatComment).read,
-      }
-      // comment.encrypted = r.encrypted || false
-      decrypted.push(comment_decr)
-    }
-  }
-  state.chat_events = events
-  state.comments = keyBy(decrypted, "id")
-
-  const comments_new = Object.values(state.comments).filter(
-    c =>
-      c.read == false &&
-      c.person != props.myUserId &&
-      c.text_decrypted.indexOf("\\reaction ") != 0
+  const r = await processCommentsAndEvents(
+    comments,
+    state.people,
+    props.myUserId,
+    state.privateKey
   )
-  const n: NewCommentNotification = {
-    kind: "new_chat_comments",
-    timestamp: Math.max(...comments_new.map(c => c.timestamp)),
-    data: {
-      count: comments_new.length,
-    },
-  }
-  if (n.data.count > 0) {
-    state.notifications.push(n)
-  }
+  state.chat_events = r.events
+  state.comments = keyBy(r.comments_decrypted, "id")
+
   return true
 }
 
@@ -667,58 +651,64 @@ export interface DecryptedCommentCommon {
   }
 }
 
+export const mkCommentTree = (
+  comments:
+    | { [comment_id: string]: ChatCommentDecrypted }
+    | { [comment_id: string]: PosterCommentDecrypted }
+) => {
+  const nodes: { [comment_id: string]: Tree<DecryptedCommentCommon> } = {}
+  const findOrMakeNode = (
+    c: DecryptedCommentCommon
+  ): { node: Tree<DecryptedCommentCommon>; created: boolean } => {
+    const node = nodes[c.id]
+    if (node) {
+      return { node, created: false }
+    } else {
+      const node: Tree<DecryptedCommentCommon> = { node: c, children: [] }
+      nodes[c.id] = node
+      return { node, created: true }
+    }
+  }
+  const tree: Tree<DecryptedCommentCommon> = { children: [] }
+  for (const c of Object.values(comments)) {
+    if (!c.reply_to) {
+      const { node } = findOrMakeNode(c)
+      if (!tree.children.find(child => child.node?.id == c.id)) {
+        tree.children.push(node)
+      }
+    } else {
+      const p: DecryptedCommentCommon | undefined = comments[c.reply_to]
+      const { node } = findOrMakeNode(c)
+      if (p) {
+        const { node: node_parent } = findOrMakeNode(p)
+        node_parent.children.push(node)
+        if (
+          !p.reply_to &&
+          !tree.children.find(child => child.node?.id == p.id)
+        ) {
+          tree.children.push(node_parent)
+        }
+      } else {
+        console.log("reply_to parent not found. This must be a bug.")
+        tree.children.push(node)
+      }
+    }
+  }
+  summarizeReactions(tree)
+  sortTree(tree, (a, b) =>
+    a.timestamp < b.timestamp ? -1 : a.timestamp == b.timestamp ? 0 : 1
+  )
+  return tree
+}
+
 export const commentTree = (
   state: RoomAppState,
   kind: "chat" | "poster"
 ): ComputedRef<Tree<DecryptedCommentCommon>> =>
   computed(
     (): Tree<DecryptedCommentCommon> => {
-      const nodes: { [comment_id: string]: Tree<DecryptedCommentCommon> } = {}
-      const findOrMakeNode = (
-        c: DecryptedCommentCommon
-      ): { node: Tree<DecryptedCommentCommon>; created: boolean } => {
-        const node = nodes[c.id]
-        if (node) {
-          return { node, created: false }
-        } else {
-          const node: Tree<DecryptedCommentCommon> = { node: c, children: [] }
-          nodes[c.id] = node
-          return { node, created: true }
-        }
-      }
-      const tree: Tree<DecryptedCommentCommon> = { children: [] }
-      for (const c of Object.values(
+      return mkCommentTree(
         kind == "chat" ? state.comments : state.posterComments
-      )) {
-        if (!c.reply_to) {
-          const { node } = findOrMakeNode(c)
-          if (!tree.children.find(child => child.node?.id == c.id)) {
-            tree.children.push(node)
-          }
-        } else {
-          const p: DecryptedCommentCommon | undefined =
-            kind == "chat"
-              ? state.comments[c.reply_to]
-              : state.posterComments[c.reply_to]
-          if (p) {
-            const { node: node_parent } = findOrMakeNode(p)
-            const { node } = findOrMakeNode(c)
-            node_parent.children.push(node)
-            if (
-              !p.reply_to &&
-              !tree.children.find(child => child.node?.id == p.id)
-            ) {
-              tree.children.push(node_parent)
-            }
-          } else {
-            console.log("reply_to parent not found. This must be a bug.")
-          }
-        }
-      }
-      summarizeReactions(tree)
-      sortTree(tree, (a, b) =>
-        a.timestamp < b.timestamp ? -1 : a.timestamp == b.timestamp ? 0 : 1
       )
-      return tree
     }
   )

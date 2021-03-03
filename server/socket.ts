@@ -26,7 +26,7 @@ import {
   RoomId,
   UserId,
   Emitter,
-  AppNotification,
+  AppEvent,
   ActiveUsersSocketData,
   SocketMessageFromUser,
   PosterCommentDecrypted,
@@ -35,6 +35,8 @@ import {
   MapUpdateSocketData,
   MapReplaceSocketData,
   PersonUpdateByEmail,
+  NotificationEntry,
+  NotificationId,
 } from "../@types/types"
 import * as model from "./model"
 import { userLog } from "./model"
@@ -221,6 +223,12 @@ export class Emit {
   moveRequest(d: { to_poster: PosterId }): void {
     console.log("Emitting: MoveRequest", d)
     this.emitter.emit("MoveRequest", d)
+  }
+  notification(ds: NotificationEntry[]): void {
+    this.emitter.emit("Notification", ds)
+  }
+  notificationRemove(ids: NotificationId[]): void {
+    this.emitter.emit("NotificationRemove", ids)
   }
 }
 
@@ -545,7 +553,7 @@ export function setupSocketHandlers(
             const users_count = await model.redis.accounts.scard(
               "connected_users:room:" + room + ":__all__"
             )
-            const msg: AppNotification = "ActiveUsers"
+            const msg: AppEvent = "ActiveUsers"
             const countObj = {}
             countObj[room] = users_count
             const d: ActiveUsersSocketData = {
@@ -566,7 +574,7 @@ export function setupSocketHandlers(
               user,
               typing: false,
             }
-            const msg2: AppNotification = "ChatTyping"
+            const msg2: AppEvent = "ChatTyping"
             io.to(room).emit(msg2, r)
           }
         }

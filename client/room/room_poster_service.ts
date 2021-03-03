@@ -260,13 +260,13 @@ export const initPosterService = async (
 
   const pid = state.people[props.myUserId]?.poster_viewing
   if (pid) {
+    console.log("poster comment loading")
+    const data = await client.posters._posterId(pid).comments.$get()
+    state.posterComments = keyBy(data, "id")
     const r1 = await client.posters._posterId(pid).file_url.$get()
     if (r1.ok && r1.url) {
       state.posters[pid].file_url = r1.url
     }
-    console.log("poster comment loading")
-    const data = await client.posters._posterId(pid).comments.$get()
-    state.posterComments = keyBy(data, "id")
     watch(
       () => state.people[props.myUserId]?.poster_viewing,
       async () => {

@@ -11,7 +11,7 @@ import {
   RoomId,
   PersonPos,
   Tree,
-  AppNotification,
+  AppEvent,
   MapUpdateEntry,
 } from "@/@types/types"
 import fromPairs from "lodash/fromPairs"
@@ -665,10 +665,7 @@ export function sortTree<T>(tree: Tree<T>, cmp: (a: T, b: T) => number): void {
 }
 
 // On REST server, encode data for Rust WS server
-export function encodeAppNotificationData(
-  cmd: AppNotification,
-  data?: any
-): any {
+export function encodeAppEventData(cmd: AppEvent, data?: any): any {
   if (cmd == "Group") {
     return { type: cmd, group: data }
   } else if (cmd == "GroupRemove") {
@@ -705,10 +702,7 @@ export function encodeAppNotificationData(
 }
 
 // On client, decode data from Rust WS server
-export function decodeNotificationData(
-  cmd: AppNotification,
-  data?: any
-): any | null {
+export function decodeNotificationData(cmd: AppEvent, data?: any): any | null {
   if (cmd == "Group") {
     return data.group
   } else if (cmd == "GroupRemove") {
@@ -752,7 +746,6 @@ export const showProfileKind = (
   p?: { metadata: any },
   locale: "ja" | "en" = "ja"
 ): string => {
-  console.log("showProfileKind", p)
   if (key == "url") {
     return "URL"
   } else if (key == "display_name_short") {

@@ -15,6 +15,7 @@ import {
   RoomAccessCode,
   UserGroup,
   ParsedMapData,
+  NotificationId,
 } from "../../@types/types"
 import { protectedRoute, manageRoom, roomMembers } from "../auth"
 import { emit } from "../socket"
@@ -557,14 +558,61 @@ async function maps_api_routes(
     }
   )
 
-  fastify.get<any>("/maps/:roomId/notifications", async (req, res) => {
-    const map = model.maps[req.params.roomId]
-    if (!map) {
-      await res.status(404).send("Not found")
-      return
+  fastify.get<any>(
+    "/maps/:roomId/notifications",
+    { preHandler: manageRoom },
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+
+      return model.notification.getNotificationDetailsInRoom(map.room_id)
     }
-    return model.people.getNotifications(req["requester"], map.room_id)
-  })
+  )
+
+  fastify.get<any>(
+    "/maps/:roomId/people/:userId/notifications",
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+      const userId: UserId = req.params.userId
+
+      const requester: UserId = req["requester"]
+      const is_room_admin = await map.isUserOwnerOrAdmin(requester)
+      const allowed =
+        req["requester_type"] == "admin" || requester == userId || is_room_admin
+      if (!allowed) {
+        return await res.status(403).send("Not myself or admin")
+      }
+      return model.notification.getNotifications(userId, map.room_id)
+    }
+  )
+
+  fastify.delete<any>(
+    "/maps/:roomId/notifications/:notificationId",
+    async (req, res) => {
+      const map = model.maps[req.params.roomId]
+      const requester: UserId = req["requester"]
+      const notificationId: NotificationId = req.params.notificationId
+      if (!map) {
+        await res.status(404).send("Not found")
+        return
+      }
+      const is_page_admin = await map.isUserOwnerOrAdmin(requester)
+      const is_site_admin = req["requester_type"] == "admin"
+      const n = await model.notification.get(notificationId)
+      if (!n) {
+        return await res.status(404).send("Notification not found")
+      }
+      const allowed = n.person == requester || is_page_admin || is_site_admin
+      if (!allowed) {
+        return await res.status(403).send("Not myself or admin")
+      }
+      emit.channels([requester, n.person]).notificationRemove([notificationId])
+      return model.notification.forceRemoveNotification(
+        req["requester"],
+        map.room_id,
+        notificationId
+      )
+    }
+  )
 
   fastify.post<any>("/maps/:roomId/posters/:posterId/approach", async req => {
     // console.log("APPROACH", req["requester"])
@@ -623,18 +671,29 @@ async function maps_api_routes(
     return r
   })
 
-  fastify.post<any>("/maps/:roomId/enter", async req => {
+  fastify.post<any>("/maps/:roomId/enter", async (req, res) => {
     //   if (cluster?.worker?.id) {
     //     log.debug(req.path + " Worker #", cluster.worker.id)
     //   }
     const roomId = req.params.roomId as string
+    const user_id = req.query?.user_id as string | undefined
     const requester: UserId = req["requester"]
     const map = model.maps[roomId]
     if (!map) {
       throw { statusCode: 404, message: "Room not found" }
     }
 
-    const r = await map.enterRoom(requester)
+    if (user_id) {
+      const is_page_admin = await model.maps[roomId].isUserOwnerOrAdmin(
+        req["requester"]
+      )
+      if (!is_page_admin) {
+        return await res.code(403).send("Not admin")
+      }
+    }
+    const person_that_enters: UserId = user_id || requester
+
+    const r = await map.enterRoom(person_that_enters)
 
     const r2: MapEnterResponse = {
       ...r,
@@ -653,7 +712,7 @@ async function maps_api_routes(
         [req["requester"]]
       )
       r2.public_key = rows[0]?.public_key
-      const p = await model.people.getInRoom(requester, roomId)
+      const p = await model.people.getInRoom(person_that_enters, roomId)
       if (p) {
         emit.channels([roomId]).peopleNew([p])
       }

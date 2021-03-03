@@ -3,22 +3,28 @@
     <nav class="breadcrumb" aria-label="breadcrumbs">
       <ul>
         <li :class="{ 'is-active': !room && !new_room }">
-          <a href="#rooms" @click="changeRoom(null)">{{lang("venue")}}</a>
+          <a href="#rooms" @click="changeRoom(null)">{{ lang("venue") }}</a>
         </li>
         <li v-if="room" :class="{ 'is-active': !room_subpage }">
           <a :href="'#rooms/' + room.id">{{ room.name }}</a>
         </li>
         <li v-if="room_subpage == 'chat'" :class="{ 'is-active': true }">
-          <a>{{lang('chat')}}</a>
+          <a>{{ lang("chat") }}</a>
         </li>
         <li v-if="room_subpage == 'posters'" :class="{ 'is-active': true }">
-          <a>{{lang('posters')}}</a>
+          <a>{{ lang("posters") }}</a>
         </li>
         <li v-if="room_subpage == 'users'" :class="{ 'is-active': true }">
-          <a>{{lang('users')}}</a>
+          <a>{{ lang("users") }}</a>
+        </li>
+        <li
+          v-if="room_subpage == 'notifications'"
+          :class="{ 'is-active': true }"
+        >
+          <a>{{ lang("notifications") }}</a>
         </li>
         <li v-if="new_room" :class="{ 'is-active': true }">
-          <a>{{lang('create')}}</a>
+          <a>{{ lang("create") }}</a>
         </li>
       </ul>
     </nav>
@@ -47,36 +53,61 @@
     </table>
 
     <section id="room-list" v-if="!room && !new_room">
-            <h5 class="title is-5">{{locale == 'ja' ? `${(admin_page ? '' : 'アクセス可能な')}会場の一覧` : `List of ${admin_page ? '' : 'available '}rooms`}}</h5>
+      <h5 class="title is-5">
+        {{
+          locale == "ja"
+            ? `${admin_page ? "" : "アクセス可能な"}会場の一覧`
+            : `List of ${admin_page ? "" : "available "}rooms`
+        }}
+      </h5>
       <div>
         <!-- <button class="button is-primary" @click="newRoom">新規作成</button> -->
-              <a href="/create_room" class="button is-primary">{{lang('create')}}</a>
-
+        <a href="/create_room" class="button is-primary">{{
+          lang("create")
+        }}</a>
       </div>
-      <table class='table'>
+      <table class="table">
         <thead>
           <tr>
             <th>ID</th>
             <th class="r1"></th>
-            <th>{{lang('name')}}</th>
+            <th>{{ lang("name") }}</th>
             <th></th>
-            <th>{{lang('map')}}</th>
-            <th>{{admin_page ?  lang('num_people_admin'): lang('num_people')}}</th>
-            <th>{{lang('posters')}}</th>
-            <th>{{lang('owner')}}</th>
+            <th>{{ lang("map") }}</th>
+            <th>
+              {{ admin_page ? lang("num_people_admin") : lang("num_people") }}
+            </th>
+            <th>{{ lang("posters") }}</th>
+            <th>{{ lang("owner") }}</th>
           </tr>
         </thead>
         <tr v-for="room in rooms" :key="room.id">
-          <td class='room-id'>{{ room.id }}</td>
+          <td class="room-id">{{ room.id }}</td>
           <td class="r1"></td>
           <td>
-            <a :href="'/room?room_id=' + room.id">{{
-              room.name
-            }}</a>
+            <a :href="'/room?room_id=' + room.id">{{ room.name }}</a>
           </td>
-          <td v-if="room.owner == myUserId || room.admins?.indexOf(myUserId) >= 0 || admin_page" >  
-            <button class='button is-small' :href="'#rooms/' + room.id" @click="changeRoom(room.id)">設定</button>
-            <button class='button is-small' v-if="room.owner == myUserId || admin_page" @click="deleteRoom(room.id)">削除</button>
+          <td
+            v-if="
+              room.owner == myUserId ||
+              room.admins?.indexOf(myUserId) >= 0 ||
+              admin_page
+            "
+          >
+            <button
+              class="button is-small"
+              :href="'#rooms/' + room.id"
+              @click="changeRoom(room.id)"
+            >
+              設定
+            </button>
+            <button
+              class="button is-small"
+              v-if="room.owner == myUserId || admin_page"
+              @click="deleteRoom(room.id)"
+            >
+              削除
+            </button>
           </td>
           <td v-else></td>
           <td>
@@ -84,10 +115,9 @@
             {{ room.numRows }}）
           </td>
           <td>
-            <span v-if='admin_page'>
-            {{ room.num_people_joined }} 人入場 /
-            {{ room.num_people_with_access }} 人の参加資格者
-
+            <span v-if="admin_page">
+              {{ room.num_people_joined }} 人入場 /
+              {{ room.num_people_with_access }} 人の参加資格者
             </span>
             <span v-else>{{ room.num_people_joined }}</span>
           </td>
@@ -100,34 +130,45 @@
     </section>
 
     <div v-if="room" id="room-nav">
-      <a :href="'#rooms/' + room.id" :class="{ active: !room_subpage }">{{lang('general')}}</a>
+      <a :href="'#rooms/' + room.id" :class="{ active: !room_subpage }">{{
+        lang("general")
+      }}</a>
       <a
         :href="'#rooms/' + room.id + '/map'"
         :class="{ active: room_subpage == 'map' }"
-        >{{lang('map')}}</a
+        >{{ lang("map") }}</a
       >
       <a
         :href="'#rooms/' + room.id + '/users'"
         :class="{ active: room_subpage == 'users' }"
-        >{{lang('users')}}</a
+        >{{ lang("users") }}</a
       >
       <a
         :href="'#rooms/' + room.id + '/posters'"
         :class="{ active: room_subpage == 'posters' }"
-        >{{lang('posters')}}</a
+        >{{ lang("posters") }}</a
       >
       <a
         :href="'#rooms/' + room.id + '/chat'"
         :class="{ active: room_subpage == 'chat' }"
-        >{{lang('chat')}}</a
+        >{{ lang("chat") }}</a
+      >
+      <a
+        :href="'#rooms/' + room.id + '/notifications'"
+        :class="{ active: room_subpage == 'notifications' }"
+        >{{ lang("notifications") }}</a
       >
     </div>
 
     <div v-if="room && !room_subpage">
       <div>
         <section>
-           <h5 class='title is-5'>会場の概要</h5>
-          <h3>{{lang('owner')}}: {{people[room.owner].name}}（{{room.owner}}）</h3>
+          <h5 class="title is-5">会場の概要</h5>
+          <h3>
+            {{ lang("owner") }}: {{ people[room.owner].name }}（{{
+              room.owner
+            }}）
+          </h3>
           <h3>
             マップ：{{ room.numCols * room.numRows }}（縦{{ room.numCols }} x
             横{{ room.numRows }}）
@@ -149,84 +190,123 @@
       </div>
       <div>
         <section>
-           <h5 class='title is-5'>設定</h5>
+          <h5 class="title is-5">設定</h5>
           <div>
-            <input
-            type="checkbox"
-            name=""
-            id="room-config-allow-self-assign-poster"
-            v-model="roomConfig.allowPosterAssignment"
-          />
-          <label for="room-config-allow-self-assign-poster"
-            >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
-          ><br />
-          <input
-            type="checkbox"
-            name=""
-            id="room-config-hide-unvisited"
-            v-model="roomConfig.hideUnvisited"
-          />
-                    <label for="room-config-hide-unvisited"
-            >マップの未探索の部分を隠す</label
-          ><br />
-          </div>
-
-          <div>
-            <h2 class='is-5'>アクセスコード</h2>
-             <button
-              class="button is-primary is-small"
-              @click="createAccessCode(room.id)"
-              style="margin-right: 5px;"
-            >
-              {{ lang('create_code') }}
-            </button>
-            <div class='access-code-entry' v-for="access_code in room.access_codes" :key="access_code.code">
-            <span class="access-code">{{
-              access_code.code || "(なし)"
-            }}</span>
             <input
               type="checkbox"
               name=""
-              v-model="accessCodeActive[access_code.code]"
-              @change="onChangeCodeActive(access_code.code,$event)"
+              id="room-config-allow-self-assign-poster"
+              v-model="roomConfig.allowPosterAssignment"
             />
-            <label :for="'access-code-active-' + access_code.code">有効</label>
-           
+            <label for="room-config-allow-self-assign-poster"
+              >ユーザーによるポスター板の確保・解放およびタイトルの編集を許可する</label
+            ><br />
+            <input
+              type="checkbox"
+              name=""
+              id="room-config-hide-unvisited"
+              v-model="roomConfig.hideUnvisited"
+            />
+            <label for="room-config-hide-unvisited"
+              >マップの未探索の部分を隠す</label
+            ><br />
+          </div>
+
+          <div>
+            <h2 class="is-5">アクセスコード</h2>
             <button
-              class="button is-danger is-small"
-              @click="deleteAccessCode(room.id, access_code.code)"
+              class="button is-primary is-small"
+              @click="createAccessCode(room.id)"
+              style="margin-right: 5px"
             >
-              削除
+              {{ lang("create_code") }}
             </button>
-            <div>URL: <input class='access-code-url' type="text" readonly :value="accessCodeUrl(access_code.code) || '（なし）'"></div>
-            <div>付与するアクセス： <input v-if='editingCodeAccess == access_code.code' class='access-code-url' type="text" placeholder='ユーザーグループID，ユーザーグループ名などを;;で区切って入力' ref='inputCodeAccess'>
-            <span v-else>
-              <span class='code-right-entry' v-for='r in access_code.access_granted' :key='r' :class="{valid: !!peopleGroups[r]?.name}">{{peopleGroups[r]?.name || r}}</span>
-            </span>
-            <span v-if='editingCodeAccess == access_code.code'>
-            <button class="button is-default is-small"  @click='finishEditingCodeRights'>{{  '完了' }}</button>  
-            <button class="button is-default is-small"  @click='editingCodeAccess = undefined'>{{  'キャンセル' }}</button>  
+            <div
+              class="access-code-entry"
+              v-for="access_code in room.access_codes"
+              :key="access_code.code"
+            >
+              <span class="access-code">{{
+                access_code.code || "(なし)"
+              }}</span>
+              <input
+                type="checkbox"
+                name=""
+                v-model="accessCodeActive[access_code.code]"
+                @change="onChangeCodeActive(access_code.code, $event)"
+              />
+              <label :for="'access-code-active-' + access_code.code"
+                >有効</label
+              >
 
-            </span>
-            <button class="button is-default is-small" v-else @click='startEditingCodeRights(access_code)'>{{  '編集' }}</button>  
-            </div>
-
+              <button
+                class="button is-danger is-small"
+                @click="deleteAccessCode(room.id, access_code.code)"
+              >
+                削除
+              </button>
+              <div>
+                URL:
+                <input
+                  class="access-code-url"
+                  type="text"
+                  readonly
+                  :value="accessCodeUrl(access_code.code) || '（なし）'"
+                />
+              </div>
+              <div>
+                付与するアクセス：
+                <input
+                  v-if="editingCodeAccess == access_code.code"
+                  class="access-code-url"
+                  type="text"
+                  placeholder="ユーザーグループID，ユーザーグループ名などを;;で区切って入力"
+                  ref="inputCodeAccess"
+                />
+                <span v-else>
+                  <span
+                    class="code-right-entry"
+                    v-for="r in access_code.access_granted"
+                    :key="r"
+                    :class="{ valid: !!peopleGroups[r]?.name }"
+                    >{{ peopleGroups[r]?.name || r }}</span
+                  >
+                </span>
+                <span v-if="editingCodeAccess == access_code.code">
+                  <button
+                    class="button is-default is-small"
+                    @click="finishEditingCodeRights"
+                  >
+                    {{ "完了" }}
+                  </button>
+                  <button
+                    class="button is-default is-small"
+                    @click="editingCodeAccess = undefined"
+                  >
+                    {{ "キャンセル" }}
+                  </button>
+                </span>
+                <button
+                  class="button is-default is-small"
+                  v-else
+                  @click="startEditingCodeRights(access_code)"
+                >
+                  {{ "編集" }}
+                </button>
+              </div>
             </div>
           </div>
-          
         </section>
       </div>
     </div>
 
     <section v-if="room && !room_subpage">
-           <h5 class='title is-5'>アナウンス</h5>
+      <h5 class="title is-5">アナウンス</h5>
       <div>
         <small>※HTMLも送信可能（危険なリンクなどを送らないように注意）</small>
       </div>
       <textarea cols="60" rows="2" id="announce-input" ref="announceText" />
-      <button @click="submitAnnouncement">
-        送信
-      </button>
+      <button @click="submitAnnouncement">送信</button>
       <div>
         <label for="marquee">文字を流す</label>
         <input type="checkbox" id="marquee" v-model="announceMarquee" /><br />
@@ -243,14 +323,10 @@
         />
       </div>
       <div>
-        <button @click="askReload(false)">
-          会場の参加者にリロードを依頼
-        </button>
+        <button @click="askReload(false)">会場の参加者にリロードを依頼</button>
       </div>
       <div>
-        <button @click="askReload(true)">
-          会場の参加者を強制的にリロード
-        </button>
+        <button @click="askReload(true)">会場の参加者を強制的にリロード</button>
       </div>
     </section>
     <ManageRoomPosters
@@ -263,103 +339,132 @@
       :poster_cells="poster_cells"
     />
     <section v-if="room && room_subpage == 'map'">
-           <h5 class='title is-5'>マップ</h5>
+      <h5 class="title is-5">マップ</h5>
       <div>
         {{ room.numCols * room.numRows }} マス（縦{{ room.numCols }} x 横{{
           room.numRows
         }}）
       </div>
       <div>
-        <div >
-        <div class="buttons has-addons" style='float: left;'>
-                <span style="margin-right: 10px; vertical-align: 20px">{{
-                  lang("preview_size")
-                }}</span>
-                <button
-                  class="button"
-                  :class="{ 'is-primary': mapCellSize == 48 }"
-                  @click="mapCellSize= 48"
-                >
-                  {{ lang("large") }}
-                </button>
-                <button
-                  class="button"
-                  :class="{ 'is-primary': mapCellSize == 32 }"
-                  @click="mapCellSize= 24"
-                >
-                  {{ lang("medium") }}
-                </button>
-                <button
-                  class="button"
-                  :class="{ 'is-primary': mapCellSize == 16 }"
-                  @click="mapCellSize= 8"
-                >
-                  {{ lang("small") }}
-                </button>
-              </div>
         <div>
-                  <button class="button is-primary" @click="clearMapCache" style='float: left;'>キャッシュをクリア</button>
-                  <div style='clear:both;'></div>
-                  </div>
+          <div class="buttons has-addons" style="float: left">
+            <span style="margin-right: 10px; vertical-align: 20px">{{
+              lang("preview_size")
+            }}</span>
+            <button
+              class="button"
+              :class="{ 'is-primary': mapCellSize == 48 }"
+              @click="mapCellSize = 48"
+            >
+              {{ lang("large") }}
+            </button>
+            <button
+              class="button"
+              :class="{ 'is-primary': mapCellSize == 32 }"
+              @click="mapCellSize = 24"
+            >
+              {{ lang("medium") }}
+            </button>
+            <button
+              class="button"
+              :class="{ 'is-primary': mapCellSize == 16 }"
+              @click="mapCellSize = 8"
+            >
+              {{ lang("small") }}
+            </button>
+          </div>
+          <div>
+            <button
+              class="button is-primary"
+              @click="clearMapCache"
+              style="float: left"
+            >
+              キャッシュをクリア
+            </button>
+            <div style="clear: both"></div>
+          </div>
 
-          <div class='columns mx-0'>
+          <div class="columns mx-0">
             <div class="column is-two-thirds">
-          <span>マップ修正</span><br>
-          <textarea name="" id="input-patch" placeholder="JSON形式で入力" ref='mapPatchJsonTextArea' @input="onInputPatch"></textarea><br>
-
-
+              <span>マップ修正</span><br />
+              <textarea
+                name=""
+                id="input-patch"
+                placeholder="JSON形式で入力"
+                ref="mapPatchJsonTextArea"
+                @input="onInputPatch"
+              ></textarea
+              ><br />
             </div>
             <div class="column is-one-third">
-<div id="drop-replace-map"
-        :class="{dragover: dragoverMapReplace}"
-                      @dragover.prevent
-              @drop.prevent="onDropReplaceMap"
-              @dragover="dragoverMapReplace = true"
-              @dragleave="dragoverMapReplace = false"
-
->マップの差し替え</div>
+              <div
+                id="drop-replace-map"
+                :class="{ dragover: dragoverMapReplace }"
+                @dragover.prevent
+                @drop.prevent="onDropReplaceMap"
+                @dragover="dragoverMapReplace = true"
+                @dragleave="dragoverMapReplace = false"
+              >
+                マップの差し替え
+              </div>
             </div>
-
           </div>
           <div class="columns mx-0">
             <div class="column is-full">
-              <input type="text" placeholder='メッセージ' ref="inputMapChangeMessage" id='input-mapchange-message'>
-              <button class='button is-primary' @click='submitMapCellPatch' :disabled="!verifyInputPatch(inputPatchText)&& !replaceMapData">送信</button>
+              <input
+                type="text"
+                placeholder="メッセージ"
+                ref="inputMapChangeMessage"
+                id="input-mapchange-message"
+              />
+              <button
+                class="button is-primary"
+                @click="submitMapCellPatch"
+                :disabled="!verifyInputPatch(inputPatchText) && !replaceMapData"
+              >
+                送信
+              </button>
             </div>
           </div>
         </div>
-        
-        </div> 
-        <div>
-          <svg :width="mapCellSize * ((mapCells && mapCells[0]) ? mapCells[0].length : 0)" :height="mapCellSize * (mapCells ? mapCells.length : 0)">
-            <g v-for='(row,yi) in mapCells' :key="yi" :transform="'translate(0 '+(yi*mapCellSize)+')'">
-    
-    <MapCell
-        v-for="(cell, xi) in row"
-        :cell="cell"
-        :myself="people[myUserId]"
-        :people="people"
-        :key="'' + xi + '.' + yi"
-        :selected="
-          !!selectedMapPos && cell.x == selectedMapPos.x && cell.y == selectedMapPos.y
-        "
-        :left="(cell.x) * mapCellSize"
-        :top="0"
-        :cellSize="mapCellSize"
-        :visualStyle="'default'"
-        @select="selectMapCell"
-        @hover-cell="hoverCell"
-      />
-     
-                  </g>
-          </svg>
-        </div>
+      </div>
+      <div>
+        <svg
+          :width="
+            mapCellSize * (mapCells && mapCells[0] ? mapCells[0].length : 0)
+          "
+          :height="mapCellSize * (mapCells ? mapCells.length : 0)"
+        >
+          <g
+            v-for="(row, yi) in mapCells"
+            :key="yi"
+            :transform="'translate(0 ' + yi * mapCellSize + ')'"
+          >
+            <MapCell
+              v-for="(cell, xi) in row"
+              :cell="cell"
+              :myself="people[myUserId]"
+              :people="people"
+              :key="'' + xi + '.' + yi"
+              :selected="
+                !!selectedMapPos &&
+                cell.x == selectedMapPos.x &&
+                cell.y == selectedMapPos.y
+              "
+              :left="cell.x * mapCellSize"
+              :top="0"
+              :cellSize="mapCellSize"
+              :visualStyle="'default'"
+              @select="selectMapCell"
+              @hover-cell="hoverCell"
+            />
+          </g>
+        </svg>
+      </div>
     </section>
     <section v-if="room && room_subpage == 'chat'">
-                 <h5 class='title is-5'>チャットグループ一覧</h5>
-      <div v-if="chatGroupsSorted.length == 0">
-        チャットなし
-      </div>
+      <h5 class="title is-5">チャットグループ一覧</h5>
+      <div v-if="chatGroupsSorted.length == 0">チャットなし</div>
       <div v-else>
         <table>
           <thead>
@@ -368,10 +473,71 @@
             <th>参加者</th>
           </thead>
           <tbody>
-            <tr id='chat-groups' v-for="g in chatGroupsSorted" :key="g.id"  >
+            <tr id="chat-groups" v-for="g in chatGroupsSorted" :key="g.id">
               <td>{{ g.id }}</td>
-              <td :style="{color: g.color}">{{ g.color }}</td>
-              <td><span class='chat-user' v-for='u in g.users' :key="u">{{people[u].name}}</span></td>
+              <td :style="{ color: g.color }">{{ g.color }}</td>
+              <td>
+                <span class="chat-user" v-for="u in g.users" :key="u">{{
+                  people[u].name
+                }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section v-if="room && room_subpage == 'notifications'">
+      <h5 class="title is-5">通知一覧</h5>
+      <div v-if="notificationsSorted.length == 0">通知なし</div>
+      <div v-else>
+        <table id="notification-table">
+          <thead>
+            <th>日付</th>
+            <th>通知ID</th>
+            <th>ユーザー</th>
+            <th>種別</th>
+            <th>コメントID</th>
+            <th>解決済</th>
+            <th>メール</th>
+            <th>メールタイトル</th>
+            <th>メール本文</th>
+          </thead>
+          <tbody>
+            <tr id="notifications" v-for="n in notificationsSorted" :key="n.id">
+              <td>{{ formatTime(n.timestamp, locale) }}</td>
+              <td>{{ n.id }}</td>
+              <td>{{ people[n.person]?.name || "(" + n.person + ")" }}</td>
+              <td>{{ displayNotificationKind(n.kind) }}</td>
+              <td>
+                <div
+                  class="comment-for-notification"
+                  :class="{ unread: !c.read }"
+                  v-for="c in n.data?.comments"
+                  :key="c"
+                >
+                  {{ c.id }} ({{ people[c.from]?.name || "N/A" }})
+                </div>
+              </td>
+              <td>
+                {{
+                  n.resolved_time
+                    ? "済"
+                    : n.superseded_by
+                    ? "（" + n.superseded_by + " で上書き）"
+                    : "未"
+                }}
+              </td>
+              <td>{{ displayNotificationEmailStatus(n.email?.status) }}</td>
+              <td>{{ n.email?.subject }}</td>
+              <td>
+                <pre class="email-body" v-if="n.email">{{
+                  n.email
+                    ? n.email.body.length > 200
+                      ? n.email.body.slice(0, 200) + "..."
+                      : n.email.body
+                    : ""
+                }}</pre>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -379,55 +545,66 @@
     </section>
     <section v-if="room && room_subpage == 'users'">
       <div>
-              <h5 class='title is-5'>{{lang('user_groups')}}</h5>
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>
-                      <input
-                        type="checkbox"
-                        name=""
-                        id=""
-                        @change="checkAllPeopleGroups"
-                        ref="checkboxAllPeopleGroups"
-                      />
-                    </th>
-                    <th>ID</th>
-                    <th>名前</th>
-                    <th>人数</th>
-                    <th>説明</th>
-                  </tr>
-                </thead>
-                <tbody v-if='!room.people_groups || room.people_groups.length == 0'>
-                  <tr>
-                    <td>（グループなし）</td>
-                  </tr>
-                </tbody>
-                                <tbody v-else>
-                  <tr v-for='g in room.people_groups' :key='g.id'>
-                    <td>
-                      <input
-                        type="checkbox"
-                        name=""
-                        :id="'check-group-'+g.id"
-                        :checked="selectedPeopleGroup[g.id] == true"
-                        @change="checkPeopleGroup(g.id, $event)"
-                      />
-                    </td>
-                    <td><label :for="'check-group-'+g.id">{{g.id}}</label></td>
-                    <td>{{g.name}}</td>
-                    <td></td>
-                    <td>{{g.description}}</td>
-                  </tr>
-                </tbody>
-              </table>
-
+        <h5 class="title is-5">{{ lang("user_groups") }}</h5>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  name=""
+                  id=""
+                  @change="checkAllPeopleGroups"
+                  ref="checkboxAllPeopleGroups"
+                />
+              </th>
+              <th>ID</th>
+              <th>名前</th>
+              <th>人数</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody v-if="!room.people_groups || room.people_groups.length == 0">
+            <tr>
+              <td>（グループなし）</td>
+            </tr>
+          </tbody>
+          <tbody v-else>
+            <tr v-for="g in room.people_groups" :key="g.id">
+              <td>
+                <input
+                  type="checkbox"
+                  name=""
+                  :id="'check-group-' + g.id"
+                  :checked="selectedPeopleGroup[g.id] == true"
+                  @change="checkPeopleGroup(g.id, $event)"
+                />
+              </td>
+              <td>
+                <label :for="'check-group-' + g.id">{{ g.id }}</label>
+              </td>
+              <td>{{ g.name }}</td>
+              <td></td>
+              <td>{{ g.description }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <h5 class='title is-5'>{{lang('user_list')}}</h5>
+      <h5 class="title is-5">{{ lang("user_list") }}</h5>
       <div id="user-list-tools">
-        <div style='margin: 0px 0px 10px 0px'>
-        <button class="button is-primary is-small" @click='startAssignUserBatchDialog'>一括で追加</button>
-        <button class="button is-primary is-small" @click='startAssignUserDialog'>追加</button>
+        <div style="margin: 0px 0px 10px 0px">
+          <button
+            class="button is-primary is-small"
+            @click="startAssignUserBatchDialog"
+          >
+            一括で追加
+          </button>
+          <button
+            class="button is-primary is-small"
+            @click="startAssignUserDialog"
+          >
+            追加
+          </button>
         </div>
         <input
           type="text"
@@ -438,27 +615,45 @@
           @keydown.enter="inputSearchUser"
         />
         <span>{{ countSelected }}人を選択中</span>
-        <button class="button is-danger is-small" @click="removeUser" :disabled="countSelected == 0">
+        <button
+          class="button is-danger is-small"
+          @click="removeUser"
+          :disabled="countSelected == 0"
+        >
           削除
         </button>
-        <button class="button is-primary is-small" @click="assignRole('admin')" :disabled="countSelected == 0 || allAdmins">
+        <button
+          class="button is-primary is-small"
+          @click="assignRole('admin')"
+          :disabled="countSelected == 0 || allAdmins"
+        >
           管理者にする
         </button>
-        <button class="button is-primary is-small" @click="assignRole('user')" :disabled="countSelected == 0 || allNonAdmins">
+        <button
+          class="button is-primary is-small"
+          @click="assignRole('user')"
+          :disabled="countSelected == 0 || allNonAdmins"
+        >
           通常ユーザーにする
         </button>
-         <button class="button is-primary is-small" @click="assignPeopleGroups" :disabled="countSelected == 0 || countSelectedGroups == 0">
+        <button
+          class="button is-primary is-small"
+          @click="assignPeopleGroups"
+          :disabled="countSelected == 0 || countSelectedGroups == 0"
+        >
           グループを割り当て
         </button>
-         <button class="button is-primary is-small" @click="unassignPeopleGroups" :disabled="countSelected == 0 || countSelectedGroups == 0">
+        <button
+          class="button is-primary is-small"
+          @click="unassignPeopleGroups"
+          :disabled="countSelected == 0 || countSelectedGroups == 0"
+        >
           グループから外す
         </button>
       </div>
-      <div v-if="peopleHavingAccess.length == 0">
-        参加資格者なし
-      </div>
+      <div v-if="peopleHavingAccess.length == 0">参加資格者なし</div>
       <div v-else>
-        <table id='user-table' class='table'>
+        <table id="user-table" class="table">
           <thead>
             <th>
               <input
@@ -471,140 +666,168 @@
             </th>
             <th>Email</th>
             <th>ID</th>
-            <th>{{lang('name')}}</th>
-            <th>{{lang('coord')}}</th>
+            <th>{{ lang("name") }}</th>
+            <th>{{ lang("coord") }}</th>
             <th></th>
-            <th>{{lang('user_groups')}}</th>
+            <th>{{ lang("user_groups") }}</th>
           </thead>
           <tbody>
-            <tr v-for="p in peopleHavingAccessFiltered" :key="p.id" :class="{bold: p.in_room?.role == 'owner' || p.in_room?.role == 'admin'}">
+            <tr
+              v-for="p in peopleHavingAccessFiltered"
+              :key="p.id"
+              :class="{
+                bold: p.in_room?.role == 'owner' || p.in_room?.role == 'admin',
+              }"
+            >
               <td>
                 <input
                   type="checkbox"
                   name=""
-                  :id="'check-'+p.email"
+                  :id="'check-' + p.email"
                   :checked="selectedHavingAccess[p.email] == true"
                   @change="checkPersonWithAccess(p.email, $event)"
                 />
               </td>
-              <td><label :for="'check-'+p.email">{{ p.email }}</label></td>
-              <td :colspan="p.registered ? 1 : 2">{{ p.registered?.id || '（未入場または未登録）' }}</td>
+              <td>
+                <label :for="'check-' + p.email">{{ p.email }}</label>
+              </td>
+              <td :colspan="p.registered ? 1 : 2">
+                {{
+                  p.registered
+                    ? p.registered.id
+                    : p.registered === null
+                    ? "（未登録）"
+                    : "（未入場または未登録）"
+                }}
+              </td>
               <td v-if="p.registered">{{ p.registered?.name }}</td>
-              <td v-if="p.in_room">({{ p.in_room.x }}, {{p.in_room.y}})</td>
-              <td v-else>（未入場）</td>
-              <td v-if='p.in_room?.role == "owner"'>{{lang('owner')}}</td>
-              <td v-else-if='p.in_room?.role == "admin"'>{{lang('admin')}}</td>
+              <td v-if="p.in_room">({{ p.in_room.x }}, {{ p.in_room.y }})</td>
+              <td v-else>
+                （未入場）
+                <span v-if="p.registered"
+                  ><button
+                    class="button is-primary is-small"
+                    @click="letPersonEnterRoom(p.registered.id)"
+                  >
+                    入場させる
+                  </button></span
+                >
+              </td>
+              <td v-if="p.in_room?.role == 'owner'">{{ lang("owner") }}</td>
+              <td v-else-if="p.in_room?.role == 'admin'">
+                {{ lang("admin") }}
+              </td>
               <td v-else></td>
-              <td v-if='p.people_groups.length > 0'>
-                <span v-for="gid in p.people_groups" :key="gid" class='code-right-entry'>{{peopleGroups[gid]?.name}}</span>
+              <td v-if="p.people_groups.length > 0">
+                <span
+                  v-for="gid in p.people_groups"
+                  :key="gid"
+                  class="code-right-entry"
+                  >{{ peopleGroups[gid]?.name }}</span
+                >
               </td>
               <td v-else>グループなし</td>
             </tr>
           </tbody>
         </table>
       </div>
-       <div
-      id="assign-user-dialog"
-      class="modal"
-      :class="{ 'is-active': assignUserDialog }"
-       @keydown.esc="cancelAssignUserDialog"
-    >
       <div
-        class="modal-background"
-        @click="assignUserDialog = false"
-      ></div>
-      <div class="modal-content">
-        <h1>ユーザーの追加</h1>
-        <div style="margin: 10px; line-height: 1.5em; vertical-align: top;">
-          <label for="assign-user-email">Email</label>
-          <input
-            type="text"
-            name=""
-            id="assign-user-email"
-            ref="assignUserEmail"
-          /><br />
+        id="assign-user-dialog"
+        class="modal"
+        :class="{ 'is-active': assignUserDialog }"
+        @keydown.esc="cancelAssignUserDialog"
+      >
+        <div class="modal-background" @click="assignUserDialog = false"></div>
+        <div class="modal-content">
+          <h1>ユーザーの追加</h1>
+          <div style="margin: 10px; line-height: 1.5em; vertical-align: top">
+            <label for="assign-user-email">Email</label>
+            <input
+              type="text"
+              name=""
+              id="assign-user-email"
+              ref="assignUserEmail"
+            /><br />
+          </div>
+          <div style="margin: 10px">
+            <button class="button is-primary" @click="assignUser">OK</button>
+            <button class="button is-default" @click="cancelAssignUserDialog">
+              キャンセル
+            </button>
+          </div>
         </div>
-        <div style="margin: 10px">
-          <button
-            class="button is-primary"
-            @click="assignUser"
-          >
-            OK
-          </button>
-          <button class="button is-default" @click="cancelAssignUserDialog">
-            キャンセル
-          </button>
-        </div>
+        <button
+          class="modal-close is-large"
+          aria-label="close"
+          @click="assignUserDialog = false"
+        ></button>
       </div>
-      <button
-        class="modal-close is-large"
-        aria-label="close"
-        @click="assignUserDialog = false"
-      ></button>
-    </div>
       <div
-      id="assign-user-batch-dialog"
-      class="modal"
-      :class="{ 'is-active': assignUserBatchDialog }"
-      @keydown.esc="cancelAssignUserBatchDialog"
-    >
-      <div
-        class="modal-background"
-        @click="assignUserBatchDialog = false"
-      ></div>
-      <div class="modal-content">
-        <h1>ユーザーの一括追加</h1>
-        <div style="margin: 10px; line-height: 1.5em; vertical-align: top;">
-          <p>
-            CSVファイルを選択してください。
-            <ul>
-              <li>1行目は見出し行として無視されます。</li>
-              <li>2行目以降，各行が1人のユーザーに対応します。</li>
-              <li>Emailを1行ずつ入力してください。</li>
-            </ul>
-            
-          </p>
-          <input
-            type="file"
-            name=""
-            id=""
-            ref="assignUserFile"
-            @change="onUserBatchFileChanged"
-            accept="text/csv"
-          />
+        id="assign-user-batch-dialog"
+        class="modal"
+        :class="{ 'is-active': assignUserBatchDialog }"
+        @keydown.esc="cancelAssignUserBatchDialog"
+      >
+        <div
+          class="modal-background"
+          @click="assignUserBatchDialog = false"
+        ></div>
+        <div class="modal-content">
+          <h1>ユーザーの一括追加</h1>
+          <div style="margin: 10px; line-height: 1.5em; vertical-align: top">
+            <div>
+              CSVファイルを選択してください。
+              <ul>
+                <li>1行目は見出し行として無視されます。</li>
+                <li>2行目以降，各行が1人のユーザーに対応します。</li>
+                <li>Emailを1行ずつ入力してください。</li>
+              </ul>
+            </div>
+            <input
+              type="file"
+              name=""
+              id=""
+              ref="assignUserFile"
+              @change="onUserBatchFileChanged"
+              accept="text/csv"
+            />
+          </div>
+          <div id="user-assign-preview">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(entry, i) in userAssignment"
+                  :key="i"
+                  :class="{ 'is-invalid': !entry.valid }"
+                >
+                  <td>{{ entry.email }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin: 10px">
+            <button class="button is-primary" @click="assignUserBatch">
+              送信
+            </button>
+            <button
+              class="button is-default"
+              @click="cancelAssignUserBatchDialog"
+            >
+              キャンセル
+            </button>
+          </div>
         </div>
-        <div id='user-assign-preview'>
-          <table>
-            <thead>
-              <tr>
-                <th>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(entry,i) in userAssignment" :key="i" :class="{'is-invalid': !entry.valid}">
-                <td>{{entry.email}}</td> 
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="margin: 10px">
-          <button class="button is-primary" @click="assignUserBatch">
-            送信
-          </button>
-          <button
-            class="button is-default"
-            @click="cancelAssignUserBatchDialog"
-          >
-            キャンセル
-          </button>
-        </div>
+        <button
+          class="modal-close is-large"
+          aria-label="close"
+          @click="assignUserBatchDialog = false"
+        ></button>
       </div>
-      <button
-        class="modal-close is-large"
-        aria-label="close"
-        @click="assignUserBatchDialog = false"
-      ></button>
-    </div>
     </section>
   </div>
 </template>
@@ -623,6 +846,8 @@ import {
   PersonUpdate,
   MapUpdateEntry,
   UserGroupId,
+  NotificationEntry,
+  NotificationKind,
 } from "@/@types/types"
 import axiosDefault from "axios"
 import { AxiosStatic } from "axios"
@@ -642,10 +867,11 @@ import {
   ref,
   nextTick,
 } from "vue"
-import { Cell, ChatGroupId, PersonInMap } from "@/api/@types"
+import { Cell, ChatGroupId, PersonInMap, UserId } from "@/api/@types"
 import ManageRoomPosters from "./ManageRoomPosters.vue"
 import MapCell from "../room/MapCell.vue"
 import { verifyMapUpdateEntries } from "@/common/maps"
+import { formatTime } from "../util"
 
 export default defineComponent({
   components: {
@@ -736,6 +962,7 @@ export default defineComponent({
         email: string
         groups: string[]
       }[],
+      notifications: {} as { [id: string]: NotificationEntry },
       mapCells: undefined as Cell[][] | undefined,
       mapCellSize: 8,
       selectedMapPos: undefined as { x: number; y: number } | undefined,
@@ -765,6 +992,10 @@ export default defineComponent({
         chat: {
           ja: "チャット",
           en: "Chat",
+        },
+        notifications: {
+          ja: "通知",
+          en: "Notifications",
         },
         users: {
           ja: "ユーザー",
@@ -842,6 +1073,10 @@ export default defineComponent({
       return sortBy(Object.values(state.chatGroups), g => g.timestamp)
     })
 
+    const notificationsSorted = computed(() => {
+      return sortBy(Object.values(state.notifications), n => -n.timestamp)
+    })
+
     const loadMapCells = async (room_id: RoomId) => {
       const cells = (await client.maps._roomId(room_id).cells.$get()).cells
       state.mapCells = cells
@@ -854,9 +1089,11 @@ export default defineComponent({
         return
       }
       state.peopleInRoom = keyBy(
-        await client.maps
-          ._roomId(room_id)
-          .people.$get({ query: { email: true, groups: true } }),
+        (
+          await client.maps
+            ._roomId(room_id)
+            .people.$get({ query: { email: true, groups: true } })
+        ).people,
         "id"
       )
     }
@@ -876,9 +1113,10 @@ export default defineComponent({
           Object.values(state.peopleInRoom),
           p => p.email || "NA"
         )
-        const allowed_emails = (
-          await client.maps._roomId(room_id).people_allowed.$get()
-        ).people
+        const r = await client.maps._roomId(room_id).people_allowed.$get()
+        const allowed_emails = r.people
+        const allowed_emails_given_with_id = r.with_id
+        console.log({ allowed_emails_given_with_id })
 
         state.peopleHavingAccess = sortBy(allowed_emails, p => {
           const pr = peopleInRoomByEmail[p.email]
@@ -917,7 +1155,11 @@ export default defineComponent({
                 : undefined,
             }
           } else {
-            return { email: p.email, people_groups: p.groups || [] }
+            return {
+              email: p.email,
+              registered: allowed_emails_given_with_id ? null : undefined,
+              people_groups: p.groups || [],
+            }
           }
         })
         console.log(state.peopleHavingAccess)
@@ -994,16 +1236,38 @@ export default defineComponent({
         await client.maps._roomId(room_id).posters.$get(),
         "id"
       )
-      for (const p of Object.values(state.postersInRoom)) {
-        if (p.file_url == "not_disclosed") {
-          p.file_url =
-            (await client.posters._posterId(p.id).file_url.$get()).url ||
-            p.file_url
-        }
-        // if (p.file_url) {
-        //   p.file_url += "?timestamp=" + p.last_updated  //CloudFront gives error
-        // }
+    }
+
+    const loadNotifications = async (room: RoomId) => {
+      const ns = await client.maps._roomId(room).notifications.$get()
+      console.log("loadNotifications", ns)
+      state.notifications = keyBy(ns, "id")
+    }
+
+    const displayNotificationKind = (kind: NotificationKind) => {
+      if (kind == "new_chat_comments") {
+        return "メッセージ"
+      } else if (kind == "reply_chat_comments") {
+        return "返信"
+      } else if (kind == "new_poster_comments") {
+        return "ポスターコメント"
+      } else if (kind == "reply_poster_comments") {
+        return "ポスターコメント返信"
       }
+      return kind
+    }
+    const displayNotificationEmailStatus = (
+      status: "queued" | "sending" | "sent" | "failed" | undefined
+    ) => {
+      return status == "queued"
+        ? "送信待ち"
+        : status == "sending"
+        ? "送信中"
+        : status == "sent"
+        ? "送信済"
+        : status == "failed"
+        ? "送信失敗"
+        : ""
     }
 
     const loadRoom = async (room: Room) => {
@@ -1016,10 +1280,13 @@ export default defineComponent({
         state.roomConfig.hideUnvisited =
           room.minimap_visibility == "all_only_visited"
 
-        await loadChatGroups()
-        await loadPeopleInMap()
-        await loadPosterLocations(room.id)
-        await loadMapCells(room.id)
+        await Promise.all([
+          loadChatGroups(),
+          loadPeopleInMap(),
+          loadPosterLocations(room.id),
+          loadMapCells(room.id),
+          loadNotifications(room.id),
+        ])
       } else {
         console.error("Room ID empty")
       }
@@ -1716,6 +1983,13 @@ export default defineComponent({
       state.editingCodeAccess = undefined
     }
 
+    const letPersonEnterRoom = async (user_id: UserId) => {
+      const room_id = props.room?.id
+      if (room_id) {
+        await client.maps._roomId(room_id).enter.$post({ query: { user_id } })
+      }
+    }
+
     return {
       ...toRefs(state),
       deleteRoom,
@@ -1773,6 +2047,11 @@ export default defineComponent({
       startEditingCodeRights,
       finishEditingCodeRights,
       peopleGroups,
+      letPersonEnterRoom,
+      notificationsSorted,
+      displayNotificationKind,
+      displayNotificationEmailStatus,
+      formatTime,
     }
   },
 })
@@ -1888,5 +2167,22 @@ span.access-code {
 
 .code-right-entry.valid {
   background: rgb(166, 215, 166);
+}
+
+#notification-table {
+  border-collapse: separate;
+  border-spacing: 0px 8px;
+}
+#notification-table td {
+  border-bottom: solid 1px #ccc;
+  padding: 10px 4px;
+}
+
+.email-body {
+  padding: 2px;
+}
+
+.comment-for-notification.unread {
+  font-weight: bold;
 }
 </style>

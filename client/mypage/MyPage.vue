@@ -467,8 +467,15 @@
           </section>
           <section>
             <h5 class="title is-5">{{ lang("export_log") }}</h5>
-            <button class="button is-primary" @click="exportLog">
-              {{ lang("export") }}
+            <button class="button is-primary" @click="exportLogHtml">
+              {{ lang("export_html") }}
+            </button>
+            <button
+              class="button is-primary"
+              @click="exportLog"
+              style="margin-left: 10px"
+            >
+              {{ lang("export_json") }}
             </button>
           </section>
 
@@ -611,6 +618,7 @@ import {
   RoomUpdateSocketData,
   VisualStyle,
   PersonUpdate,
+  MyPageState,
 } from "@/@types/types"
 import {
   keyBy,
@@ -626,6 +634,7 @@ import * as BlindSignature from "blind-signatures"
 import jsbn from "jsbn"
 import { deleteUserInfoOnLogout, formatTime, getVisualStyle } from "../util"
 import { decryptIfNeeded } from "../room/room_chat_service"
+import { exportLog, exportLogHtml } from "./mypage_service"
 import MypagePoster from "./MypagePoster.vue"
 import ManageRooms from "../admin/ManageRooms.vue"
 import { RoomId } from "@/api/@types"
@@ -663,22 +672,6 @@ let socket: SocketIOClient.Socket | null = null
 
 const bgPositions: string[] = ["down", "left", "up", "right"]
 
-function download(filename, text) {
-  const element = document.createElement("a")
-  element.setAttribute(
-    "href",
-    "data:text/plain;charset=utf-8," + encodeURIComponent(text)
-  )
-  element.setAttribute("download", filename)
-
-  element.style.display = "none"
-  document.body.appendChild(element)
-
-  element.click()
-
-  document.body.removeChild(element)
-}
-
 export default defineComponent({
   components: {
     MypagePoster,
@@ -712,7 +705,7 @@ export default defineComponent({
           "&debug_token=" +
           debug_token
         : "")
-    const state = reactive({
+    const state = reactive<MyPageState>({
       axios,
       socket: undefined as SocketIOClient.Socket | undefined,
       tab: tab as string,
@@ -905,6 +898,14 @@ export default defineComponent({
         export: {
           ja: "エクスポート",
           en: "Export",
+        },
+        export_json: {
+          ja: "JSON形式でエクスポート",
+          en: "Export as JSON",
+        },
+        export_html: {
+          ja: "HTML形式でエクスポート",
+          en: "Export as HTML",
         },
         encryption: {
           ja: "暗号化",
@@ -1255,13 +1256,15 @@ export default defineComponent({
 
     const reload = async () => {
       state.lastUpdated = Date.now()
+      const is_myself_admin =
+        state.myself?.role == "owner" || state.myself?.role == "admin"
       const [
         data_p,
         data_poster,
         { public_key: pub_str_from_server },
         data_r,
       ] = await Promise.all([
-        client.people.$get(),
+        client.people.$get({ query: { email: is_myself_admin } }),
         client.people._userId(state.myUserId).posters.$get(),
         client.public_key.$get(),
         client.maps.$get(),
@@ -2037,79 +2040,6 @@ export default defineComponent({
       delete state.rooms[room_id]
     }
 
-    const exportLog = async () => {
-      const myUserId = state.myUserId
-      if (myUserId) {
-        const comments_all = await client.people
-          ._userId(state.myUserId)
-          .comments.$get()
-
-        const uidToObj = (uid: UserId) => {
-          const obj = { id: uid }
-          const name = state.people[uid]?.name
-          if (name) {
-            obj["name"] = name
-          }
-          return obj
-        }
-
-        const ridToObj = (rid: RoomId) => {
-          const obj = { id: rid }
-          const name = state.rooms[rid]?.name
-          if (name) {
-            obj["name"] = name
-          }
-          return obj
-        }
-
-        const comments: any[] = []
-        // Start file download.
-        for (const c of comments_all) {
-          if (c.kind == "person" || c.kind == "poster") {
-            try {
-              const r = await decryptIfNeeded(
-                myUserId,
-                state.people,
-                c,
-                state.privateKey
-              )
-              const text = r.text || "(復号化できません)"
-              comments.push({
-                id: c.id,
-                room: ridToObj(c.room),
-                text_decrypted: text,
-                timestamp: c.timestamp,
-                x: c.x,
-                y: c.y,
-                last_updated: c.last_updated,
-                recipients: c.texts.map(t => uidToObj(t.to)),
-                // texts: c.texts,
-                person: uidToObj(c.person),
-                kind: c.kind,
-              })
-            } catch (err) {
-              //
-            }
-          } else {
-            // events
-            comments.push({
-              kind: c.kind,
-              room: ridToObj(c.room),
-              group: c["group"],
-              person: uidToObj(c.person),
-              event_type: c["event_type"],
-              event_data: {
-                from_user: "U2trLcTyCVm",
-                to_users: ["U-Rxp4DS8LzK"],
-              },
-              timestamp: c.timestamp,
-            })
-          }
-        }
-        download("export_log.json", JSON.stringify(comments, null, 2))
-      }
-    }
-
     const reloadRooms = async () => {
       state.rooms = keyBy(await client.maps.$get(), "id")
     }
@@ -2227,7 +2157,8 @@ export default defineComponent({
       }),
       page_from,
       submitAccessCode,
-      exportLog,
+      exportLog: exportLog(axios, state),
+      exportLogHtml: exportLogHtml(axios, state),
       AccessCodeInput,
       reloadRooms,
       deleteRoom,

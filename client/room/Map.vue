@@ -532,6 +532,6 @@ svg#cells.small #controller {
 }
 
 .mobile svg#cells {
-  transform: scale(1) translate(10px, -100px);
+  transform: scale(1.05) translate(12px, -125px);
 }
 </style>

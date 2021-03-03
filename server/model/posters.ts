@@ -3,8 +3,17 @@ import axios from "axios"
 import AWS from "aws-sdk"
 import fs from "fs"
 import shortid from "shortid"
-import { Poster, RoomId, UserId, PosterId } from "../../@types/types"
-import { log, db, people, redis } from "./index"
+import {
+  Poster,
+  RoomId,
+  UserId,
+  PosterId,
+  CommentId,
+  ChatCommentDecrypted,
+  ChatComment,
+  PosterCommentDecrypted,
+} from "../../@types/types"
+import { log, db, people, redis, chat } from "./index"
 import { config } from "../config"
 import { isAdjacent, removeUndefined } from "../../common/util"
 import { promisify } from "util"
@@ -60,7 +69,6 @@ export async function get(poster_id: PosterId): Promise<Poster | null> {
   if (!d) {
     return null
   }
-  log.debug("poster.get", d)
   d.last_updated = parseInt(d.last_updated)
   const file_url = d.file_uploaded
     ? config.aws.s3.upload
@@ -993,7 +1001,19 @@ export async function refreshFiles(
   }
 }
 
-export async function getSubscribers(poster_id: PosterId): Promise<UserId[]> {
+export async function getSubscribers(
+  poster_id: PosterId,
+  comments?: PosterCommentDecrypted[]
+): Promise<UserId[]> {
+  const user_ids: UserId[] = []
+  if (comments) {
+    for (const c of comments) {
+      user_ids.push(c.person)
+    }
+  }
   const poster = await get(poster_id)
-  return poster ? [poster.author] : [] //Stub
+  if (poster) {
+    user_ids.push(poster.author)
+  }
+  return _.uniq(user_ids)
 }

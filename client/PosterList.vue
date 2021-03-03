@@ -176,14 +176,19 @@ export default defineComponent({
         state.loading = false
         return
       }
-      const [data_meta, r_people, r_posters, data] = await Promise.all([
+      const [
+        data_meta,
+        { people, people_deleted },
+        r_posters,
+        data,
+      ] = await Promise.all([
         client.maps._roomId(room_id).$get(),
         client.maps._roomId(room_id).people.$get(),
         client.maps._roomId(room_id).posters.$get(),
         client.maps._roomId(room_id).cells.$get(),
       ])
       state.people = keyBy(
-        r_people.filter(p => {
+        people.filter(p => {
           return p.x != undefined && p.y != undefined
         }),
         "id"

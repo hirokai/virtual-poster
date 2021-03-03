@@ -65,6 +65,7 @@
         :commentTree="commentTree"
         :events="chat_events"
         :people="people"
+        :people_deleted="people_deleted"
         :editingOld="editingOld"
         :chatGroup="myChatGroup ? chatGroups[myChatGroup].users : []"
         :inputFocused="inputFocused"
@@ -102,6 +103,7 @@
         :comments="posterComments"
         :commentTree="posterCommentTree"
         :people="people"
+        :people_deleted="people_deleted"
         :editingOld="editingOld"
         :posterChatGroup="posterChatGroup"
         :darkMode="darkMode"
@@ -120,7 +122,7 @@
       <div id="tools-on-map" v-if="mobilePane == 'map'">
         <button
           id="enter-poster-on-map"
-          class="button is-primary"
+          class="button is-primary button-top-left"
           @click="$emit('enter-poster')"
           v-if="adjacentPoster && !posterLooking"
         >
@@ -138,12 +140,19 @@
 
           <br />
           {{ adjacentPoster.title }}
+          <span
+            id="poster-award-nominated"
+            v-if="adjacentPoster.metadata?.poster_award_nominated"
+          >
+            {{ locale == "ja" ? "ポスター賞応募" : "Poster award nominated" }}
+          </span>
           <span id="access-log-notice" v-if="adjacentPoster.access_log">
             このポスターを閲覧すると足あとが記録されます
           </span>
         </div>
         <button
           id="start-chat-on-map"
+          class="button-top-right"
           @click="startChatInFront"
           v-if="!myChatGroup && personInFront"
         >
@@ -158,6 +167,7 @@
         </button>
         <button
           id="view-info-object-on-map"
+          class="button is-default button-top-right"
           @click="viewInfoObjectInFront"
           v-if="!ajacentPoster && objectCellInFront"
         >
@@ -169,7 +179,7 @@
       </div>
       <button
         id="leave-poster-on-map"
-        class="button is-primary"
+        class="button is-primary button-top-left"
         @click="leavePoster"
         v-if="posterLooking && (mobilePane == 'poster' || mobilePane == 'map')"
       >
@@ -238,94 +248,32 @@
 </template>
 
 <script lang="ts">
-import {
-  defineComponent,
-  reactive,
-  onMounted,
-  watch,
-  ref,
-  nextTick,
-  toRefs,
-  computed,
-  PropType,
-  ComputedRef,
-} from "vue"
+import { defineComponent, reactive, toRefs, PropType } from "vue"
 
 import {
-  RoomAppProps,
   RoomAppState,
   PersonInMap,
   Cell,
   Point,
-  ArrowKey,
-  ChatGroup,
-  ChatCommentDecrypted,
-  UserId,
   Poster as PosterTyp,
-  PosterId,
-  TypingSocketSendData,
-  HttpMethod,
-  CommentId,
   CommentEvent,
-  PosterCommentDecrypted,
-  VisualStyle,
-  NewCommentNotification,
-  PosterCommentNotification,
-  CellVisibility,
   Tree,
 } from "@/@types/types"
 
 import Map from "./Map.vue"
 import MiniMap from "./MiniMap.vue"
 import Poster from "./Poster.vue"
-import CellInfo from "./CellInfo.vue"
 import ChatLocal from "./ChatLocal.vue"
-import Notification from "./Notification.vue"
-import MyPage from "../mypage/MyPage.vue"
-
-import { inRange, keyBy, sortBy, showProfileKind } from "@/common/util"
-import { formatTime, truncateComment } from "../util"
 
 import { AxiosInstance } from "axios"
-import axiosClient from "@aspida/axios"
-import api from "@/api/$api"
-import io from "socket.io-client"
-import { initPeopleService } from "./room_people_service"
-import { getVisualStyle } from "../util"
-
-const RELOAD_DELAY_MEAN = 2000
 
 import {
-  sendComment,
-  updateComment,
-  deleteComment,
-  deletePosterComment,
-  initChatService,
-  chatGroupOfUser,
   commentTree as _commentTree,
-  startChat,
   DecryptedCommentCommon,
 } from "./room_chat_service"
 
-import {
-  showMessage as showMessage_,
-  showPersonInfo as showPersonInfo_,
-  showObjectInfo as showObjectInfo_,
-  moveByArrow,
-  cellsMag,
-  initMapService,
-  dblClickHandler,
-  playBGM as _playBGM,
-  stopBGM as _stopBGM,
-} from "./room_map_service"
+import { playBGM as _playBGM, stopBGM as _stopBGM } from "./room_map_service"
 
-import {
-  updatePosterComment,
-  doSubmitPosterComment,
-  doUploadPoster,
-  adjacentPosters,
-  initPosterService,
-} from "./room_poster_service"
 import { ChatGroupId } from "@/api/@types"
 
 export default defineComponent({
@@ -490,7 +438,7 @@ export default defineComponent({
       state.mobilePane = location.hash.slice(1)
     }
 
-    window.onhashchange = ev => {
+    window.onhashchange = () => {
       if (["", "#"].indexOf(location.hash) != -1) {
         location.hash = "#map"
       } else if (location.hash.indexOf("#mypage") != -1) {
@@ -539,6 +487,9 @@ export default defineComponent({
       leaveChat,
       dblClick,
       jumpToMyPage,
+      readPosterComment: () => {
+        //
+      },
     }
   },
 })
@@ -561,28 +512,31 @@ export default defineComponent({
   height: calc(100vh - 100vw / 6 - 5px);
 }
 
-.mobile button#enter-poster-on-map,
-.mobile button#start-chat-on-map,
-.mobile button#leave-chat-on-map,
-.mobile button#leave-poster-on-map {
-  font-size: 27px;
-  left: 10vw;
-  top: 10px;
-  width: 80vw;
-  /* right: 10px; */
+.mobile button.button-top-left {
+  position: absolute;
+  font-size: 20px;
+  left: 0vw;
+  top: 0px;
+  width: 50vw !important;
   height: 40px;
+  z-index: 1000;
 }
 
-.mobile button#leave-poster-on-map {
-  left: 2vw;
-  width: 60vw;
+.mobile button.button-top-right {
+  position: absolute;
+  font-size: 20px;
+  left: 50vw;
+  top: 0px;
+  width: 50vw !important;
+  height: 40px;
   z-index: 1000;
 }
 
 .mobile div#poster-preview {
-  left: 10vw;
-  width: 80vw;
-  height: 85vh;
+  left: 5vw;
+  top: 50px;
+  width: 90vw;
+  min-height: 10vh;
 }
 
 #mobile-menu {

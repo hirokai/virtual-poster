@@ -34,9 +34,27 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PersonInMap"
+                type: object
+                properties:
+                  people:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PersonInMap"
+                  people_deleted:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        id:
+                          $ref: "#/components/schemas/UserId"
+                      required:
+                        - name
+                        - id
+                required:
+                  - people
+                  - people_deleted
       operationId: get-maps-roomId-people
       parameters:
         - schema:
@@ -615,6 +633,12 @@ paths:
         - debugAs: []
         - debugToken: []
       description: Enter a room
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: user_id
+          description: User ID of the person to let enter. Optional
   "/maps/{roomId}/chat_groups/{groupId}/join":
     post:
       summary: Join a chat
@@ -904,7 +928,7 @@ paths:
         in: path
         required: true
     get:
-      summary: Get all comments in the room
+      summary: Get all chat comments and events in the room
       tags:
         - chat
       security:
@@ -920,40 +944,7 @@ paths:
                 items:
                   oneOf:
                     - $ref: "#/components/schemas/ChatComment"
-                    - type: object
-                      properties:
-                        kind:
-                          type: string
-                          enum:
-                            - event
-                        event_type:
-                          type: string
-                          enum:
-                            - new
-                            - join
-                            - add
-                            - leave
-                            - dissolve
-                            - start_overhear
-                            - end_overhear
-                            - set_private
-                        event_data:
-                          type: object
-                          properties:
-                            additionalProperties:
-                              type: string
-                        person:
-                          type: string
-                        group:
-                          type: string
-                        timestamp:
-                          type: number
-                      required:
-                        - kind
-                        - event_type
-                        - person
-                        - group
-                        - timestamp
+                    - $ref: "#/components/schemas/ChatEvent"
       operationId: get-maps-roomId-comments
       description: Get all comments (that are visible to a user) in the room.
   "/posters/{posterId}/comments/{commentId}":
@@ -2276,7 +2267,9 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ChatComment"
+                  oneOf:
+                    - $ref: "#/components/schemas/ChatComment"
+                    - $ref: "#/components/schemas/ChatEvent"
       operationId: get-people-userId-comments
       description: "Export all comment logs  "
   "/maps/{roomId}/leave":
@@ -2715,9 +2708,12 @@ paths:
                       required:
                         - email
                         - groups
+                  with_id:
+                    type: boolean
                 required:
                   - ok
                   - people
+                  - with_id
       operationId: get-maps-roomId-people_allowed
       description: Get the list of people who have access. They don't necessarily have to be registered (with user ID).
     post:
@@ -2875,9 +2871,9 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Notification"
+                  $ref: "#/components/schemas/NotificationWithEmail"
       operationId: get-maps-roomId-notifications
-      description: Get notifications to user from server
+      description: Get all notifications in the room. Room or site admins only.
   "/maps/{roomId}/reset_cache":
     parameters:
       - $ref: "#/components/parameters/debug_token"
@@ -3165,6 +3161,65 @@ paths:
                 type: string
       operationId: get-gen_id-entity
       description: Generate a new ID.
+  "/maps/{roomId}/notifications/{notificationId}":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: notificationId
+        in: path
+        required: true
+    delete:
+      summary: Force delete notification
+      tags:
+        - notification
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                required:
+                  - ok
+      operationId: delete-maps-roomId-notifications-notificationId
+      description: Force delete notification
+  "/maps/{roomId}/people/{userId}/notifications":
+    parameters:
+      - schema:
+          type: string
+        name: roomId
+        in: path
+        required: true
+      - schema:
+          type: string
+        name: userId
+        in: path
+        required: true
+    get:
+      summary: Get notifications for the user in a room
+      tags:
+        - notification
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+      operationId: get-maps-roomId-people-userId-notifications
+      description: "Get notifications for the user in a room  "
 components:
   parameters:
     debug_token:
@@ -3198,6 +3253,12 @@ components:
           type: integer
         public_key:
           type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - admin
+            - user
       required:
         - id
         - name
@@ -3330,6 +3391,15 @@ components:
       title: PosterId
       minLength: 1
       pattern: '[\w_-]+'
+      maxLength: 15
+      x-tags:
+        - types
+      description: ""
+    NotificationId:
+      type: string
+      title: NotificationId
+      minLength: 1
+      pattern: 'F[\w_-]+'
       maxLength: 15
       x-tags:
         - types
@@ -3635,24 +3705,176 @@ components:
           enum:
             - new_chat_comments
             - new_poster_comments
+            - reply_chat_comments
+            - reply_poster_comments
+            - mention_in_poster_comment
         data:
-          $ref: "#/components/schemas/NotificationPosterCommentsData"
+          oneOf:
+            - $ref: "#/components/schemas/NotificationChatCommentsData"
+            - $ref: "#/components/schemas/NotificationPosterCommentsData"
         timestamp:
           type: integer
+        id:
+          type: string
+        person:
+          $ref: "#/components/schemas/UserId"
+        room:
+          $ref: "#/components/schemas/RoomId"
       required:
         - kind
         - timestamp
+        - id
+        - person
+        - room
+    NotificationWithEmail:
+      title: NotificationWithEmail
+      type: object
+      description: Notification sent from server. Data for admin.
+      x-tags:
+        - notification
+      properties:
+        kind:
+          type: string
+          enum:
+            - new_chat_comments
+            - new_poster_comments
+            - reply_chat_comments
+            - reply_poster_comments
+            - mention_in_poster_comment
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/NotificationPosterCommentsData"
+            - $ref: "#/components/schemas/NotificationChatCommentsData"
+        timestamp:
+          type: integer
+        id:
+          $ref: "#/components/schemas/NotificationId"
+        person:
+          $ref: "#/components/schemas/UserId"
+        room:
+          $ref: "#/components/schemas/RoomId"
+        email:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - queued
+                - sending
+                - sent
+                - failed
+            body:
+              type: string
+            body_html:
+              type: string
+            send_to:
+              type: string
+            send_from:
+              type: string
+            retry_count:
+              type: number
+            subject:
+              type: string
+          required:
+            - status
+            - body
+            - send_to
+            - retry_count
+            - subject
+        resolved_tiime:
+          type: string
+        superseded_by:
+          $ref: "#/components/schemas/NotificationId"
+      required:
+        - kind
+        - timestamp
+        - id
+        - person
+        - room
+    NotificationChatCommentsData:
+      title: NotificationChatCommentsData
+      type: object
+      properties:
+        comments:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                properties:
+                  id:
+                    $ref: "#/components/schemas/CommentId"
+                  from:
+                    $ref: "#/components/schemas/UserId"
+                  timestamp:
+                    type: integer
+                  read:
+                    type: boolean
+      required:
+        - comments
     NotificationPosterCommentsData:
       title: NotificationPosterCommentsData
       type: object
       properties:
         poster:
           $ref: "#/components/schemas/PosterId"
-        count:
-          type: integer
+        comments:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                properties:
+                  id:
+                    $ref: "#/components/schemas/CommentId"
+                  from:
+                    $ref: "#/components/schemas/UserId"
+                  timestamp:
+                    type: integer
+                  read:
+                    type: boolean
       required:
         - poster
-        - count
+        - comments
+    ChatEvent:
+      title: ChatEvent
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - event
+        event_type:
+          type: string
+          enum:
+            - new
+            - join
+            - add
+            - leave
+            - dissolve
+            - start_overhear
+            - end_overhear
+            - set_private
+        event_data:
+          type: object
+          properties:
+            additionalProperties:
+              type: string
+        person:
+          type: string
+        group:
+          type: string
+        timestamp:
+          type: number
+        room:
+          $ref: "#/components/schemas/RoomId"
+      required:
+        - kind
+        - event_type
+        - person
+        - group
+        - timestamp
+        - room
   securitySchemes:
     debugAs:
       type: apiKey

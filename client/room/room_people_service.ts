@@ -123,21 +123,14 @@ export const initPeopleService = async (
     }
   })
 
-  const [r_people, { data: r_avatars }]: [
-    PersonInMap[],
-    AxiosResponse<{ [index: string]: string }>
-  ] = await Promise.all([
+  const [{ people, people_deleted }, { data: r_avatars }] = await Promise.all([
     api(axiosClient(axios))
       .maps._roomId(props.room_id)
       .people.$get(),
     axiosDefault.get<{ [index: string]: string }>("/img/avatars_base64.json"),
   ])
-  state.people = keyBy(
-    r_people.filter(p => {
-      return p.x != undefined && p.y != undefined
-    }),
-    "id"
-  )
+  state.people = keyBy(people, "id")
+  state.people_deleted = keyBy(people_deleted, "id")
   // console.log("r_people", r_people)
   // Adhoc fix
   //Vue.set

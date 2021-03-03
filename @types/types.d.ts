@@ -21,6 +21,7 @@ export type Person = {
   connected?: boolean
   public_key?: string
   email?: string
+  role?: "owner" | "admin" | "user"
   profiles?: {
     [key: string]: {
       last_updated: number
@@ -47,14 +48,17 @@ export type PersonInMap = Person & {
 export type PersonWithMapAccess = {
   email: string
   people_groups: UserGroupId[]
-  registered?: {
-    id: string
-    avatar: string
-    connected: boolean
-    public_key?: string
-    last_updated: number
-    name: string
-  }
+  registered:
+    | {
+        id: string
+        avatar: string
+        connected: boolean
+        public_key?: string
+        last_updated: number
+        name: string
+      }
+    | null // Not registered to the site
+    | undefined // Not registered to the site or not yet entered (Others than site admins do not know about the user outside the room)
   in_room?: {
     x: number
     y: number
@@ -157,7 +161,8 @@ type MinimapVisibility =
 
 type RoomAppState = {
   socket: SocketIOClient.Socket | MySocketObject | null
-  people: { [index: string]: PersonInMap }
+  people: { [user_id: string]: PersonInMap }
+  people_deleted: { [user_id: string]: { id: UserId; name: string } }
   enableEncryption: boolean
   avatarImages: { [index: string]: string }
   enableMiniMap: boolean
@@ -263,7 +268,7 @@ type RoomAppState = {
     total: number
   }
   visibleNotification: boolean
-  notifications: NotificationEntry[]
+  notifications: { [notification_id: string]: NotificationEntry }
   highlightUnread: { [comment_id: string]: boolean }
   highlightUnreadPoster: {
     [poster_id: string]: { [comment_id: string]: boolean }
@@ -286,37 +291,210 @@ type RoomAppState = {
   }
 }
 
-type NotificationKind =
+type MyPageState = {
+  axios: any
+  socket: SocketIOClient.Socket | undefined
+  tab: string
+  tab_sub: string | undefined
+  tab_sub_sub: string | undefined
+  user: {
+    name: string
+    email: string
+    user_id: string
+  } | null
+  myUserId: string
+  myself: Person | null
+  debug_as: string | null
+  debug_token: string | undefined
+  jwt_hash: string | undefined
+
+  rooms: { [index: string]: Room }
+  people: { [index: string]: Person }
+  posters: { [index: string]: Poster }
+  files: { [index: string]: File }
+  lastLoaded: number
+
+  access_log: { [index: string]: boolean }
+  online_only: { [index: string]: boolean }
+  view_history: {
+    [index: string]: { user_id: UserId; joined_time: number }[]
+  }
+
+  editing: { name: string | null }
+
+  editingProfile: { [key: string]: boolean }
+
+  lastUpdated: number | null
+
+  bgPosition: string
+  mouseOnAvatar: { [index: string]: boolean }
+  count: number
+
+  enableEncryption: boolean
+  showPrivKey: boolean
+
+  privateKeyString: string | null
+  privateKey: CryptoKey | null
+  privateKeyMnemonic: string | null
+  publicKeyString: string | null
+  publicKey: CryptoKey | null
+
+  Alice: {
+    message: string
+    N: string | null
+    E: string | null
+    r: null
+    signed: null
+    unblinded: null
+  }
+  vote: {
+    unblinded: string
+    blinded: string
+    message: string
+    message_sent: string | null
+  }
+  avatarImages: { [index: string]: string }
+  allowedMaps: Room[]
+  ownedMaps: Room[]
+  displayNameBold: boolean
+  reloadWaiting: boolean
+  mapVisualStyle: VisualStyle
+  darkMode: boolean
+  darkModeUnset: boolean
+  enableMiniMap: boolean
+  showEmptySessions: boolean
+  locale: "ja" | "en"
+  mapCellSize: number
+  notification: {
+    interval: { [room_id: string]: number }
+  }
+}
+
+type ChatNotificationKind =
   | "new_chat_comments"
   | "new_poster_comments"
   | "reply_chat_comments"
   | "reply_poster_comments"
+  | "mention_in_poster_comment"
+
+type NotificationKind = ChatNotificationKind
 
 interface NotificationEntry {
+  id: NotificationId
+  person: UserId
+  room: RoomId
   kind: NotificationKind
   timestamp: number
   data?: any
 }
 
-interface NewCommentNotification extends NotificationEntry {
+interface NotificationEmail {
+  status: "queued" | "sending" | "sent" | "failed"
+  subject: string
+  body: string
+  body_html?: string
+  send_to: string
+  send_from?: string
+  retry_count: number
+}
+
+interface NewChatCommentNotification extends NotificationEntry {
   kind: "new_chat_comments"
   data: {
-    count: number
+    comments: CommentId[]
   }
 }
 
-interface ReplyNotification extends NotificationEntry {
+interface NewChatCommentNotificationDetail extends NotificationEntry {
+  kind: "new_chat_comments"
+  data: {
+    comments: {
+      id: CommentId
+      from: UserId
+      timestamp: number
+      read: boolean
+    }[]
+  }
+}
+
+interface ReplyChatCommentNotification extends NotificationEntry {
   kind: "reply_chat_comments"
   data: {
-    user: UserId
+    comments: CommentId[]
   }
 }
 
-interface PosterCommentNotification extends NotificationEntry {
+interface ReplyChatCommentNotificationDetail extends NotificationEntry {
+  kind: "reply_chat_comments"
+  data: {
+    comments: {
+      id: CommentId
+      from: UserId
+      timestamp: number
+      read: boolean
+    }[]
+  }
+}
+
+interface NewPosterCommentNotification extends NotificationEntry {
   kind: "new_poster_comments"
   data: {
     poster: PosterId
-    count: number
+    comments: CommentId[]
+  }
+}
+interface NewPosterCommentNotificationDetail extends NotificationEntry {
+  kind: "new_poster_comments"
+  data: {
+    poster: PosterId
+    comments: {
+      id: CommentId
+      from: UserId
+      timestamp: number
+      read: boolean
+    }[]
+  }
+}
+
+interface ReplyPosterNotification extends NotificationEntry {
+  kind: "reply_poster_comments"
+  data: {
+    poster: PosterId
+    comments: CommentId[]
+  }
+}
+
+interface ReplyPosterNotificationDetail extends NotificationEntry {
+  kind: "reply_poster_comments"
+  data: {
+    poster: PosterId
+    comments: {
+      id: CommentId
+      from: UserId
+      timestamp: number
+      read: boolean
+    }[]
+  }
+}
+
+interface PosterMentionNotification extends NotificationEntry {
+  kind: "mention_in_poster_comment"
+  data: {
+    poster: PosterId
+    comments: CommentId[]
+  }
+}
+
+interface PosterMentionNotificationDetail extends NotificationEntry {
+  kind: "mention_in_poster_comment"
+  data: {
+    poster: PosterId
+    comments: {
+      id: CommentId
+      from: UserId
+      timestamp: number
+      read: boolean
+    }[]
   }
 }
 
@@ -788,7 +966,7 @@ export type ChatEventSocketData = {
   event_data?: any
 }
 
-export type AppNotification =
+export type AppEvent =
   | "Announce"
   | "Room"
   | "Person"
@@ -809,7 +987,6 @@ export type AppNotification =
   | "PosterReset"
   | "Poster"
   | "PosterRemove"
-  | "Notification"
   | "MapUpdate"
   | "MapReplace"
   | "MapReset"
@@ -817,9 +994,11 @@ export type AppNotification =
   | "ChatTyping"
   | "MoveRequest"
   | "AppReload"
+  | "Notification"
+  | "NotificationRemove"
 
 interface Emitter {
-  emit(msg: AppNotification, data?: any): void
+  emit(msg: AppEvent, data?: any): void
   to(channel: string): this
 }
 // | SocketIO.Socket
